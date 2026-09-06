@@ -5,12 +5,13 @@ import {RenderPass} from './assets/jsm/postprocessing/RenderPass.js';
 import {SSAOPass} from './assets/jsm/postprocessing/SSAOPass.js';
 import {OutputPass} from './assets/jsm/postprocessing/OutputPass.js';
 import {RoomEnvironment} from './assets/jsm/environments/RoomEnvironment.js';
+import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=salon-20260906';
 import {kitchenColliders} from './kitchen.mjs';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=kitchen-right-20260906';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,ao,data,physics,player,doors=[],staticMeshes=[],target=null;
-let kitchenAlternative=false;
+let kitchenAlternative=false,salon;
 const kitchenLayers={original:[],alternative:[],island:[]};
 let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last=0,walkPhase=0,bobAmount=0,stepDistance=0;
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,rayTime=0,roomTime=0;
@@ -169,11 +170,11 @@ function setKitchenVariant(on,announce=true){
   renderer.shadowMap.needsUpdate=true;
   if(announce)notice(on?'Alternativa: cocina abierta, isla adelantada y encimera al fondo.':'Cocina original.');
 }
-function initScene(buffer){
+async function initScene(buffer){
   renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);
   renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;
-  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.info.autoReset=false;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   scene=new THREE.Scene();scene.background=new THREE.Color('#c4d7de');
   camera=new THREE.PerspectiveCamera(67,innerWidth/innerHeight,.035,180);camera.rotation.order='YXZ';
   scene.add(new THREE.HemisphereLight('#f1e7d6','#847459',.78));
@@ -181,11 +182,20 @@ function initScene(buffer){
   scene.environment=pmrem.fromScene(environment,.035).texture;scene.environmentIntensity=.26;environment.dispose();pmrem.dispose();
   const sun=new THREE.DirectionalLight('#fff1d9',1.8);sun.position.set(9,17,-25);sun.target.position.set(9,0,-3);
   sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-16,right:16,top:13,bottom:-13,near:1,far:65});sun.shadow.normalBias=.024;sun.shadow.bias=-.0001;scene.add(sun,sun.target);
-  for(const spec of data.meshes){
+  salon=await loadSalon(renderer,buffer);
+  mats.art=artwork();const sheer=curtainMaterial(mats.curtain);
+  for(const [sourceIndex,spec] of data.meshes.entries()){
     const stride=data.stride||6,floats=new Float32Array(buffer,spec.offset,spec.count*stride),inter=new THREE.InterleavedBuffer(floats,stride),geo=new THREE.BufferGeometry();
     geo.setAttribute('position',new THREE.InterleavedBufferAttribute(inter,3,0));geo.setAttribute('normal',new THREE.InterleavedBufferAttribute(inter,3,3));
     if(stride>=8)geo.setAttribute('uv',new THREE.InterleavedBufferAttribute(inter,2,6));
-    geo.computeBoundingSphere();const mesh=new THREE.Mesh(geo,mats[spec.material]||mats.wall);
+    geo.computeBoundingSphere();
+    const baked=salon.geometry(sourceIndex);
+    let finish=mats[spec.material]||mats.wall;
+    if(baked){geo.dispose();finish=salon.material(finish,spec.material);}
+    else if(spec.region==='salon'&&spec.material==='curtain')finish=sheer;
+    const finalGeo=baked||geo;
+    if(spec.material==='art'){const uv=finalGeo.getAttribute('uv'),pos=finalGeo.getAttribute('position');for(let i=0;i<uv.count;i++)uv.setXY(i,(pos.getZ(i)+7.543)/(36.8/51.53901216893343),(pos.getY(i)-.74)/1.21);}
+    const mesh=new THREE.Mesh(finalGeo,finish);
     mesh.receiveShadow=true;mesh.castShadow=!['glass','led','curtain'].includes(spec.material);scene.add(mesh);staticMeshes.push(mesh);
     if(kitchenLayers[spec.layer])kitchenLayers[spec.layer].push(mesh);
     if(spec.layer==='alternative')mesh.visible=false;
@@ -203,9 +213,10 @@ function initScene(buffer){
   }
   if(physics.blocked(player,activeDoorPolys()))throw Error('El punto de entrada no está libre.');
   camera.position.set(player[0],eye,player[1]);
-  composer=new EffectComposer(renderer);composer.addPass(new RenderPass(scene,camera));
+  const renderTarget=new THREE.WebGLRenderTarget(innerWidth,innerHeight,{type:THREE.HalfFloatType,samples:4});
+  composer=new EffectComposer(renderer,renderTarget);composer.addPass(new RenderPass(scene,camera));
   ao=new SSAOPass(scene,camera,innerWidth,innerHeight,16);ao.kernelRadius=.24;ao.minDistance=.0001;ao.maxDistance=.04;
-  composer.addPass(ao);composer.addPass(new OutputPass());
+  maskSalonAO(ao,camera);composer.addPass(ao);composer.addPass(new OutputPass());
   ao.setSize(Math.floor(innerWidth*.65),Math.floor(innerHeight*.65));
 }
 async function exterior(){
@@ -291,7 +302,7 @@ function frame(time){
       $('room').textContent=name;roomTime=0;
     }
   }
-  composer.render();
+  renderer.info.reset();composer.render();
 }
 function look(dx,dy){yaw-=dx*.0021;pitch=THREE.MathUtils.clamp(pitch-dy*.0021,-1.3,1.3);}
 $('enter').onclick=enter;$('pause').onclick=pause;$('interaction').onclick=interact;$('touchDoor').onclick=interact;
@@ -328,9 +339,10 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=kitchen-right-20260906'),fetch('./assets/house.bin?v=b01-full-20260906')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=salon-20260906'),fetch('./assets/house.bin?v=salon-20260906')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
-    data=await j.json();initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
+    data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
+    salon.syncTextures();
     renderer.compile(scene,camera);renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     ready=true;$('enter').disabled=false;$('kitchenVariant').disabled=false;$('enter').textContent='Entrar en casa';requestAnimationFrame(frame);
   }catch(e){
