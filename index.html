@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#202923"><title>Parque Central · Recorrido</title><meta name="description" content="Recorrido de la vivienda en primera persona."><link rel="stylesheet" href="./style.css"></head>
+<body>
+<canvas id="world" aria-label="Recorrido tridimensional de la vivienda"></canvas>
+<header><div class="brand">PARQUE CENTRAL <span>Tu vivienda</span></div><button id="pause" title="Pausar y ver controles" aria-label="Pausar y ver controles">Pausa <kbd>Esc</kbd></button></header>
+<div id="room" aria-live="polite">Recibidor</div>
+<div id="crosshair" hidden>+</div>
+<button id="interaction" hidden><kbd>E</kbd> <span>Abrir puerta</span></button>
+<div id="notice" role="status"></div>
+<section id="menu" aria-label="Controles del recorrido">
+ <div class="card"><div class="eyebrow">RECORRIDO EN PRIMERA PERSONA</div><h1>Entra en casa.</h1><p class="intro">Camina por la distribución final, abre las puertas y mira las vistas desde la terraza.</p>
+ <div class="controls"><div><strong>W A S D / flechas</strong><span>Caminar</span></div><div><strong>Ratón</strong><span>Mirar alrededor</span></div><div><strong>E / clic</strong><span>Abrir o cerrar</span></div><div><strong>Esc</strong><span>Pausar</span></div></div>
+ <div class="settings"><label><input id="sound" type="checkbox" checked> Sonido de pasos</label><label><input id="bob" type="checkbox" checked> Balanceo suave</label></div>
+ <label class="kitchen-option"><span><strong>Alternativa de cocina</strong><small>Sin puerta de cristal, isla hacia el salón y encimera continua al fondo.</small></span><input id="kitchenVariant" type="checkbox" disabled aria-label="Alternativa de cocina: abierta, isla adelantada y encimera al fondo"><i aria-hidden="true"></i></label>
+ <div class="meta">Estatura 1,80 m · Ojos a 1,69 m</div>
+ <button id="enter" disabled>Cargando vivienda…</button><button id="reset" class="secondary" hidden>Volver a la entrada</button>
+ <p class="fine">Planta ajustada a B01. Alturas del mobiliario y exterior aproximados. En móvil: arrastra a la derecha para mirar y usa el control izquierdo para caminar.</p>
+ <div id="error" role="alert" hidden></div>
+ </div>
+</section>
+<div id="touch" hidden><div id="joystick" aria-label="Control de movimiento"><i></i></div><button id="touchDoor">Abrir / cerrar</button></div>
+<script type="module" src="./app.js?v=kitchen-right-20260906"></script>
+</body></html>
