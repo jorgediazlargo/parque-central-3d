@@ -5,13 +5,14 @@ import {RenderPass} from './assets/jsm/postprocessing/RenderPass.js';
 import {SSAOPass} from './assets/jsm/postprocessing/SSAOPass.js';
 import {OutputPass} from './assets/jsm/postprocessing/OutputPass.js';
 import {RoomEnvironment} from './assets/jsm/environments/RoomEnvironment.js';
-import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=salon-20260906';
+import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=kitchen-20260906';
+import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs';
 import {kitchenColliders} from './kitchen.mjs';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=kitchen-right-20260906';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,ao,data,physics,player,doors=[],staticMeshes=[],target=null;
-let kitchenAlternative=false,salon;
+let kitchenAlternative=false,salon,kitchenLight;
 const kitchenLayers={original:[],alternative:[],island:[]};
 let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last=0,walkPhase=0,bobAmount=0,stepDistance=0;
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,rayTime=0,roomTime=0;
@@ -42,6 +43,17 @@ function material(color,kind,roughness=.7){
           diffuseColor.rgb*=.975+weaveCloth*fadeCloth*.035+yarnCloth*.018;
         `);
       }
+      if(kind==='kitchenStone'){
+        shader.vertexShader='varying vec3 stoneWorldNormal;\n'+shader.vertexShader;
+        shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nstoneWorldNormal=normalize(mat3(modelMatrix)*normal);');
+        shader.fragmentShader='varying vec3 stoneWorldNormal;\n'+shader.fragmentShader;
+        shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#ifdef USE_MAP
+          vec3 weight=pow(abs(normalize(stoneWorldNormal)),vec3(4.0));weight/=dot(weight,vec3(1.0));
+          vec3 stoneSurface=texture2D(map,houseWorld.zy*.75).rgb*weight.x
+            +texture2D(map,houseWorld.xz*.75).rgb*weight.y+texture2D(map,houseWorld.xy*.75).rgb*weight.z;
+          diffuseColor.rgb*=stoneSurface;
+        #endif`);
+      }
       if(kind==='stone')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#ifdef USE_MAP\nvec2 stoneUv=vec2(.045,.25)+fract(vMapUv)*vec2(.26,.17);diffuseColor*=texture2D(map,stoneUv);\n#endif');
       if(kind==='wall')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#ifdef USE_MAP\ndiffuseColor.rgb*=mix(vec3(.88),texture2D(map,vMapUv).rgb,.18);\n#endif');
       if(kind==='wall'){
@@ -63,6 +75,16 @@ const mats={wall:material('#dfd0b9','wall',.86),stone:material('#f2e7d7','stone'
   led:new THREE.MeshStandardMaterial({color:'#ffe1a3',emissive:'#ffbe6d',emissiveIntensity:3.8}),
   sage:material('#797e59','fabric'),lacquer:material('#bfb7a7',null,.4),rug:material('#b6a58a','rug',.96),
   blackstone:material('#39362d','stone',.35),clay:material('#a9613f',null,.65),curtain:material('#e9e0cf','fabric')};
+Object.assign(mats,{
+  kitchenOak:material('#a99c84','wood',.55),
+  kitchenFabric:material('#a69a89','fabric',.94),
+  kitchenBronze:material('#66513a',null,.38),kitchenDark:material('#262622',null,.42),
+  ovenGlass:material('#141916',null,.20),ovenWindow:material('#202820',null,.27),
+  ovenDisplay:material('#556158',null,.38),sinkSteel:material('#969c95',null,.36),hobMark:material('#575a52',null,.4)
+});
+mats.kitchenBronze.metalness=.72;mats.sinkSteel.metalness=.72;mats.ovenGlass.metalness=.28;
+// Separate cream stone uses continuous metric UVs and matching surface maps.
+mats.kitchenStone=material('#e9e2d6','kitchenStone',.53);
 mats.bronze.metalness=.65;
 mats.curtain.transparent=true;mats.curtain.opacity=.62;mats.curtain.depthWrite=false;
 
@@ -70,7 +92,7 @@ async function surfaceTextures(){
   const loader=new THREE.TextureLoader();
   for(const [asset,targets,scale,strength] of [
     ['wood_floor',['floor'],.59,.22],
-    ['marble_01',['stone','tile','blackstone','kitchenStone'],.55,.12],['white_plaster_02',['wall'],.8,.24]]){
+    ['marble_01',['stone','tile','blackstone'],.55,.12],['white_plaster_02',['wall'],.8,.24]]){
     const maps=await Promise.all(['diff','nor_gl','rough'].map(c=>loader.loadAsync(`./assets/textures/${asset}_${c}_1k.jpg`)));
     maps.forEach((t,i)=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(scale,scale);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());if(i===0)t.colorSpace=THREE.SRGBColorSpace;});
     for(const key of targets){mats[key].map=maps[0];mats[key].normalMap=maps[1];mats[key].roughnessMap=maps[2];mats[key].normalScale.set(strength,strength);mats[key].needsUpdate=true;}
@@ -80,6 +102,11 @@ async function surfaceTextures(){
   veneer.colorSpace=THREE.SRGBColorSpace;veneer.wrapS=veneer.wrapT=THREE.RepeatWrapping;
   veneer.repeat.set(.65,.42);veneer.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
   mats.wood.map=veneer;mats.wood.bumpMap=veneer;mats.wood.bumpScale=.00065;mats.wood.needsUpdate=true;
+  mats.kitchenOak.map=veneer;mats.kitchenOak.bumpMap=veneer;mats.kitchenOak.bumpScale=.00035;mats.kitchenOak.needsUpdate=true;
+  const stone=await loader.loadAsync('./assets/textures/kitchen-stone.png');
+  stone.colorSpace=THREE.SRGBColorSpace;stone.wrapS=stone.wrapT=THREE.RepeatWrapping;stone.repeat.set(.75,.75);stone.anisotropy=8;
+  mats.kitchenStone.map=stone;mats.kitchenStone.needsUpdate=true;
+
 }
 
 function box(group,w,h,d,x,y,z,mat){
@@ -96,7 +123,8 @@ function leaf(width,height,glass,door){
     box(group,width-.035,height-.035,.014,width/2,height/2,0,mats.glass);
     for(const x of [.012,width-.012])box(group,.024,height,.035,x,height/2,0,mats.bronze);
     const terrace=door?.name?.startsWith('Terraza');
-    for(const y of terrace?[.012,height-.012]:[.012,height-.012,.73,height-.40])box(group,width,.020,.034,width/2,y,0,mats.bronze);
+    for(const y of terrace?[.012,height-.012]:door?.name==='Cocina'?[.012,height-.012,.78,.97]:[.012,height-.012,.73,height-.40])box(group,width,.020,.034,width/2,y,0,mats.bronze);
+    if(door?.name==='Cocina')box(group,.016,height,.024,width*.72,height/2,0,mats.kitchenBronze);
     if(door?.name==='Estudio')box(group,.022,height,.032,width/2,height/2,0,mats.bronze);
     if(door){
       for(const side of [-1,1]){
@@ -118,6 +146,7 @@ function leaf(width,height,glass,door){
   // An invisible full panel makes even thin glass easy to select.
   const hit=box(group,width,height,.055,width/2,height/2,0,new THREE.MeshBasicMaterial({visible:false}));
   hit.userData.door=door;group.traverse(o=>{if(o.isMesh)o.userData.door=door;});
+  if(door?.name==='Cocina')group.traverse(o=>{if(o.material===mats.bronze)o.material=mats.kitchenBronze;});
   return group;
 }
 function placeDoor(d,t){
@@ -155,6 +184,7 @@ function setKitchenVariant(on,announce=true){
   if(!ready||on===kitchenAlternative)return;
   if(playing)pause();
   kitchenAlternative=on;
+  kitchenLight.setVariant(on);
   const d=doors.find(x=>x.name==='Cocina');
   if(d){d.active=!on;d.groups.forEach(g=>g.visible=!on);}
   kitchenLayers.original.forEach(m=>m.visible=!on);
@@ -183,6 +213,7 @@ async function initScene(buffer){
   const sun=new THREE.DirectionalLight('#fff1d9',1.8);sun.position.set(9,17,-25);sun.target.position.set(9,0,-3);
   sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-16,right:16,top:13,bottom:-13,near:1,far:65});sun.shadow.normalBias=.024;sun.shadow.bias=-.0001;scene.add(sun,sun.target);
   salon=await loadSalon(renderer,buffer);
+  kitchenLight=await loadKitchen(renderer,buffer);
   mats.art=artwork();const sheer=curtainMaterial(mats.curtain);
   for(const [sourceIndex,spec] of data.meshes.entries()){
     const stride=data.stride||6,floats=new Float32Array(buffer,spec.offset,spec.count*stride),inter=new THREE.InterleavedBuffer(floats,stride),geo=new THREE.BufferGeometry();
@@ -196,6 +227,7 @@ async function initScene(buffer){
     const finalGeo=baked||geo;
     if(spec.material==='art'){const uv=finalGeo.getAttribute('uv'),pos=finalGeo.getAttribute('position');for(let i=0;i<uv.count;i++)uv.setXY(i,(pos.getZ(i)+7.543)/(36.8/51.53901216893343),(pos.getY(i)-.74)/1.21);}
     const mesh=new THREE.Mesh(finalGeo,finish);
+    kitchenLight.register(mesh,sourceIndex,finish,spec.material);
     mesh.receiveShadow=true;mesh.castShadow=!['glass','led','curtain'].includes(spec.material);scene.add(mesh);staticMeshes.push(mesh);
     if(kitchenLayers[spec.layer])kitchenLayers[spec.layer].push(mesh);
     if(spec.layer==='alternative')mesh.visible=false;
@@ -216,7 +248,7 @@ async function initScene(buffer){
   const renderTarget=new THREE.WebGLRenderTarget(innerWidth,innerHeight,{type:THREE.HalfFloatType,samples:4});
   composer=new EffectComposer(renderer,renderTarget);composer.addPass(new RenderPass(scene,camera));
   ao=new SSAOPass(scene,camera,innerWidth,innerHeight,16);ao.kernelRadius=.24;ao.minDistance=.0001;ao.maxDistance=.04;
-  maskSalonAO(ao,camera);composer.addPass(ao);composer.addPass(new OutputPass());
+  maskSalonAO(ao,camera);maskKitchenAO(ao);composer.addPass(ao);composer.addPass(new OutputPass());
   ao.setSize(Math.floor(innerWidth*.65),Math.floor(innerHeight*.65));
 }
 async function exterior(){
@@ -339,12 +371,19 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=salon-20260906'),fetch('./assets/house.bin?v=salon-20260906')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=kitchen-20260906'),fetch('./assets/house.bin?v=kitchen-20260906')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
-    salon.syncTextures();
+    salon.syncTextures();kitchenLight.syncTextures();
     renderer.compile(scene,camera);renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
-    ready=true;$('enter').disabled=false;$('kitchenVariant').disabled=false;$('enter').textContent='Entrar en casa';requestAnimationFrame(frame);
+    ready=true;
+    const params=new URLSearchParams(location.search);
+    if(params.get('kitchen')==='alternative')setKitchenVariant(true,false);
+    if(params.get('start')==='kitchen'){
+      const start=[(738-106.5)/51.53901216893343,(389-619.85)/51.53901216893343];
+      if(!physics.blocked(start,activeDoorPolys())){player=start;yaw=Math.PI;pitch=0;camera.position.set(player[0],eye,player[1]);camera.rotation.set(0,yaw,0);}
+    }
+    $('enter').disabled=false;$('kitchenVariant').disabled=false;$('enter').textContent='Entrar en casa';requestAnimationFrame(frame);
   }catch(e){
     console.error(e);$('error').hidden=false;$('error').textContent='No se ha podido iniciar el recorrido. Comprueba la conexión y que Chrome tenga la aceleración gráfica activada, y recarga la página.';
     $('enter').textContent='Recargar';$('enter').disabled=false;$('enter').onclick=()=>location.reload();

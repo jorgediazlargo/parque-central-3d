@@ -1,0 +1,937 @@
+{
+  "url": "http://127.0.0.1:4183",
+  "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)",
+  "measuredAt": "2026-09-06T19:54:50.275Z",
+  "viewport": {
+    "width": 1536,
+    "height": 1024
+  },
+  "views": [
+    {
+      "name": "original-reference",
+      "position": [
+        10.331979166666667,
+        -5.817922916666666
+      ],
+      "target": [
+        10.331979166666667,
+        0.9299999999999999,
+        -1.1030479166666671
+      ],
+      "fov": 59,
+      "fps": 59.999999999999986,
+      "p95": 16.700000000000728,
+      "frameMs": {
+        "mean": 16.66666666666667,
+        "p50": 16.699999999999818,
+        "p95": 16.700000000000728,
+        "p99": 16.800000000000182,
+        "samples": 132
+      },
+      "cpuSubmitMs": {
+        "mean": 2.84736842101902,
+        "p50": 3.099999999627471,
+        "p95": 4.099999999627471,
+        "p99": 4.300000000745058,
+        "samples": 133
+      },
+      "gpuMs": {
+        "mean": 14.65674634586466,
+        "p50": 14.280208,
+        "p95": 15.286375,
+        "p99": 25.395124,
+        "samples": 133
+      },
+      "camera": [
+        10.331979166666667,
+        1.45,
+        -5.817922916666666
+      ],
+      "calls": 228,
+      "triangles": 414424,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Cocina",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true
+        }
+      ],
+      "alternative": false
+    },
+    {
+      "name": "original-living",
+      "position": [
+        7.673798611111111,
+        -7.544770138888889
+      ],
+      "target": [
+        12.427479166666666,
+        1.3,
+        -3.101534027777778
+      ],
+      "fov": 57,
+      "fps": 60.00180456555086,
+      "p95": 16.799999999999272,
+      "frameMs": {
+        "mean": 16.66616541353383,
+        "p50": 16.699999999999818,
+        "p95": 16.799999999999272,
+        "p99": 16.80000000000109,
+        "samples": 133
+      },
+      "cpuSubmitMs": {
+        "mean": 3.122388059676472,
+        "p50": 2.900000000372529,
+        "p95": 4.600000001490116,
+        "p99": 5,
+        "samples": 134
+      },
+      "gpuMs": {
+        "mean": 12.511342255639098,
+        "p50": 12.189999,
+        "p95": 13.474875,
+        "p99": 19.706541,
+        "samples": 133
+      },
+      "camera": [
+        7.673798611111111,
+        1.35,
+        -7.544770138888889
+      ],
+      "calls": 352,
+      "triangles": 514292,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Cocina",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true
+        }
+      ],
+      "alternative": false
+    },
+    {
+      "name": "original-worktop",
+      "position": [
+        12.117034722222222,
+        -1.3940895833333338
+      ],
+      "target": [
+        8.6439375,
+        1.64,
+        -0.5597701388888893
+      ],
+      "fov": 67,
+      "fps": 60.00180456555084,
+      "p95": 16.799999999999272,
+      "frameMs": {
+        "mean": 16.666165413533836,
+        "p50": 16.69999999999891,
+        "p95": 16.799999999999272,
+        "p99": 16.80000000000109,
+        "samples": 133
+      },
+      "cpuSubmitMs": {
+        "mean": 3.0619402983740196,
+        "p50": 2.900000000372529,
+        "p95": 4.400000000372529,
+        "p99": 4.900000000372529,
+        "samples": 134
+      },
+      "gpuMs": {
+        "mean": 12.07042079850746,
+        "p50": 11.887291,
+        "p95": 14.642916,
+        "p99": 18.274125,
+        "samples": 134
+      },
+      "camera": [
+        12.117034722222222,
+        1.69,
+        -1.3940895833333338
+      ],
+      "calls": 283,
+      "triangles": 455436,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Cocina",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true
+        }
+      ],
+      "alternative": false
+    },
+    {
+      "name": "original-open",
+      "position": [
+        10.331979166666667,
+        -5.817922916666666
+      ],
+      "target": [
+        10.331979166666667,
+        0.93,
+        -1.1030479166666671
+      ],
+      "fov": 59,
+      "fps": 59.99999999999999,
+      "p95": 16.700000000000728,
+      "frameMs": {
+        "mean": 16.666666666666668,
+        "p50": 16.700000000000728,
+        "p95": 16.700000000000728,
+        "p99": 16.799999999999272,
+        "samples": 132
+      },
+      "cpuSubmitMs": {
+        "mean": 3.086466165497563,
+        "p50": 3.5,
+        "p95": 4,
+        "p99": 4.100000001490116,
+        "samples": 133
+      },
+      "gpuMs": {
+        "mean": 12.361024345864665,
+        "p50": 12.139375,
+        "p95": 14.998,
+        "p99": 21.392458,
+        "samples": 133
+      },
+      "camera": [
+        10.331979166666667,
+        1.45,
+        -5.817922916666666
+      ],
+      "calls": 152,
+      "triangles": 413512,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Cocina",
+          "t": 1,
+          "active": true
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true
+        }
+      ],
+      "alternative": false
+    },
+    {
+      "name": "alternative-reference",
+      "position": [
+        10.331979166666667,
+        -5.817922916666666
+      ],
+      "target": [
+        10.331979166666667,
+        0.9299999999999999,
+        -1.1030479166666671
+      ],
+      "fov": 59,
+      "fps": 60.004511617414835,
+      "p95": 16.700000000000728,
+      "frameMs": {
+        "mean": 16.665413533834588,
+        "p50": 16.700000000000728,
+        "p95": 16.700000000000728,
+        "p99": 16.799999999999272,
+        "samples": 133
+      },
+      "cpuSubmitMs": {
+        "mean": 2.5992537313349433,
+        "p50": 3,
+        "p95": 3.900000000372529,
+        "p99": 4.200000001117587,
+        "samples": 134
+      },
+      "gpuMs": {
+        "mean": 12.369574746268654,
+        "p50": 12.021124,
+        "p95": 14.214749,
+        "p99": 15.216458,
+        "samples": 134
+      },
+      "camera": [
+        10.331979166666667,
+        1.45,
+        -5.817922916666666
+      ],
+      "calls": 122,
+      "triangles": 413944,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Cocina",
+          "t": 1,
+          "active": false
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true
+        }
+      ],
+      "alternative": true
+    },
+    {
+      "name": "alternative-living",
+      "position": [
+        7.673798611111111,
+        -7.544770138888889
+      ],
+      "target": [
+        12.427479166666666,
+        1.3,
+        -3.101534027777778
+      ],
+      "fov": 57,
+      "fps": 60.001804565550785,
+      "p95": 16.799999999999272,
+      "frameMs": {
+        "mean": 16.66616541353385,
+        "p50": 16.700000000000728,
+        "p95": 16.799999999999272,
+        "p99": 16.80000000000291,
+        "samples": 133
+      },
+      "cpuSubmitMs": {
+        "mean": 2.882835820873282,
+        "p50": 2.800000000745058,
+        "p95": 4.099999999627471,
+        "p99": 4.299999998882413,
+        "samples": 134
+      },
+      "gpuMs": {
+        "mean": 12.14090399253731,
+        "p50": 11.875791,
+        "p95": 13.772166,
+        "p99": 22.263916,
+        "samples": 134
+      },
+      "camera": [
+        7.673798611111111,
+        1.35,
+        -7.544770138888889
+      ],
+      "calls": 234,
+      "triangles": 513668,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Cocina",
+          "t": 1,
+          "active": false
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true
+        }
+      ],
+      "alternative": true
+    },
+    {
+      "name": "alternative-worktop",
+      "position": [
+        12.117034722222222,
+        -1.3940895833333338
+      ],
+      "target": [
+        8.6439375,
+        1.64,
+        -0.5597701388888893
+      ],
+      "fov": 67,
+      "fps": 60.00180456555088,
+      "p95": 16.799999999999272,
+      "frameMs": {
+        "mean": 16.666165413533825,
+        "p50": 16.69999999999709,
+        "p95": 16.799999999999272,
+        "p99": 16.799999999999272,
+        "samples": 133
+      },
+      "cpuSubmitMs": {
+        "mean": 3.1664179103838195,
+        "p50": 3.399999998509884,
+        "p95": 4.199999999254942,
+        "p99": 4.5,
+        "samples": 134
+      },
+      "gpuMs": {
+        "mean": 11.750489451127828,
+        "p50": 11.481749,
+        "p95": 13.453749,
+        "p99": 20.424083,
+        "samples": 133
+      },
+      "camera": [
+        12.117034722222222,
+        1.69,
+        -1.3940895833333338
+      ],
+      "calls": 257,
+      "triangles": 455916,
+      "blocked": true,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Cocina",
+          "t": 1,
+          "active": false
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true
+        }
+      ],
+      "alternative": true
+    }
+  ],
+  "walk": [],
+  "errors": []
+}

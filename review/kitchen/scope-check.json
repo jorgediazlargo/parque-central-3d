@@ -1,0 +1,16 @@
+{
+  "doors": true,
+  "floors": true,
+  "spawn": true,
+  "rooms": true,
+  "coves": true,
+  "kitchenVariant": true,
+  "nonKitchenCollidersIdentical": true,
+  "nonKitchenColliderCount": 772,
+  "salonFilesIdentical": {
+    "salon.bin": true,
+    "salon-light.png": true
+  },
+  "sourceBefore": "6d910043d4f5a48e2634067ff04850ee2dff798f35e2ec0fe86bed9ce0f04804",
+  "sourceAfter": "6e8a549ab4cf87e02cb416b8f76ae92679a1c9d52ed46d0386ee2b9f82ed6eb7"
+}

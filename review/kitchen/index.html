@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Parque Central · Comparativa de las dos cocinas</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3efe7;color:#302c25;font:16px/1.6 system-ui,sans-serif}main{max-width:1500px;margin:auto;padding:36px 4vw}a{color:inherit}h1{font:400 clamp(30px,4vw,52px)/1.12 Georgia,serif;margin:12px 0 20px}h2{font:400 27px Georgia,serif;margin:36px 0 18px}.intro{max-width:850px;color:#635a4c}.eyebrow{letter-spacing:.14em;font-size:12px;text-transform:uppercase}.bar{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}button{font:inherit;padding:9px 20px;border:1px solid #bfb6a5;background:transparent;color:inherit;cursor:pointer}button[aria-pressed=true]{color:#fff;background:#403b31;border-color:#403b31}.gallery{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px}figure{margin:0}figcaption{font-size:13px;margin:9px 0;color:#635a4c}img{display:block;width:100%}.reference{height:auto;aspect-ratio:3/2;object-fit:contain;background:#ded5c6}.comparison{position:relative;aspect-ratio:3/2;background:#ded5c6;overflow:hidden}.comparison img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.comparison .before{clip-path:inset(0 calc(100% - var(--split,50%)) 0 0)}.divider{position:absolute;top:0;bottom:0;left:var(--split,50%);width:2px;background:white;pointer-events:none}.tags{display:flex;justify-content:space-between;font-size:12px;margin-top:8px}.range{width:100%;accent-color:#615543}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;border-bottom:1px solid #d8d0c1;padding:12px 8px}th{font-weight:600}.notes{max-width:1000px}.notes li{margin:8px 0}.details{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.footer{border-top:1px solid #d8d0c1;margin-top:36px;padding-top:20px;color:#635a4c;font-size:13px}.status{font-size:14px;color:#635a4c}summary{cursor:pointer}code{font-size:13px}@media(max-width:750px){.gallery,.details{grid-template-columns:1fr}main{padding:24px 5vw}th,td{padding:9px 4px;font-size:12px}}
+
+select{font:inherit;padding:10px;border:1px solid #bfb6a5;background:#f3efe7;color:#302c25}nav{display:flex;gap:16px;flex-wrap:wrap}fieldset{border:0;padding:0;margin:0}legend{font-size:13px;margin-bottom:8px}.controls{display:flex;gap:24px;align-items:end;flex-wrap:wrap}.table-wrap{overflow-x:auto}.stage{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.pill{display:inline-block;background:#e5ddce;padding:5px 10px;font-size:13px}button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid #8a653c;outline-offset:4px}@media(max-width:750px){.stage{grid-template-columns:1fr}}
+</style>
+<main>
+<div class="bar"><span class="eyebrow">Parque Central · Prueba de cocina · Septiembre 2026</span><nav><a href="../salon/">Prueba anterior del salón</a><a href="../../">Recorrido completo →</a></nav></div>
+<h1>Dos cocinas, una comparación.</h1>
+<p class="intro">Isla, taburetes, fregadero, hornos, lámpara y cerramiento reconstruidos a partir de los renders del estudio. Cada distribución tiene su propio cálculo de luz. Aquí se puede revisar el resultado real en Chrome, frente al estado anterior y las referencias, conservando el plano y las mejoras del salón.</p>
+<p class="intro">Las capturas antes/después usan la misma posición, orientación, campo de visión y resolución: 1536 × 1024. El encuadre del estudio es aproximado y su planta difiere en varios puntos. No disponemos del modelo original.</p>
+<div class="controls">
+<fieldset><legend>Distribución</legend><button data-layout="original" aria-pressed="true">Original · con corredera</button> <button data-layout="alternative" aria-pressed="false">Alternativa · abierta</button></fieldset>
+<label>Vista<br><select id="view"><option value="reference">Frontal · corredera cerrada</option><option value="open">Frontal · corredera abierta</option><option value="living">Desde el salón</option><option value="worktop">Fregadero y encimera</option><option value="ovens">Hornos y frentes</option></select></label>
+<a id="tour" href="../../?kitchen=original&amp;start=kitchen">Entrar en esta cocina →</a>
+</div>
+<div class="gallery">
+<figure><a id="referenceLink" href="reference-kitchen.png"><img id="reference" class="reference" src="reference-kitchen.png" alt="Render de referencia de la cocina del estudio"></a><figcaption id="referenceCaption">Render 9 · Cocina. Muestra cinco taburetes y una composición simétrica diferente de B01.</figcaption></figure>
+<figure><div class="comparison" id="comparison"><img id="after" src="after-original-reference.png" alt="Cocina original después de la reconstrucción"><img class="before" id="before" src="before-original-reference.png" alt="Cocina original antes de la reconstrucción"><div class="divider"></div></div><div class="tags"><a id="beforeLink" href="before-original-reference.png">Antes · ampliar</a><a id="afterLink" href="after-original-reference.png">Después · ampliar</a></div><input class="range" id="slider" type="range" min="0" max="100" value="50" aria-label="Comparación: antes a la izquierda, después a la derecha"><figcaption>Arrastra el control. Capturas directas del navegador, sin retoques ni sustitución de fondos.</figcaption></figure>
+</div>
+<p id="viewNote" class="status" aria-live="polite"></p>
+<h2>Qué cambia y qué conserva el plano</h2>
+<div class="table-wrap"><table><thead><tr><th>Elemento</th><th>Resultado</th><th>Límite de la referencia</th></tr></thead><tbody>
+<tr><td>Isla</td><td>304,1 × 90 cm; altura heredada de 93 cm. Encimera con vuelo, laterales curvos y frentes hacia la zona de trabajo.</td><td>La alternativa conserva su desplazamiento de 60,1 cm hacia el salón.</td></tr>
+<tr><td>Taburetes</td><td>Cuatro, en sus huellas B01, asiento a 66–72 cm y respaldo bajo con estructura de bronce.</td><td>El render frontal muestra cinco; prevalece el plano.</td></tr>
+<tr><td>Fondo y laterales</td><td>Original con fregadero en el retranqueo; alternativa con encimera continua y fregadero desplazado. Lateral este bajo.</td><td>El render frontal muestra una pared simétrica y dos laterales altos. No se imponen a B01.</td></tr>
+<tr><td>Techos y pasos</td><td>Geometría D02 intacta: perímetro a 220 cm y zona elevada a 255 cm. Puertas y huellas estructurales conservadas.</td><td>Los muebles carecen de alzados acotados; se mantienen las alturas convencionales existentes.</td></tr>
+<tr><td>Salón y comedor</td><td>Salón y atlas anterior conservados. Solo cambia la cocina y su separación acristalada.</td><td>El comedor de la captura sigue siendo el modelo anterior y no reproduce el render. <a href="scope-check.json">Comprobación de conservación</a>.</td></tr>
+</tbody></table></div>
+<h2>Luz y comprobación en navegador</h2>
+<p class="notes">Cycles, 192 muestras, seis rebotes difusos y filtrado OpenImageDenoise. Dos atlas de 4096 × 4096, con UV continuas en suelo y niveles de techo. El shader decodifica la irradiancia en espacio lineal, conserva el acabado de los materiales y evita sumar SSAO sobre las sombras precalculadas. Al cambiar de distribución se cambian conjuntamente la geometría iluminada, el atlas, la visibilidad y las colisiones.</p>
+<div class="table-wrap"><table><thead><tr><th>Cámara</th><th>Antes · FPS / P95</th><th>Después · FPS / P95</th><th>GPU después · media / P95</th></tr></thead><tbody id="metrics"><tr><td colspan="4">Cargando mediciones…</td></tr></tbody></table></div>
+<p class="status" id="hardware"></p>
+<p class="status">P95: el 95 % de los fotogramas tarda ese tiempo o menos. Se mide la cadencia con requestAnimationFrame, el envío de CPU con performance.now y la GPU con EXT_disjoint_timer_query_webgl2. Datos de este Mac con Chrome/ANGLE Metal; no representan móviles. <a href="before-metrics.json">Antes</a> · <a href="after-metrics.json">Después y recorrido</a> · <a href="deployed-metrics.json">Versión desplegada</a></p>
+<p id="walkSummary" class="notes"></p>
+<div class="details"><figure><a id="eastLink"><img id="east" loading="lazy" alt="Acceso y paso lateral con controles WASD"></a><figcaption>Acceso y lateral de la isla.</figcaption></figure><figure><a id="rearLink"><img id="rear" loading="lazy" alt="Paso por detrás de la isla"></a><figcaption>Circulación hacia el fregadero.</figcaption></figure><figure><a id="westLink"><img id="west" loading="lazy" alt="Paso entre isla y columna de hornos"></a><figcaption>Regreso por el lateral de hornos.</figcaption></figure></div>
+<h2>Diferencias pendientes</h2>
+<ul class="notes">
+<li>Se demuestra una mejora de piezas, materiales y profundidad respecto al visor anterior, no una réplica fotográfica del estudio. La piedra es una aproximación procedural; faltan la veta exacta, la confección del tapizado, accesorios y detalles de fabricante.</li>
+<li>La iluminación es más sencilla que la del render. No se reproduce su luz solar rasante ni el patrón exacto de sombra del cerramiento. Las hojas móviles quedan fuera del cálculo estático: al abrirlas no se recalculan sus rebotes o sombras en el atlas. No se deja una sombra fija de las hojas cerradas.</li>
+<li>La encimera alternativa necesita un respaldo de piedra continuo; su posición y el retranqueo original proceden de B01. Las proporciones aparentes y el foseado seguirán difiriendo del render mientras se conserve D02.</li>
+<li>Los materiales se revisaron al caminar y desde cerca, pero esta prueba no acredita el mismo rendimiento o calidad en todos los dispositivos.</li>
+</ul>
+<details><summary>Revisar las etapas intermedias</summary><div class="stage"><figure><a id="geometryLink"><img id="geometry" loading="lazy" alt="Nueva geometría con iluminación anterior"></a><figcaption>Geometría nueva con la luz anterior.</figcaption></figure><figure><a id="light1Link"><img id="light1" loading="lazy" alt="Primer cálculo de luz"></a><figcaption>Primer atlas: demasiado brillo y juntas visibles.</figcaption></figure><figure><a id="light2Link"><img id="light2" loading="lazy" alt="Segundo ajuste de materiales"></a><figcaption>Segundo ajuste: motivó la corrección de UV en suelo y techo.</figcaption></figure></div></details>
+<p class="footer">Sin compras. Referencias facilitadas por el usuario; piezas y textura de piedra creadas para el proyecto. Se conservan los mapas CC0 de <a href="https://polyhaven.com/a/wood_floor">Poly Haven</a> y Three.js MIT. Método: <a href="https://docs.blender.org/manual/en/latest/render/cycles/baking.html">baking de Cycles</a> y <a href="https://threejs.org/docs/pages/MeshStandardMaterial.html">materiales y lightMap de Three.js</a>. Fuentes y scripts en el repositorio del proyecto.</p>
+</main>
+<script type="module">
+const $=id=>document.getElementById(id);let layout='original';
+function setImage(id,file){$(id).src=file;$(id+'Link').href=file;}
+function update(){
+ $('view').querySelector('[value=reference]').textContent=layout==='original'?'Frontal · corredera cerrada':'Frontal · cocina abierta';
+ const view=$('view').value,frame=view==='open'?(layout==='original'?'open':'reference'):view;
+ for(const stage of ['before','after'])setImage(stage,`${stage}-${layout}-${frame}.png`);
+ const living=view==='living'||view==='ovens';setImage('reference',living?'reference-living.png':'reference-kitchen.png');
+ $('referenceCaption').textContent=living?'Render 2 · Comedor y separación con la cocina. El comedor no se reconstruye en esta prueba.':'Render 9 · Cocina. Cinco taburetes y composición distinta de B01.';
+ $('tour').href=`../../?kitchen=${layout}&start=kitchen`;
+ $('viewNote').textContent=layout==='alternative'?'Alternativa B01: isla adelantada 60,1 cm, sin cerramiento y con encimera continua.':'Original B01: se conserva el cerramiento móvil y el retranqueo del fregadero.';
+ for(const key of ['east','rear','west'])setImage(key,`after-walk-${layout}-${key}.png`);
+ for(const [id,stage] of [['geometry','geometry'],['light1','light-v1'],['light2','light-v2']])setImage(id,`${stage}-${layout}-${layout==='original'?'open':'reference'}.png`);
+}
+for(const b of document.querySelectorAll('[data-layout]'))b.onclick=()=>{layout=b.dataset.layout;for(const a of document.querySelectorAll('[data-layout]'))a.setAttribute('aria-pressed',String(a===b));update();};
+$('view').onchange=update;$('slider').oninput=e=>$('comparison').style.setProperty('--split',e.target.value+'%');update();
+const names={reference:'Frontal cerrada',open:'Frontal abierta',living:'Desde el salón',worktop:'Fregadero',ovens:'Hornos'};
+try{
+ const [before,after]=await Promise.all(['before','after'].map(async n=>{const r=await fetch(n+'-metrics.json');if(!r.ok)throw Error(n);return r.json();}));
+ const live=await fetch('deployed-metrics.json').then(r=>r.ok?r.json():null).catch(()=>null);
+ $('metrics').innerHTML=after.views.map(v=>{const old=before.views.find(o=>o.name===v.name),[layout,view]=v.name.split('-');return `<tr><td>${layout==='original'?'Original':'Alternativa'} · ${layout==='alternative'&&view==='reference'?'Frontal abierta':names[view]}</td><td>${old.fps.toFixed(1)} / ${old.p95.toFixed(1)} ms</td><td>${v.fps.toFixed(1)} / ${v.p95.toFixed(1)} ms</td><td>${v.gpuMs?v.gpuMs.mean.toFixed(1)+' / '+v.gpuMs.p95.toFixed(1)+' ms':'No disponible'}</td></tr>`;}).join('');
+ $('hardware').textContent=after.renderer+' · '+after.viewport.width+' × '+after.viewport.height+' · '+after.measuredAt;
+ $('walkSummary').textContent=`Prueba local: ${after.walk.length} registros de controles, rutas y colisiones; ${after.errors.length} errores JavaScript o de shaders. Versión desplegada: ${live?live.walk.length+' registros; '+live.errors.length+' errores.':'comprobación pendiente.'} Se prueban entrada/pausa, selector, apertura con E, ambos laterales, paso trasero, frente de isla y detención ante muebles.`;
+}catch{$('metrics').innerHTML='<tr><td colspan="4">Consulta los JSON de mediciones enlazados.</td></tr>';}
+</script>
+</html>
