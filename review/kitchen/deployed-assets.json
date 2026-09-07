@@ -1,0 +1,82 @@
+{
+  "url": "https://jorgediazlargo.github.io/parque-central-3d/",
+  "commit": "888ee41765c3f710f41a947ce2c5748a458de8a2",
+  "checkedAt": "2026-09-07T18:26:21.434371+00:00",
+  "files": [
+    {
+      "file": "app.js",
+      "sha256": "add83708a4b0217e6beedcbe4188a4a7a063b081b0fbcb89354c91b3275e105c",
+      "matches": true
+    },
+    {
+      "file": "kitchen-light.mjs",
+      "sha256": "fa5918e0b9ea80bd9a9f03623bcd9feda5501a6f6573e1126383f4fc33f69499",
+      "matches": true
+    },
+    {
+      "file": "salon.mjs",
+      "sha256": "8cb0127ed1440e70f167f825df984988d63925e89ad663934366f040c59f8b3e",
+      "matches": true
+    },
+    {
+      "file": "assets/house.bin",
+      "sha256": "6e8a549ab4cf87e02cb416b8f76ae92679a1c9d52ed46d0386ee2b9f82ed6eb7",
+      "matches": true
+    },
+    {
+      "file": "assets/house.json",
+      "sha256": "28ee410cab1a53ade0015c584a9fef7c1ceb5dd602cee59d844b1f6fc08e7cc1",
+      "matches": true
+    },
+    {
+      "file": "assets/salon.json",
+      "sha256": "55ba86c2ddae129f9af144436063c04ecba2454c1e26eeef87fa4c0702e8e889",
+      "matches": true
+    },
+    {
+      "file": "assets/salon.bin",
+      "sha256": "d0708a5511707f2744f9424b98a79ac0f1d3728b4e72b84ed23f60428d8f05ee",
+      "matches": true
+    },
+    {
+      "file": "assets/salon-light.png",
+      "sha256": "2b44fcc7132a87be05a728ff1951109ddbbd4e1c38d05a43744931ea430dcbe5",
+      "matches": true
+    },
+    {
+      "file": "assets/kitchen-original.bin",
+      "sha256": "fcf35932689052f167d0959060899bfa7e5b1065bc64c13687e5964452ea729b",
+      "matches": true
+    },
+    {
+      "file": "assets/kitchen-original.json",
+      "sha256": "978550c232ee6b401a2dfe4ae07ad5c657fce851af04a1f790500c5d2dfdacd1",
+      "matches": true
+    },
+    {
+      "file": "assets/kitchen-original-light.png",
+      "sha256": "2f7528bcd2a0807bda3b59a0781f0adf2b3b3a4a647d81047c970799a71f2cd3",
+      "matches": true
+    },
+    {
+      "file": "assets/kitchen-alternative.bin",
+      "sha256": "040fb13368e31ddf66024cdf98753c53dbed814ea56010342a924cee3322509e",
+      "matches": true
+    },
+    {
+      "file": "assets/kitchen-alternative.json",
+      "sha256": "01e47762593e7cd2a44bb7f7ab06a06d93647e801b98769fd250bd1438df26a7",
+      "matches": true
+    },
+    {
+      "file": "assets/kitchen-alternative-light.png",
+      "sha256": "60d6b0bf133374929dbdf9fee70c69790c3d7aaeb948d60c2498d8205e92a2b4",
+      "matches": true
+    },
+    {
+      "file": "assets/textures/kitchen-stone.png",
+      "sha256": "23346ff796db0d3feb2927bd2685756776120c9f07e31d0c2df62116710b5ae8",
+      "matches": true
+    }
+  ]
+}

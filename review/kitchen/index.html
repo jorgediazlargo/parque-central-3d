@@ -22,6 +22,7 @@ select{font:inherit;padding:10px;border:1px solid #bfb6a5;background:#f3efe7;col
 <figure><div class="comparison" id="comparison"><img id="after" src="after-original-reference.png" alt="Cocina original después de la reconstrucción"><img class="before" id="before" src="before-original-reference.png" alt="Cocina original antes de la reconstrucción"><div class="divider"></div></div><div class="tags"><a id="beforeLink" href="before-original-reference.png">Antes · ampliar</a><a id="afterLink" href="after-original-reference.png">Después · ampliar</a></div><input class="range" id="slider" type="range" min="0" max="100" value="50" aria-label="Comparación: antes a la izquierda, después a la derecha"><figcaption>Arrastra el control. Capturas directas del navegador, sin retoques ni sustitución de fondos.</figcaption></figure>
 </div>
 <p id="viewNote" class="status" aria-live="polite"></p>
+<p class="status"><a id="deployedCapture" href="deployed-original-reference.png">Ampliar esta cámara en la versión desplegada</a> · <a href="deployed-assets.json">Verificación de archivos publicados</a></p>
 <h2>Qué cambia y qué conserva el plano</h2>
 <div class="table-wrap"><table><thead><tr><th>Elemento</th><th>Resultado</th><th>Límite de la referencia</th></tr></thead><tbody>
 <tr><td>Isla</td><td>304,1 × 90 cm; altura heredada de 93 cm. Encimera con vuelo, laterales curvos y frentes hacia la zona de trabajo.</td><td>La alternativa conserva su desplazamiento de 60,1 cm hacia el salón.</td></tr>
@@ -36,6 +37,7 @@ select{font:inherit;padding:10px;border:1px solid #bfb6a5;background:#f3efe7;col
 <p class="status" id="hardware"></p>
 <p class="status">P95: el 95 % de los fotogramas tarda ese tiempo o menos. Se mide la cadencia con requestAnimationFrame, el envío de CPU con performance.now y la GPU con EXT_disjoint_timer_query_webgl2. Datos de este Mac con Chrome/ANGLE Metal; no representan móviles. <a href="before-metrics.json">Antes</a> · <a href="after-metrics.json">Después y recorrido</a> · <a href="deployed-metrics.json">Versión desplegada</a></p>
 <p id="walkSummary" class="notes"></p>
+<p id="livePerformance" class="status"></p>
 <div class="details"><figure><a id="eastLink"><img id="east" loading="lazy" alt="Acceso y paso lateral con controles WASD"></a><figcaption>Acceso y lateral de la isla.</figcaption></figure><figure><a id="rearLink"><img id="rear" loading="lazy" alt="Paso por detrás de la isla"></a><figcaption>Circulación hacia el fregadero.</figcaption></figure><figure><a id="westLink"><img id="west" loading="lazy" alt="Paso entre isla y columna de hornos"></a><figcaption>Regreso por el lateral de hornos.</figcaption></figure></div>
 <h2>Diferencias pendientes</h2>
 <ul class="notes">
@@ -54,6 +56,7 @@ function update(){
  $('view').querySelector('[value=reference]').textContent=layout==='original'?'Frontal · corredera cerrada':'Frontal · cocina abierta';
  const view=$('view').value,frame=view==='open'?(layout==='original'?'open':'reference'):view;
  for(const stage of ['before','after'])setImage(stage,`${stage}-${layout}-${frame}.png`);
+ $('deployedCapture').href=`deployed-${layout}-${frame}.png`;
  const living=view==='living'||view==='ovens';setImage('reference',living?'reference-living.png':'reference-kitchen.png');
  $('referenceCaption').textContent=living?'Render 2 · Comedor y separación con la cocina. El comedor no se reconstruye en esta prueba.':'Render 9 · Cocina. Cinco taburetes y composición distinta de B01.';
  $('tour').href=`../../?kitchen=${layout}&start=kitchen`;
@@ -69,6 +72,7 @@ try{
  const live=await fetch('deployed-metrics.json').then(r=>r.ok?r.json():null).catch(()=>null);
  $('metrics').innerHTML=after.views.map(v=>{const old=before.views.find(o=>o.name===v.name),[layout,view]=v.name.split('-');return `<tr><td>${layout==='original'?'Original':'Alternativa'} · ${layout==='alternative'&&view==='reference'?'Frontal abierta':names[view]}</td><td>${old.fps.toFixed(1)} / ${old.p95.toFixed(1)} ms</td><td>${v.fps.toFixed(1)} / ${v.p95.toFixed(1)} ms</td><td>${v.gpuMs?v.gpuMs.mean.toFixed(1)+' / '+v.gpuMs.p95.toFixed(1)+' ms':'No disponible'}</td></tr>`;}).join('');
  $('hardware').textContent=after.renderer+' · '+after.viewport.width+' × '+after.viewport.height+' · '+after.measuredAt;
+ if(live){const fps=live.views.map(v=>v.fps),p95=live.views.map(v=>v.p95);$('livePerformance').textContent=`Despliegue: ${Math.min(...fps).toFixed(1)}–${Math.max(...fps).toFixed(1)} FPS; P95 de fotograma ${Math.min(...p95).toFixed(1)}–${Math.max(...p95).toFixed(1)} ms en las nueve cámaras. ${live.renderer}.`;}
  $('walkSummary').textContent=`Prueba local: ${after.walk.length} registros de controles, rutas y colisiones; ${after.errors.length} errores JavaScript o de shaders. Versión desplegada: ${live?live.walk.length+' registros; '+live.errors.length+' errores.':'comprobación pendiente.'} Se prueban entrada/pausa, selector, apertura con E, ambos laterales, paso trasero, frente de isla y detención ante muebles.`;
 }catch{$('metrics').innerHTML='<tr><td colspan="4">Consulta los JSON de mediciones enlazados.</td></tr>';}
 </script>
