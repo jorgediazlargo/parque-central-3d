@@ -28,6 +28,15 @@ export function doorSegments(d,t) {
     const c=Math.cos(d.delta*t),s=Math.sin(d.delta*t);
     return [[d.a,[d.a[0]+dx*c+dz*s,d.a[1]+dz*c-dx*s]]];
   }
+  if(d.type==='doubleHinge') {
+    // French pair meeting at the centre: each leaf turns about its own jamb,
+    // the second one mirrored so both swing to the same side.
+    const hx=dx/2,hz=dz/2;
+    return [[d.a,1],[d.b,-1]].map(([p,k])=>{
+      const c=Math.cos(d.delta*t),s=Math.sin(d.delta*t),x=hx*k,z=hz*k;
+      return [p,[p[0]+x*c+z*s*k,p[1]+z*c-x*s*k]];
+    });
+  }
   if(d.type==='slide')return [[[d.a[0]+d.slide[0]*t,d.a[1]+d.slide[1]*t],[d.b[0]+d.slide[0]*t,d.b[1]+d.slide[1]*t]]];
   const n=d.panels,len=Math.hypot(dx,dz),nx=-dz/len,nz=dx/len;
   return Array.from({length:n},(_,i)=>{

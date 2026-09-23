@@ -10,7 +10,8 @@ import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=furni
 import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=furniture-20260923';
 import {kitchenColliders} from './kitchen.mjs';
 import {textile,textileBump} from './textiles.mjs?v=furniture-20260923';
-import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=kitchen-right-20260906';
+import {masterBedding,hideExportedBedding} from './bedding.mjs?v=bed-20260923';
+import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=study-doors-20260923';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,ao,data,physics,player,doors=[],staticMeshes=[],target=null;
@@ -177,13 +178,14 @@ function studyPanel(group,width,height){
   box(group,width-.02,height-.02,.010,width/2,height/2,0,mats.glass);
   for(const x of [stile/2,width-stile/2])box(group,stile,height,depth,x,height/2,0,studyFrame);
   for(const y of [.015,...rails,height-.015])box(group,width,.032,depth,width/2,y,0,studyFrame);
-  // Slim lever on a round rose towards the bedroom, as on the render; flush pull
-  // on the studio face so the leaf can pass in front of the fixed panel.
-  const rose=new THREE.Mesh(new THREE.CylinderGeometry(.021,.021,.010,24),studyFrame);
-  rose.rotation.x=Math.PI/2;rose.position.set(stile/2,1.02,depth/2+.005);group.add(rose);
-  box(group,.012,.012,.045,stile/2,1.02,depth/2+.028,studyFrame);
-  box(group,.115,.012,.012,stile/2+.05,1.02,depth/2+.047,studyFrame);
-  box(group,.012,.12,.002,stile/2,1.02,-depth/2-.0005,mats.dark);
+  // Slim lever on a round rose at the meeting stile, on both faces, as on the render.
+  const x=width-stile/2;
+  for(const side of [-1,1]){
+    const rose=new THREE.Mesh(new THREE.CylinderGeometry(.021,.021,.010,24),studyFrame);
+    rose.rotation.x=Math.PI/2;rose.position.set(x,1.02,side*(depth/2+.005));group.add(rose);
+    box(group,.012,.012,.045,x,1.02,side*(depth/2+.028),studyFrame);
+    box(group,.115,.012,.012,x-.05,1.02,side*(depth/2+.047),studyFrame);
+  }
 }
 function leaf(width,height,glass,door){
   const group=new THREE.Group();
@@ -246,11 +248,10 @@ function setupDoors(){
   };
   // Outer frame with rounded upper corners, sill included.
   const outer=arched(0);outer.holes.push(arched(f));extrude(outer);
-  // Fixed glazing on both sides of the sliding panel.
+  // Fixed glazing on both sides of the French pair.
   for(const [x0,x1] of [[f,doorFrom],[doorTo,length-f]])extrude(arched(f,x0,x1),0,mats.glass,.010);
-  // Paired stiles at each joint: side lites, three fixed panels and the door opening.
-  const panel=(doorTo-doorFrom);
-  for(const x of [side,side+panel,side+2*panel,doorFrom,doorTo]){
+  // Paired stiles at each joint: side lites, the two fixed panels and the door opening.
+  for(const x of [side,doorFrom,doorTo,length-side]){
     for(const dx of [-stile/2,stile/2]){
       if((x===doorFrom&&dx>0)||(x===doorTo&&dx<0))continue;
       box(g,stile,h-2*f,depth,x+dx,h/2,0,studyFrame);
@@ -264,9 +265,6 @@ function setupDoors(){
     arc.absarc(cx,h-r,ri+stile/2,a0,a1,false);arc.absarc(cx,h-r,ri-stile/2,a1,a0,true);extrude(arc);
     box(g,stile,h-r-f,depth,x,(h-r+f)/2,0,studyFrame);
   }
-  // Top track for the sliding panel, on the bedroom side.
-  const track=Math.abs((study.a[0]-a[0])*(b[1]-a[1])-(study.a[1]-a[1])*(b[0]-a[0]))/length;
-  box(g,2*panel,.025,.03,doorFrom,h-.02,track,studyFrame);
   g.traverse(o=>{if(o.isMesh)staticMeshes.push(o);});
 }
 function activeDoorPolys(){return doors.filter(d=>d.active!==false).flatMap(d=>d.polys);}
@@ -295,6 +293,7 @@ async function initScene(buffer){
     const baked=salon.geometry(sourceIndex);
     let finish=mats[spec.material]||mats.wall;
     if(baked){geo.dispose();finish=salon.material(finish,spec.material);}
+    else if(spec.region==='shared'&&['linen','fabric'].includes(spec.material))hideExportedBedding(geo);
     else if(spec.region==='salon'&&spec.material==='curtain')finish=sheer;
     const finalGeo=baked||geo;
     if(spec.material==='art'){const uv=finalGeo.getAttribute('uv'),pos=finalGeo.getAttribute('position');for(let i=0;i<uv.count;i++)uv.setXY(i,(pos.getZ(i)+7.543)/(36.8/51.53901216893343),(pos.getY(i)-.74)/1.21);}
@@ -302,6 +301,8 @@ async function initScene(buffer){
     kitchenLight.register(mesh,sourceIndex,finish,spec.material);
     mesh.receiveShadow=true;mesh.castShadow=!['glass','led','curtain'].includes(spec.material);scene.add(mesh);staticMeshes.push(mesh);
   }
+  // The master bed dressing replaces the exported duvet, pillows and blanket.
+  const bedding=masterBedding();scene.add(bedding);bedding.traverse(o=>{if(o.isMesh)staticMeshes.push(o);});
   // Soft electric fill complements daylight under the real ceiling geometry.
   for(const [x,z,power] of [[2,-7,4],[5,-7,4],[9,-6,6],[12,-6,6],[16,-7,4],[17.5,-7,4],[11,-1.6,5],[3,-2,5],[15,-2,4]]){
     const l=new THREE.PointLight('#ffcf98',power*.95,7,2);l.position.set(x,1.9,z);scene.add(l);
@@ -456,7 +457,7 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=study-20260923'),fetch('./assets/house.bin?v=study-20260923')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=study-doors-20260923'),fetch('./assets/house.bin?v=study-20260923')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
     salon.syncTextures();kitchenLight.syncTextures();
