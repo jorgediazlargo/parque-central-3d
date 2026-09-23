@@ -1,4 +1,5 @@
 import * as THREE from './assets/three.module.js';
+import {textile,textileBump} from './textiles.mjs?v=furniture-20260923';
 
 // Generated irradiance affects only the geometry clipped to the salon boundary.
 // Dynamic doors continue to use the existing scene lighting and moving colliders.
@@ -15,8 +16,8 @@ export async function loadSalon(renderer,sourceBuffer) {
     if(materials.has(kind))return materials.get(kind);
     const m=base.clone();m.defines={...m.defines,...base.defines};m.lightMap=light;m.lightMapIntensity=1;
     const bakedGain=kind==='floor'?'1.65':'1.0';
-    if(kind==='linen')m.color.set('#eee8de');
-    if(kind==='fabric')m.color.set('#a99b89');
+    if(kind==='linen')m.color.set('#efebe4');
+    if(kind==='fabric')m.color.set('#9d9189');
     if(kind==='rug')m.color.set('#b9ab94');
     if(kind==='wall')m.normalScale.set(.12,.12);
     
@@ -54,7 +55,7 @@ export async function loadSalon(renderer,sourceBuffer) {
       const base=bases.get(kind);
       for(const k of ['map','normalMap','roughnessMap','bumpMap','bumpScale'])m[k]=base[k];
       if(['linen','fabric','rug'].includes(kind)){
-        const t=textile(kind);m.map=t;m.bumpMap=t;m.bumpScale=kind==='rug'?.0006:kind==='fabric'?.0004:.00015;
+        const t=textile(kind);m.map=t;m.bumpMap=t;m.bumpScale=textileBump[kind];
       }
       m.needsUpdate=true;
     }
@@ -115,27 +116,4 @@ export function maskSalonAO(ao,camera) {
     gl_FragColor=opacity*mix(texel,vec4(1.0),living);
   `);
   m.needsUpdate=true;
-}
-
-
-function textile(kind){
-  const c=document.createElement('canvas');c.width=c.height=512;
-  const ctx=c.getContext('2d'),pixels=ctx.createImageData(512,512);
-  let seed=3817;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-  for(let y=0;y<512;y++)for(let x=0;x<512;x++){
-    const i=(y*512+x)*4;
-    const yarn=(x%4<2?4:-4)+(y%4<2?3:-3);
-    const slub=3*Math.sin(x*.08+2*Math.sin(y*.025));
-    const v=(kind==='linen'?244:224)+yarn+slub+(random()-.5)*16;
-    pixels.data.set([v,v-2,v-5,255],i);
-  }
-  ctx.putImageData(pixels,0,0);
-  if(kind==='fabric'){
-    ctx.strokeStyle='rgba(95,82,66,.075)';ctx.lineWidth=2;
-    for(let y=-48;y<560;y+=64)for(let x=-48;x<560;x+=64){
-      for(let r=10;r<29;r+=6){ctx.beginPath();ctx.ellipse(x+(y%128?16:0),y,r,r*1.2,.35,0,Math.PI*2);ctx.stroke();}
-    }
-  }
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;
-  t.repeat.set(kind==='rug'?2.5:4,kind==='rug'?2.5:4);t.anisotropy=8;return t;
 }

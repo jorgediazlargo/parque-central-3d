@@ -6,9 +6,10 @@ import {SSAOPass} from './assets/jsm/postprocessing/SSAOPass.js';
 import {OutputPass} from './assets/jsm/postprocessing/OutputPass.js';
 import {ShaderPass} from './assets/jsm/postprocessing/ShaderPass.js';
 import {RoomEnvironment} from './assets/jsm/environments/RoomEnvironment.js';
-import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=renders-20260923';
-import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=renders-20260923';
+import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=furniture-20260923';
+import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=furniture-20260923';
 import {kitchenColliders} from './kitchen.mjs';
+import {textile,textileBump} from './textiles.mjs?v=furniture-20260923';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=kitchen-right-20260906';
 
 const $=id=>document.getElementById(id),canvas=$('world');
@@ -32,6 +33,17 @@ function material(color,kind,roughness=.7){
       shader.vertexShader='varying vec3 houseWorld;\nvarying vec3 houseNormal;\n'+shader.vertexShader;
       shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nhouseWorld=(modelMatrix*vec4(position,1.0)).xyz;houseNormal=normalize(mat3(modelMatrix)*normal);');
       shader.fragmentShader='varying vec3 houseWorld;\nvarying vec3 houseNormal;\nfloat hashHouse(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}\n'+shader.fragmentShader;
+      // Rugs are flat: a world-space projection gives every rug a knotted surface,
+      // including the round ones whose exported UVs collapse.
+      if(kind==='rug')shader.vertexShader=shader.vertexShader.replace('#include <uv_vertex>',`#include <uv_vertex>
+        {vec2 rugUv=(modelMatrix*vec4(position,1.0)).xz*4.0;
+        #ifdef USE_MAP
+        vMapUv=rugUv;
+        #endif
+        #ifdef USE_BUMPMAP
+        vBumpMapUv=rugUv;
+        #endif
+        }`);
       if(['fabric','linen','rug'].includes(kind)){
         // Derivative-filtered weave remains stable at walking distance.
         const freq=kind==='rug'?240:kind==='linen'?1350:950;
@@ -42,6 +54,11 @@ function material(color,kind,roughness=.7){
           float weaveCloth=sin(clothUv.x)*sin(clothUv.y);
           float yarnCloth=sin(clothUv.x*.081+sin(clothUv.y*.061))*sin(clothUv.y*.077);
           diffuseColor.rgb*=.975+weaveCloth*fadeCloth*.035+yarnCloth*.018;
+        `);
+        // Dressing-room bench: greige upholstery like the renders, not white linen.
+        if(kind==='linen')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+          float dressingBench=step(2.12,houseWorld.x)*step(houseWorld.x,3.09)*step(-4.26,houseWorld.z)*step(houseWorld.z,-3.75)*step(houseWorld.y,.46);
+          diffuseColor.rgb*=mix(vec3(1.0),vec3(.78,.72,.67),dressingBench);
         `);
       }
       if(kind==='kitchenStone'){
@@ -70,9 +87,14 @@ function material(color,kind,roughness=.7){
         diffuseColor.rgb=mix(vec3(oakValue),diffuseColor.rgb,.9)*vec3(1.14,1.0,.83)*1.30;
       `);
       if(kind==='wood')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
-        // Natural oak veneer: warm, slightly muted, never orange.
+        // Natural oak veneer of the renders: sandy, muted, never orange.
         float veneerValue=dot(diffuseColor.rgb,vec3(.28,.59,.13));
-        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(veneerValue),.24)*vec3(1.0,.97,.93);
+        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(veneerValue),.34)*vec3(1.0,.975,.95);
+      `);
+      // The master bed bench stands on an upholstered plinth, not a black one.
+      if(kind==='trim')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+        float benchPlinth=step(2.25,houseWorld.x)*step(houseWorld.x,2.69)*step(-8.37,houseWorld.z)*step(houseWorld.z,-7.05)*step(houseWorld.y,.13);
+        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.32,.27,.23),benchPlinth);
       `);
       if(kind==='lacquer'){
         const [sage,cream]=['#bcc2b0','#e6e0d6'].map(c=>new THREE.Color(c));
@@ -97,10 +119,10 @@ function material(color,kind,roughness=.7){
 }
 const mats={wall:material('#e0d3c8','wall',.92),stone:material('#efe4d2','kitchenStone',.5),kitchenStone:material('#f2e7d7','stone',.38),floor:material('#ffffff','floor',.62),
   tile:material('#d4c5ae','stone',.6),
-  wood:material('#d6c5b0','wood',.58),white:material('#ece8e0'),fabric:material('#bcb09d','fabric',.89),linen:material('#ebe5d9','linen',.93),
-  bronze:material('#765439',null,.31),dark:material('#28251f',null,.42),glass:new THREE.MeshPhysicalMaterial({color:'#d5c9b8',transparent:true,opacity:.13,roughness:.085,metalness:.16,depthWrite:false,side:THREE.DoubleSide}),
+  wood:material('#d6c5b0','wood',.58),white:material('#ece8e0'),fabric:material('#aa9f98','fabric',.9),linen:material('#ece8e1','linen',.93),
+  bronze:material('#765439',null,.31),dark:material('#28251f','trim',.42),glass:new THREE.MeshPhysicalMaterial({color:'#d5c9b8',transparent:true,opacity:.13,roughness:.085,metalness:.16,depthWrite:false,side:THREE.DoubleSide}),
   led:new THREE.MeshStandardMaterial({color:'#ffe1a3',emissive:'#ffbe6d',emissiveIntensity:3.8}),
-  sage:material('#797e59','fabric'),lacquer:material('#d8ccba','lacquer',.42),rug:material('#b6a58a','rug',.96),
+  sage:material('#797e59','fabric'),lacquer:material('#d8ccba','lacquer',.42),rug:material('#b8aa95','rug',.96),
   blackstone:material('#39362d','stone',.35),clay:material('#a9613f',null,.65),curtain:material('#e9e0cf','fabric')};
 Object.assign(mats,{
   kitchenOak:material('#c4ae95','wood',.55),
@@ -137,6 +159,10 @@ async function surfaceTextures(){
   const lime=await loader.loadAsync('./assets/textures/limewash.png');
   lime.wrapS=lime.wrapT=THREE.RepeatWrapping;lime.repeat.set(.6,.6);lime.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
   mats.wall.map=lime;mats.wall.needsUpdate=true;
+  // Bouclé, slub linen and knotted rug read as real textiles at walking distance.
+  for(const [key,kind] of [['fabric','fabric'],['kitchenFabric','fabric'],['sage','fabric'],['clay','fabric'],['linen','linen'],['rug','rug']]){
+    const t=textile(kind);mats[key].map=t;mats[key].bumpMap=t;mats[key].bumpScale=textileBump[kind];mats[key].needsUpdate=true;
+  }
 
 }
 
