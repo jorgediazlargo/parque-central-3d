@@ -1,0 +1,80 @@
+{
+  "units": "cm",
+  "island": [
+    304.1,
+    90
+  ],
+  "advance": 60.1,
+  "rearAisle": 95.9,
+  "leftAisleAtCarcass": 91.5,
+  "rightAisleAtNominalFront": 90,
+  "leftAisleAtClosedFront": 89.6,
+  "rightAisleAtClosedFront": 89,
+  "rearWidth": 484.7,
+  "rearDepth": 59.2,
+  "totalDepthAtRecess": 119.2,
+  "dishwasherFront": 59.5,
+  "pendantCenterOffset": [
+    0,
+    0
+  ],
+  "occupiedScenarios": [
+    {
+      "projection": 60,
+      "assumedWidthPerPerson": 60,
+      "conservativeCrossPassage": 83.8,
+      "fixedFurnitureIntrusions": []
+    },
+    {
+      "projection": 75,
+      "assumedWidthPerPerson": 60,
+      "conservativeCrossPassage": 68.8,
+      "fixedFurnitureIntrusions": []
+    }
+  ],
+  "applianceScenarios": {
+    "assumedDoorProjection": 60,
+    "dishwasherOverlapsIslandInPlan": false,
+    "dishwasherRemainingToFormerScreen": 165.1,
+    "ovenRemainingToIsland": 29.6,
+    "refrigeratorRemainingToIsland": 29.6,
+    "note": "Hypothetical 60 cm openings. Sweeps, hinges, people and simultaneous use need the final appliances. No comfort certification.",
+    "islandIntersections": {
+      "dishwasher": false,
+      "oven": false,
+      "refrigerator": false
+    }
+  },
+  "cabinets": [
+    {
+      "name": "Cocina frente oeste cuerpo",
+      "bottom": 7.5,
+      "top": 220
+    },
+    {
+      "name": "Cocina frente este cuerpo",
+      "bottom": 7.5,
+      "top": 220
+    },
+    {
+      "name": "Cocina frente rincon cuerpo",
+      "bottom": 148,
+      "top": 220
+    },
+    {
+      "name": "Alternativa cocina oeste cuerpo",
+      "bottom": 7.5,
+      "top": 220
+    },
+    {
+      "name": "Alternativa cocina este cuerpo",
+      "bottom": 7.5,
+      "top": 220
+    },
+    {
+      "name": "Alternativa cocina rincon cuerpo",
+      "bottom": 148,
+      "top": 220
+    }
+  ]
+}

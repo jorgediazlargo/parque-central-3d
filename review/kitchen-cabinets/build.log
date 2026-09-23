@@ -1,0 +1,39 @@
+
+> build
+> node scripts/check.mjs
+
+ORIGINAL
+Terraza: 1639 reachable positions
+Dormitorio principal: 276 reachable positions
+Estudio: 567 reachable positions
+Vestidor y baño: 1573 reachable positions
+Despensa: 429 reachable positions
+Salón: 1241 reachable positions
+Comedor: 744 reachable positions
+Cocina: 1123 reachable positions
+Juegos e invitados: 689 reachable positions
+Dormitorio niñas: 484 reachable positions
+Baño: 262 reachable positions
+Aseo: 76 reachable positions
+Lavadero: 166 reachable positions
+Distribuidor: 1437 reachable positions
+PASS: collision mechanics, 17 doors, finite geometry, entry, and all room access.
+ALTERNATIVE
+Terraza: 1639 reachable positions
+Dormitorio principal: 276 reachable positions
+Estudio: 567 reachable positions
+Vestidor y baño: 1573 reachable positions
+Despensa: 429 reachable positions
+Salón: 1241 reachable positions
+Comedor: 744 reachable positions
+Cocina: 741 reachable positions
+Juegos e invitados: 689 reachable positions
+Dormitorio niñas: 484 reachable positions
+Baño: 262 reachable positions
+Aseo: 76 reachable positions
+Lavadero: 166 reachable positions
+Distribuidor: 1499 reachable positions
+PASS: collision mechanics, 17 doors, finite geometry, entry, and all room access.
+PASS: lightmap/source SHA-256, atlas UVs, scoped geometry, B01 furniture footprints and JavaScript syntax.
+PASS: independent kitchen atlases, source hashes, complete surfaces, finite UVs, B01 island dimensions.
+PASS: open-kitchen dimensions, restored perimeter, four stools and schematic appliance/occupancy envelopes.

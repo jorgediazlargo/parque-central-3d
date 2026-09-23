@@ -1,0 +1,2800 @@
+{
+  "url": "http://127.0.0.1:4183",
+  "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)",
+  "readyMs": 1366,
+  "measuredAt": "2026-09-08T23:07:04.186Z",
+  "viewport": {
+    "width": 1536,
+    "height": 1024
+  },
+  "views": [
+    {
+      "name": "original-reference",
+      "position": [
+        10.331979166666667,
+        -5.817922916666666
+      ],
+      "target": "Aseo",
+      "fov": 59,
+      "fps": 29.999999999999993,
+      "p95": 33.400000000000546,
+      "frameMs": {
+        "mean": 33.33333333333334,
+        "p50": 33.30000000000018,
+        "p95": 33.400000000000546,
+        "p99": 33.5,
+        "samples": 66
+      },
+      "cpuSubmitMs": {
+        "mean": 5.0313432831595195,
+        "p50": 5.4000000059604645,
+        "p95": 6.399999998509884,
+        "p99": 6.600000001490116,
+        "samples": 67
+      },
+      "gpuMs": {
+        "mean": 20.251871985294116,
+        "p50": 17.758791,
+        "p95": 36.2905,
+        "p99": 42.972458,
+        "samples": 68
+      },
+      "playing": false,
+      "keys": [],
+      "camera": [
+        10.331979166666667,
+        1.45,
+        -5.817922916666666
+      ],
+      "rotation": [
+        -0.10984530391761349,
+        3.141592653589793,
+        0,
+        "YXZ"
+      ],
+      "memory": {
+        "geometries": 326,
+        "textures": 27
+      },
+      "calls": 228,
+      "triangles": 414130,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Cocina",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 4
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        }
+      ],
+      "alternative": false
+    },
+    {
+      "name": "original-living",
+      "position": [
+        7.673798611111111,
+        -7.544770138888889
+      ],
+      "target": "Aseo",
+      "fov": 57,
+      "fps": 30.001791151710542,
+      "p95": 33.400000000000546,
+      "frameMs": {
+        "mean": 33.3313432835821,
+        "p50": 33.30000000000018,
+        "p95": 33.400000000000546,
+        "p99": 33.5,
+        "samples": 67
+      },
+      "cpuSubmitMs": {
+        "mean": 5.848529411370263,
+        "p50": 6.200000002980232,
+        "p95": 7.5,
+        "p99": 8.100000001490116,
+        "samples": 68
+      },
+      "gpuMs": {
+        "mean": 19.544743279411765,
+        "p50": 17.350708,
+        "p95": 31.340749,
+        "p99": 41.473749,
+        "samples": 68
+      },
+      "playing": false,
+      "keys": [],
+      "camera": [
+        7.673798611111111,
+        1.35,
+        -7.544770138888889
+      ],
+      "rotation": [
+        -0.0076839923266297785,
+        -2.3224520276349225,
+        0,
+        "YXZ"
+      ],
+      "memory": {
+        "geometries": 328,
+        "textures": 27
+      },
+      "calls": 352,
+      "triangles": 513998,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Cocina",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 4
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        }
+      ],
+      "alternative": false
+    },
+    {
+      "name": "original-worktop",
+      "position": [
+        10.351381944444444,
+        -1.3552840277777782
+      ],
+      "target": "Aseo",
+      "fov": 67,
+      "fps": 30.000447767877116,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.33283582089554,
+        "p50": 33.30000000000109,
+        "p95": 33.400000000001455,
+        "p99": 33.5,
+        "samples": 67
+      },
+      "cpuSubmitMs": {
+        "mean": 3.92941176431144,
+        "p50": 4.100000001490116,
+        "p95": 4.799999997019768,
+        "p99": 5.799999997019768,
+        "samples": 68
+      },
+      "gpuMs": {
+        "mean": 16.827569352941175,
+        "p50": 15.57925,
+        "p95": 25.322458,
+        "p99": 34.059,
+        "samples": 68
+      },
+      "playing": false,
+      "keys": [],
+      "camera": [
+        10.351381944444444,
+        1.69,
+        -1.3552840277777782
+      ],
+      "rotation": [
+        -0.38422812044662047,
+        2.088445436171671,
+        0,
+        "YXZ"
+      ],
+      "memory": {
+        "geometries": 332,
+        "textures": 27
+      },
+      "calls": 123,
+      "triangles": 378876,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Cocina",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 4
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        }
+      ],
+      "alternative": false
+    },
+    {
+      "name": "original-ovens",
+      "position": [
+        8.411104166666666,
+        -1.8403534722222226
+      ],
+      "target": "Aseo",
+      "fov": 55,
+      "fps": 30.000447767877144,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.33283582089551,
+        "p50": 33.30000000000109,
+        "p95": 33.400000000001455,
+        "p99": 33.5,
+        "samples": 67
+      },
+      "cpuSubmitMs": {
+        "mean": 6.216176470632062,
+        "p50": 6.600000001490116,
+        "p95": 7.800000004470348,
+        "p99": 8,
+        "samples": 68
+      },
+      "gpuMs": {
+        "mean": 17.611614735294122,
+        "p50": 14.931375,
+        "p95": 27.706624,
+        "p99": 48.471708,
+        "samples": 68
+      },
+      "playing": false,
+      "keys": [],
+      "camera": [
+        8.411104166666666,
+        1.5,
+        -1.8403534722222226
+      ],
+      "rotation": [
+        -0.03679321239216936,
+        0.38050637711236523,
+        2.6038474820149346e-18,
+        "YXZ"
+      ],
+      "memory": {
+        "geometries": 340,
+        "textures": 28
+      },
+      "calls": 359,
+      "triangles": 476006,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Cocina",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 4
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        }
+      ],
+      "alternative": false
+    },
+    {
+      "name": "original-open",
+      "position": [
+        10.331979166666667,
+        -5.817922916666666
+      ],
+      "fov": 59,
+      "fps": 30.000447767877144,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.33283582089551,
+        "p50": 33.29999999999927,
+        "p95": 33.400000000001455,
+        "p99": 33.5,
+        "samples": 67
+      },
+      "cpuSubmitMs": {
+        "mean": 4.644117646138458,
+        "p50": 5.200000002980232,
+        "p95": 6.199999995529652,
+        "p99": 6.4000000059604645,
+        "samples": 68
+      },
+      "gpuMs": {
+        "mean": 15.926781941176474,
+        "p50": 13.807583,
+        "p95": 26.541,
+        "p99": 36.289541,
+        "samples": 68
+      },
+      "playing": false,
+      "keys": [],
+      "camera": [
+        10.331979166666667,
+        1.45,
+        -5.817922916666666
+      ],
+      "rotation": [
+        -0.10984530391761349,
+        3.141592653589793,
+        0,
+        "YXZ"
+      ],
+      "memory": {
+        "geometries": 340,
+        "textures": 28
+      },
+      "calls": 152,
+      "triangles": 413218,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Cocina",
+          "t": 1,
+          "active": true,
+          "visibleGroups": 4
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        }
+      ],
+      "alternative": false
+    },
+    {
+      "name": "alternative-reference",
+      "position": [
+        10.331979166666667,
+        -5.817922916666666
+      ],
+      "fov": 59,
+      "fps": 29.999999999999996,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.333333333333336,
+        "p50": 33.30000000000291,
+        "p95": 33.400000000001455,
+        "p99": 33.400000000001455,
+        "samples": 66
+      },
+      "cpuSubmitMs": {
+        "mean": 4.437313433347353,
+        "p50": 4.600000001490116,
+        "p95": 5.5,
+        "p99": 5.899999998509884,
+        "samples": 67
+      },
+      "gpuMs": {
+        "mean": 16.952343897058817,
+        "p50": 14.6945,
+        "p95": 28.075208,
+        "p99": 33.719083,
+        "samples": 68
+      },
+      "playing": false,
+      "keys": [],
+      "camera": [
+        10.331979166666667,
+        1.45,
+        -5.817922916666666
+      ],
+      "rotation": [
+        -0.10984530391761349,
+        3.141592653589793,
+        0,
+        "YXZ"
+      ],
+      "memory": {
+        "geometries": 364,
+        "textures": 29
+      },
+      "calls": 124,
+      "triangles": 414562,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Cocina",
+          "t": 1,
+          "active": false,
+          "visibleGroups": 0
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        }
+      ],
+      "alternative": true
+    },
+    {
+      "name": "alternative-living",
+      "position": [
+        7.673798611111111,
+        -7.544770138888889
+      ],
+      "fov": 57,
+      "fps": 30.00313465585959,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.32985074626863,
+        "p50": 33.30000000000291,
+        "p95": 33.400000000001455,
+        "p99": 33.400000000001455,
+        "samples": 67
+      },
+      "cpuSubmitMs": {
+        "mean": 5.495588235228377,
+        "p50": 5.700000002980232,
+        "p95": 6.699999995529652,
+        "p99": 7.399999998509884,
+        "samples": 68
+      },
+      "gpuMs": {
+        "mean": 16.29260614705882,
+        "p50": 14.118125,
+        "p95": 28.877625,
+        "p99": 40.777208,
+        "samples": 68
+      },
+      "playing": false,
+      "keys": [],
+      "camera": [
+        7.673798611111111,
+        1.35,
+        -7.544770138888889
+      ],
+      "rotation": [
+        -0.0076839923266297785,
+        -2.3224520276349225,
+        0,
+        "YXZ"
+      ],
+      "memory": {
+        "geometries": 364,
+        "textures": 29
+      },
+      "calls": 236,
+      "triangles": 514286,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Cocina",
+          "t": 1,
+          "active": false,
+          "visibleGroups": 0
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        }
+      ],
+      "alternative": true
+    },
+    {
+      "name": "alternative-worktop",
+      "position": [
+        10.351381944444444,
+        -1.9373673611111115
+      ],
+      "fov": 67,
+      "fps": 30.001791151710542,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.3313432835821,
+        "p50": 33.30000000000291,
+        "p95": 33.400000000001455,
+        "p99": 33.400000000001455,
+        "samples": 67
+      },
+      "cpuSubmitMs": {
+        "mean": 5.269117646795862,
+        "p50": 5.399999998509884,
+        "p95": 7.199999995529652,
+        "p99": 8.100000001490116,
+        "samples": 68
+      },
+      "gpuMs": {
+        "mean": 14.147246470588238,
+        "p50": 13.883041,
+        "p95": 14.93075,
+        "p99": 22.049166,
+        "samples": 68
+      },
+      "playing": false,
+      "keys": [],
+      "camera": [
+        10.351381944444444,
+        1.69,
+        -1.9373673611111115
+      ],
+      "rotation": [
+        -0.3842281204466204,
+        2.088445436171671,
+        -5.987689265560496e-17,
+        "YXZ"
+      ],
+      "memory": {
+        "geometries": 364,
+        "textures": 30
+      },
+      "calls": 474,
+      "triangles": 890796,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Cocina",
+          "t": 1,
+          "active": false,
+          "visibleGroups": 0
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        }
+      ],
+      "alternative": true
+    },
+    {
+      "name": "alternative-ovens",
+      "position": [
+        8.411104166666666,
+        -1.8403534722222226
+      ],
+      "fov": 55,
+      "fps": 30.000447767877194,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.332835820895454,
+        "p50": 33.30000000000291,
+        "p95": 33.400000000001455,
+        "p99": 33.5,
+        "samples": 67
+      },
+      "cpuSubmitMs": {
+        "mean": 5.383823529214544,
+        "p50": 5.799999997019768,
+        "p95": 7.200000002980232,
+        "p99": 7.4000000059604645,
+        "samples": 68
+      },
+      "gpuMs": {
+        "mean": 15.411731102941175,
+        "p50": 14.448458,
+        "p95": 23.828625,
+        "p99": 27.984041,
+        "samples": 68
+      },
+      "playing": false,
+      "keys": [],
+      "camera": [
+        8.411104166666666,
+        1.5,
+        -1.8403534722222226
+      ],
+      "rotation": [
+        -0.03679321239216936,
+        0.38050637711236523,
+        2.6038474820149346e-18,
+        "YXZ"
+      ],
+      "memory": {
+        "geometries": 364,
+        "textures": 30
+      },
+      "calls": 329,
+      "triangles": 479534,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Cocina",
+          "t": 1,
+          "active": false,
+          "visibleGroups": 0
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        }
+      ],
+      "alternative": true
+    },
+    {
+      "name": "alternative-recess",
+      "position": [
+        9.381243055555554,
+        -1.9373673611111115
+      ],
+      "fov": 67,
+      "fps": 30.00179115171059,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.331343283582044,
+        "p50": 33.30000000000291,
+        "p95": 33.400000000001455,
+        "p99": 33.400000000001455,
+        "samples": 67
+      },
+      "cpuSubmitMs": {
+        "mean": 3.794117647168391,
+        "p50": 3.899999998509884,
+        "p95": 4.700000002980232,
+        "p99": 5.899999998509884,
+        "samples": 68
+      },
+      "gpuMs": {
+        "mean": 14.744137352941175,
+        "p50": 14.0775,
+        "p95": 19.175124,
+        "p99": 21.703791,
+        "samples": 68
+      },
+      "playing": false,
+      "keys": [],
+      "camera": [
+        9.381243055555554,
+        1.69,
+        -1.9373673611111115
+      ],
+      "rotation": [
+        -0.030640169673826344,
+        2.672625945817472,
+        -8.677690455878636e-19,
+        "YXZ"
+      ],
+      "memory": {
+        "geometries": 364,
+        "textures": 30
+      },
+      "calls": 66,
+      "triangles": 366674,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Cocina",
+          "t": 1,
+          "active": false,
+          "visibleGroups": 0
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        }
+      ],
+      "alternative": true
+    },
+    {
+      "name": "alternative-dining-passage",
+      "position": [
+        10.351381944444444,
+        -4.265700694444445
+      ],
+      "fov": 67,
+      "fps": 29.999999999999996,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.333333333333336,
+        "p50": 33.30000000000291,
+        "p95": 33.400000000001455,
+        "p99": 33.400000000001455,
+        "samples": 66
+      },
+      "cpuSubmitMs": {
+        "mean": 4.346268657428115,
+        "p50": 4.799999997019768,
+        "p95": 6.100000001490116,
+        "p99": 7.299999997019768,
+        "samples": 67
+      },
+      "gpuMs": {
+        "mean": 15.426938507462689,
+        "p50": 14.263249,
+        "p95": 21.482124,
+        "p99": 30.56125,
+        "samples": 67
+      },
+      "playing": false,
+      "keys": [],
+      "camera": [
+        10.351381944444444,
+        1.69,
+        -4.265700694444445
+      ],
+      "rotation": [
+        -0.015563831062342421,
+        -0.8195728870136434,
+        0,
+        "YXZ"
+      ],
+      "memory": {
+        "geometries": 364,
+        "textures": 30
+      },
+      "calls": 173,
+      "triangles": 396182,
+      "blocked": false,
+      "doors": [
+        {
+          "name": "Entrada",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Lavadero",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Aseo",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Distribuidor dormitorios",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Bano secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Dormitorio secundario",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Juegos",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite principal",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "WC suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Ducha suite",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Estudio",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Suite derecha",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 1
+        },
+        {
+          "name": "Cocina",
+          "t": 1,
+          "active": false,
+          "visibleGroups": 0
+        },
+        {
+          "name": "Terraza izquierda",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza salon",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        },
+        {
+          "name": "Terraza comedor",
+          "t": 0,
+          "active": true,
+          "visibleGroups": 2
+        }
+      ],
+      "alternative": true
+    }
+  ],
+  "walk": [
+    {
+      "test": "real mouse look",
+      "passed": true
+    },
+    {
+      "test": "real Enter and Escape controls",
+      "passed": true
+    },
+    {
+      "test": "real E opens kitchen screen",
+      "passed": true
+    },
+    {
+      "test": "original-east",
+      "start": [
+        12.252854166666665,
+        -4.47913125
+      ],
+      "end": [
+        12.252854166666665,
+        -1.3397486554949796
+      ],
+      "fps": 30.000845094228023,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.332394366197164,
+        "p50": 33.30000000000291,
+        "p95": 33.400000000001455,
+        "p99": 33.5,
+        "samples": 71
+      },
+      "cpuSubmitMs": {
+        "mean": 0.8013888888268007,
+        "p50": 0.7999999970197678,
+        "p95": 1.1999999955296516,
+        "p99": 1.6000000014901161,
+        "samples": 72
+      },
+      "gpuMs": {
+        "mean": 15.35253772222222,
+        "p50": 11.61575,
+        "p95": 26.49275,
+        "p99": 31.351625,
+        "samples": 72
+      }
+    },
+    {
+      "test": "original-rear",
+      "start": [
+        12.252854166666665,
+        -1.322010948831651
+      ],
+      "end": [
+        8.365708323226771,
+        -1.3551443661493
+      ],
+      "fps": 30.001363698349955,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.33181818181815,
+        "p50": 33.30000000000291,
+        "p95": 33.400000000001455,
+        "p99": 33.5,
+        "samples": 88
+      },
+      "cpuSubmitMs": {
+        "mean": 1.6752808994791482,
+        "p50": 1.6999999955296516,
+        "p95": 2.100000001490116,
+        "p99": 2.7000000029802322,
+        "samples": 89
+      },
+      "gpuMs": {
+        "mean": 16.433328568181814,
+        "p50": 13.723041,
+        "p95": 28.697666,
+        "p99": 34.926583,
+        "samples": 88
+      }
+    },
+    {
+      "test": "original-west",
+      "start": [
+        8.347787662618511,
+        -1.355299575508362
+      ],
+      "end": [
+        8.412110846641976,
+        -3.531591770885568
+      ],
+      "fps": 30.002449179524778,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.33061224489805,
+        "p50": 33.30000000000291,
+        "p95": 33.400000000001455,
+        "p99": 33.5,
+        "samples": 49
+      },
+      "cpuSubmitMs": {
+        "mean": 1.804000000357628,
+        "p50": 1.8000000044703484,
+        "p95": 2.100000001490116,
+        "p99": 2.5,
+        "samples": 50
+      },
+      "gpuMs": {
+        "mean": 17.61502872,
+        "p50": 14.537291,
+        "p95": 29.268625,
+        "p99": 38.796083,
+        "samples": 50
+      }
+    },
+    {
+      "test": "original-front",
+      "start": [
+        8.412465329163652,
+        -3.5435407653539217
+      ],
+      "end": [
+        12.299229517241775,
+        -3.4891771277291435
+      ],
+      "fps": 30.001363698349955,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.33181818181815,
+        "p50": 33.30000000000291,
+        "p95": 33.400000000001455,
+        "p99": 33.400000000001455,
+        "samples": 88
+      },
+      "cpuSubmitMs": {
+        "mean": 0.9415730337580938,
+        "p50": 0.8999999985098839,
+        "p95": 1.2000000029802322,
+        "p99": 1.6000000014901161,
+        "samples": 89
+      },
+      "gpuMs": {
+        "mean": 16.547712477777775,
+        "p50": 14.548624,
+        "p95": 27.973874,
+        "p99": 29.974,
+        "samples": 90
+      }
+    },
+    {
+      "test": "original-approach-island",
+      "start": [
+        12.317228225281413,
+        -3.488924275318967
+      ],
+      "end": [
+        10.2780317783282,
+        -3.489606188595808
+      ],
+      "fps": 30.000652188090985,
+      "p95": 33.400000000001455,
+      "frameMs": {
+        "mean": 33.33260869565224,
+        "p50": 33.30000000000291,
+        "p95": 33.400000000001455,
+        "p99": 33.400000000001455,
+        "samples": 46
+      },
+      "cpuSubmitMs": {
+        "mean": 3.493617021181482,
+        "p50": 3.5,
+        "p95": 4.100000001490116,
+        "p99": 4.299999997019768,
+        "samples": 47
+      },
+      "gpuMs": {
+        "mean": 17.185398770833334,
+        "p50": 15.219499,
+        "p95": 24.321458,
+        "p99": 33.423249,
+        "samples": 48
+      }
+    },
+    {
+      "test": "original collision",
+      "position": [
+        10.259891477966494,
+        -3.1075412225378627
+      ],
+      "passed": true
+    },
+    {
+      "test": "closing screen waits for visitor, S clears track",
+      "heldAt": 0.5750000000000001,
+      "passed": true
+    },
+    {
+      "test": "alternative screen hidden, inactive and not interactable with E",
+      "passed": true
+    },
+    {
+      "test": "alternative-east",
+      "start": [
+        12.252854166666665,
+        -4.47913125
+      ],
+      "end": [
+        12.252854166666665,
+        -1.9118458356577186
+      ],
+      "fps": 30.002069108214407,
+      "p95": 33.40000000000873,
+      "frameMs": {
+        "mean": 33.33103448275857,
+        "p50": 33.30000000000291,
+        "p95": 33.40000000000873,
+        "p99": 33.40000000000873,
+        "samples": 58
+      },
+      "cpuSubmitMs": {
+        "mean": 0.7355932204400079,
+        "p50": 0.7000000029802322,
+        "p95": 1,
+        "p99": 1.3999999985098839,
+        "samples": 59
+      },
+      "gpuMs": {
+        "mean": 15.611007866666666,
+        "p50": 14.634541,
+        "p95": 29.061625,
+        "p99": 34.724999,
+        "samples": 60
+      }
+    },
+    {
+      "test": "alternative-rear",
+      "start": [
+        12.252854166666665,
+        -1.893984242040528
+      ],
+      "end": [
+        8.359852450539417,
+        -1.937891624788405
+      ],
+      "fps": 30.002386553475784,
+      "p95": 33.40000000000873,
+      "frameMs": {
+        "mean": 33.33068181818189,
+        "p50": 33.30000000000291,
+        "p95": 33.40000000000873,
+        "p99": 33.40000000000873,
+        "samples": 88
+      },
+      "cpuSubmitMs": {
+        "mean": 2.960674157387085,
+        "p50": 2.9000000059604645,
+        "p95": 3.399999998509884,
+        "p99": 3.7000000029802322,
+        "samples": 89
+      },
+      "gpuMs": {
+        "mean": 16.26979721348315,
+        "p50": 13.818624,
+        "p95": 27.009625,
+        "p99": 30.722458,
+        "samples": 89
+      }
+    },
+    {
+      "test": "alternative-west",
+      "start": [
+        8.34783679930369,
+        -1.9380273120216374
+      ],
+      "end": [
+        8.413441886709958,
+        -4.196256008099733
+      ],
+      "fps": 30.001200048001817,
+      "p95": 33.40000000000873,
+      "frameMs": {
+        "mean": 33.332000000000114,
+        "p50": 33.30000000000291,
+        "p95": 33.40000000000873,
+        "p99": 33.40000000000873,
+        "samples": 50
+      },
+      "cpuSubmitMs": {
+        "mean": 1.4843137252564524,
+        "p50": 1.5,
+        "p95": 2,
+        "p99": 2.100000001490116,
+        "samples": 51
+      },
+      "gpuMs": {
+        "mean": 17.12020137254902,
+        "p50": 15.049875,
+        "p95": 29.625416,
+        "p99": 36.488791,
+        "samples": 51
+      }
+    },
+    {
+      "test": "alternative-front",
+      "start": [
+        8.413963500336958,
+        -4.214166981923583
+      ],
+      "end": [
+        12.299838084336276,
+        -4.109448832408454
+      ],
+      "fps": 30.001363698349806,
+      "p95": 33.40000000000873,
+      "frameMs": {
+        "mean": 33.33181818181831,
+        "p50": 33.30000000000291,
+        "p95": 33.40000000000873,
+        "p99": 33.40000000000873,
+        "samples": 88
+      },
+      "cpuSubmitMs": {
+        "mean": 1.0146067416232623,
+        "p50": 1,
+        "p95": 1.5,
+        "p99": 1.8000000044703484,
+        "samples": 89
+      },
+      "gpuMs": {
+        "mean": 15.826744911111112,
+        "p50": 13.117708,
+        "p95": 27.446374,
+        "p99": 33.3905,
+        "samples": 90
+      }
+    },
+    {
+      "test": "alternative-to-dining-hall",
+      "start": [
+        12.31779986224571,
+        -4.10896368444648
+      ],
+      "end": [
+        12.245208842444129,
+        -4.5235934800262605
+      ],
+      "fps": 29.999999999999996,
+      "p95": 33.40000000000873,
+      "frameMs": {
+        "mean": 33.333333333333336,
+        "p50": 33.30000000000291,
+        "p95": 33.40000000000873,
+        "p99": 33.40000000000873,
+        "samples": 15
+      },
+      "cpuSubmitMs": {
+        "mean": 1.3375000013038516,
+        "p50": 1.3000000044703484,
+        "p95": 1.8999999985098839,
+        "p99": 1.8999999985098839,
+        "samples": 16
+      },
+      "gpuMs": {
+        "mean": 14.563484,
+        "p50": 12.352208,
+        "p95": 25.9325,
+        "p99": 25.9325,
+        "samples": 16
+      }
+    },
+    {
+      "test": "alternative-to-dining-entry",
+      "start": [
+        12.243243257378557,
+        -4.5348006585750955
+      ],
+      "end": [
+        12.707448307807592,
+        -5.248839430577288
+      ],
+      "fps": 30.003000300029743,
+      "p95": 33.40000000000873,
+      "frameMs": {
+        "mean": 33.33000000000029,
+        "p50": 33.30000000000291,
+        "p95": 33.40000000000873,
+        "p99": 33.40000000000873,
+        "samples": 20
+      },
+      "cpuSubmitMs": {
+        "mean": 0.8000000005676633,
+        "p50": 0.7999999970197678,
+        "p95": 1.1000000014901161,
+        "p99": 1.1000000014901161,
+        "samples": 21
+      },
+      "gpuMs": {
+        "mean": 15.337428599999999,
+        "p50": 12.065374,
+        "p95": 29.658374,
+        "p99": 29.658374,
+        "samples": 20
+      }
+    },
+    {
+      "test": "alternative-dining-aisle",
+      "start": [
+        12.716983730024873,
+        -5.263502976922879
+      ],
+      "end": [
+        12.699421768620489,
+        -6.467387324633305
+      ],
+      "fps": 30.001071466838006,
+      "p95": 33.40000000000873,
+      "frameMs": {
+        "mean": 33.33214285714296,
+        "p50": 33.30000000000291,
+        "p95": 33.40000000000873,
+        "p99": 33.40000000000873,
+        "samples": 28
+      },
+      "cpuSubmitMs": {
+        "mean": 1.0034482756565357,
+        "p50": 0.9000000059604645,
+        "p95": 1.3999999985098839,
+        "p99": 1.3999999985098839,
+        "samples": 29
+      },
+      "gpuMs": {
+        "mean": 16.108194793103447,
+        "p50": 14.546291,
+        "p95": 24.316249,
+        "p99": 28.198583,
+        "samples": 29
+      }
+    },
+    {
+      "test": "alternative-from-dining-entry",
+      "start": [
+        12.699153235994872,
+        -6.485346224371474
+      ],
+      "end": [
+        12.69911447828133,
+        -5.194115912215416
+      ],
+      "fps": 30.005173305742368,
+      "p95": 33.40000000000873,
+      "frameMs": {
+        "mean": 33.327586206896555,
+        "p50": 33.30000000000291,
+        "p95": 33.40000000000873,
+        "p99": 33.40000000000873,
+        "samples": 29
+      },
+      "cpuSubmitMs": {
+        "mean": 1.0066666670143605,
+        "p50": 1,
+        "p95": 1.3000000044703484,
+        "p99": 1.8000000044703484,
+        "samples": 30
+      },
+      "gpuMs": {
+        "mean": 14.429896866666665,
+        "p50": 11.640874,
+        "p95": 28.32475,
+        "p99": 31.308666,
+        "samples": 30
+      }
+    },
+    {
+      "test": "alternative-from-dining-hall",
+      "start": [
+        12.699113972435855,
+        -5.176152492927742
+      ],
+      "end": [
+        12.239883661540729,
+        -4.458712430408281
+      ],
+      "fps": 30.00157903047515,
+      "p95": 33.40000000000873,
+      "frameMs": {
+        "mean": 33.33157894736858,
+        "p50": 33.30000000000291,
+        "p95": 33.40000000000873,
+        "p99": 33.40000000000873,
+        "samples": 19
+      },
+      "cpuSubmitMs": {
+        "mean": 3.029999999701977,
+        "p50": 3,
+        "p95": 3.600000001490116,
+        "p99": 3.600000001490116,
+        "samples": 20
+      },
+      "gpuMs": {
+        "mean": 16.321864100000003,
+        "p50": 13.893,
+        "p95": 30.3055,
+        "p99": 30.3055,
+        "samples": 20
+      }
+    },
+    {
+      "test": "alternative-return-to-island",
+      "start": [
+        12.230229573991428,
+        -4.443633462903538
+      ],
+      "end": [
+        12.258659021428594,
+        -4.023630362490233
+      ],
+      "fps": 29.999999999999996,
+      "p95": 33.40000000000873,
+      "frameMs": {
+        "mean": 33.333333333333336,
+        "p50": 33.30000000000291,
+        "p95": 33.40000000000873,
+        "p99": 33.40000000000873,
+        "samples": 15
+      },
+      "cpuSubmitMs": {
+        "mean": 0.7937499997206032,
+        "p50": 0.7999999970197678,
+        "p95": 1.0999999940395355,
+        "p99": 1.0999999940395355,
+        "samples": 16
+      },
+      "gpuMs": {
+        "mean": 14.8556115,
+        "p50": 13.113166,
+        "p95": 29.145166,
+        "p99": 29.145166,
+        "samples": 16
+      }
+    },
+    {
+      "test": "alternative-approach-island",
+      "start": [
+        12.259428632843731,
+        -4.012291333180008
+      ],
+      "end": [
+        10.310716915649769,
+        -4.111429523718012
+      ],
+      "fps": 29.99931819731346,
+      "p95": 33.40000000000873,
+      "frameMs": {
+        "mean": 33.334090909091174,
+        "p50": 33.30000000000291,
+        "p95": 33.40000000000873,
+        "p99": 33.40000000000873,
+        "samples": 44
+      },
+      "cpuSubmitMs": {
+        "mean": 2.9644444450736045,
+        "p50": 2.899999998509884,
+        "p95": 3.6999999955296516,
+        "p99": 4,
+        "samples": 45
+      },
+      "gpuMs": {
+        "mean": 17.302313288888893,
+        "p50": 15.009791,
+        "p95": 26.558624,
+        "p99": 32.700999,
+        "samples": 45
+      }
+    },
+    {
+      "test": "alternative collision",
+      "position": [
+        10.29260255736815,
+        -3.6922754605490136
+      ],
+      "passed": true
+    },
+    {
+      "test": "repeat real menu switch Original",
+      "passed": true
+    },
+    {
+      "test": "repeat real menu switch Alternative",
+      "passed": true
+    },
+    {
+      "test": "repeat real menu switch Original",
+      "passed": true
+    },
+    {
+      "test": "repeat real menu switch Alternative",
+      "passed": true
+    },
+    {
+      "test": "pause and reset",
+      "position": [
+        14.32895,
+        -1.21946
+      ]
+    }
+  ],
+  "errors": [],
+  "shaders": {
+    "error": 0,
+    "programs": [
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "ReflectorShader",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "OutputShader",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "ReflectorShader",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      },
+      {
+        "name": "",
+        "linked": true
+      }
+    ]
+  }
+}

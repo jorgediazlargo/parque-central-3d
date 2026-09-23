@@ -1,0 +1,20 @@
+{
+  "unchangedGeometry": "All shared and island triangles byte-identical",
+  "unchangedPhysics": "All shared and island colliders identical",
+  "unchangedSceneData": [
+    "doors",
+    "floors",
+    "spawn",
+    "rooms",
+    "coves",
+    "vanityMirror",
+    "fixedStudy"
+  ],
+  "kitchenLayoutsChanged": [
+    "original",
+    "alternative"
+  ],
+  "salonLightSha256": "2b44fcc7132a87be05a728ff1951109ddbbd4e1c38d05a43744931ea430dcbe5",
+  "islandAndPendantOffsets": "identical",
+  "salonBakedGeometryAndLight": "byte-identical to 758af7a"
+}

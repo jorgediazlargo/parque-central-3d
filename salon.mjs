@@ -14,11 +14,12 @@ export async function loadSalon(renderer,sourceBuffer) {
   function material(base,kind) {
     if(materials.has(kind))return materials.get(kind);
     const m=base.clone();m.defines={...m.defines,...base.defines};m.lightMap=light;m.lightMapIntensity=1;
+    const bakedGain=kind==='floor'?'1.65':'1.0';
     if(kind==='linen')m.color.set('#eee8de');
     if(kind==='fabric')m.color.set('#a99b89');
     if(kind==='rug')m.color.set('#b9ab94');
-    if(kind==='wall'){m.color.set('#e3d8c7');m.normalScale.set(.12,.12);}
-    if(kind==='wood')m.color.set('#dedbd3');
+    if(kind==='wall'){m.color.set('#d8cbbd');m.normalScale.set(.12,.12);}
+    if(kind==='wood')m.color.set('#d4d1ca');
     m.onBeforeCompile=shader=>{
       base.onBeforeCompile(shader);
       shader.fragmentShader=shader.fragmentShader.replace('yarnCloth*.018','yarnCloth*.004');
@@ -31,16 +32,12 @@ export async function loadSalon(renderer,sourceBuffer) {
       shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_end>',`
         vec3 salonIrradiance=texture2D(lightMap,vLightMapUv).rgb;
         float salonBlend=(1.0-smoothstep(9.80,10.18,salonWorldPos.x))*(1.0-smoothstep(-4.20,-3.70,salonWorldPos.z));
-        irradiance=mix(irradiance,salonIrradiance*salonIrradiance*(4.0*PI),salonBlend);
+        irradiance=mix(irradiance,salonIrradiance*salonIrradiance*(4.0*PI)*${bakedGain},salonBlend);
         reflectedLight.directDiffuse*=1.0-salonBlend;
         reflectedLight.directSpecular*=1.0-salonBlend;
         iblIrradiance*=mix(1.0,.12,salonBlend);
         radiance*=mix(1.0,.20,salonBlend);
         #include <lights_fragment_end>
-      `);
-      if(kind==='floor')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`
-        #include <map_fragment>
-        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.38,.255,.145),.20);
       `);
     };
     m.customProgramCacheKey=()=>`salon-baked-${kind}`;

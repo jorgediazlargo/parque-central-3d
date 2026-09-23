@@ -1,0 +1,9 @@
+{
+  "originalGeometryAndBounceContext": "byte-identical (verified by guarded rebind)",
+  "originalColliders": "identical",
+  "doorsFloorsSpawnRoomsCovesMirrors": "identical",
+  "unchangedOriginalAssets": {
+    "kitchen-original.bin": "fcf35932689052f167d0959060899bfa7e5b1065bc64c13687e5964452ea729b",
+    "kitchen-original-light.png": "2f7528bcd2a0807bda3b59a0781f0adf2b3b3a4a647d81047c970799a71f2cd3"
+  }
+}

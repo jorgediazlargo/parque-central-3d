@@ -1,0 +1,42 @@
+{
+  "reference": {
+    "pixelIdentical": false,
+    "meanAbsoluteDifferenceRGB": [
+      0.4239432017008464,
+      0.39524269104003906,
+      0.34348487854003906
+    ]
+  },
+  "living": {
+    "pixelIdentical": false,
+    "meanAbsoluteDifferenceRGB": [
+      0.7704588572184244,
+      0.7516167958577474,
+      0.6935380299886068
+    ]
+  },
+  "worktop": {
+    "pixelIdentical": false,
+    "meanAbsoluteDifferenceRGB": [
+      0.018988291422526043,
+      0.023249308268229168,
+      0.025651931762695312
+    ]
+  },
+  "ovens": {
+    "pixelIdentical": false,
+    "meanAbsoluteDifferenceRGB": [
+      0.0533746083577474,
+      0.052378336588541664,
+      0.05022430419921875
+    ]
+  },
+  "open": {
+    "pixelIdentical": false,
+    "meanAbsoluteDifferenceRGB": [
+      0.3926099141438802,
+      0.4038747151692708,
+      0.3906669616699219
+    ]
+  }
+}
