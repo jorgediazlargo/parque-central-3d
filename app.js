@@ -4,9 +4,10 @@ import {EffectComposer} from './assets/jsm/postprocessing/EffectComposer.js';
 import {RenderPass} from './assets/jsm/postprocessing/RenderPass.js';
 import {SSAOPass} from './assets/jsm/postprocessing/SSAOPass.js';
 import {OutputPass} from './assets/jsm/postprocessing/OutputPass.js';
+import {ShaderPass} from './assets/jsm/postprocessing/ShaderPass.js';
 import {RoomEnvironment} from './assets/jsm/environments/RoomEnvironment.js';
-import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=style-20260923';
-import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs';
+import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=renders-20260923';
+import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=renders-20260923';
 import {kitchenColliders} from './kitchen.mjs';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=kitchen-right-20260906';
 
@@ -28,9 +29,9 @@ function notice(text){$('notice').textContent=text;$('notice').classList.add('vi
 function material(color,kind,roughness=.7){
   const m=kind==='fabric'||kind==='linen'||kind==='rug'?new THREE.MeshPhysicalMaterial({color,roughness,sheen:.38,sheenRoughness:.85,sheenColor:'#e8dfd0',side:THREE.DoubleSide}):new THREE.MeshStandardMaterial({color,roughness,side:THREE.DoubleSide});
   m.onBeforeCompile=shader=>{
-      shader.vertexShader='varying vec3 houseWorld;\n'+shader.vertexShader;
-      shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nhouseWorld=(modelMatrix*vec4(position,1.0)).xyz;');
-      shader.fragmentShader='varying vec3 houseWorld;\nfloat hashHouse(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}\n'+shader.fragmentShader;
+      shader.vertexShader='varying vec3 houseWorld;\nvarying vec3 houseNormal;\n'+shader.vertexShader;
+      shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nhouseWorld=(modelMatrix*vec4(position,1.0)).xyz;houseNormal=normalize(mat3(modelMatrix)*normal);');
+      shader.fragmentShader='varying vec3 houseWorld;\nvarying vec3 houseNormal;\nfloat hashHouse(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}\n'+shader.fragmentShader;
       if(['fabric','linen','rug'].includes(kind)){
         // Derivative-filtered weave remains stable at walking distance.
         const freq=kind==='rug'?240:kind==='linen'?1350:950;
@@ -49,44 +50,60 @@ function material(color,kind,roughness=.7){
         shader.fragmentShader='varying vec3 stoneWorldNormal;\n'+shader.fragmentShader;
         shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#ifdef USE_MAP
           vec3 weight=pow(abs(normalize(stoneWorldNormal)),vec3(4.0));weight/=dot(weight,vec3(1.0));
-          vec3 stoneSurface=texture2D(map,houseWorld.zy*.75).rgb*weight.x
-            +texture2D(map,houseWorld.xz*.75).rgb*weight.y+texture2D(map,houseWorld.xy*.75).rgb*weight.z;
+          vec3 stoneSurface=texture2D(map,houseWorld.zy*1.1).rgb*weight.x
+            +texture2D(map,houseWorld.xz*1.1).rgb*weight.y+texture2D(map,houseWorld.xy*1.1).rgb*weight.z;
           diffuseColor.rgb*=stoneSurface;
         #endif`);
       }
       if(kind==='stone')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#ifdef USE_MAP\nvec2 stoneUv=vec2(.045,.25)+fract(vMapUv)*vec2(.26,.17);diffuseColor*=texture2D(map,stoneUv);\n#endif');
-      if(kind==='wall')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#ifdef USE_MAP\ndiffuseColor.rgb*=mix(vec3(.88),texture2D(map,vMapUv).rgb,.18);\n#endif');
+      if(kind==='wall')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#ifdef USE_MAP
+        // Limewash of the renders: soft clouds and brushed patches, two
+        // unrelated scales to hide tiling. Ceilings keep a calmer finish.
+        float limeCeiling=smoothstep(-.45,-.85,houseNormal.y);
+        float lime=(texture2D(map,vMapUv).r-.5)*.85+(texture2D(map,vMapUv*.37+vec2(.31,.17)).r-.5)*.65;
+        diffuseColor.rgb*=1.0+lime*mix(.95,.42,limeCeiling)*vec3(.92,1.0,1.15);
+        diffuseColor.rgb*=mix(vec3(1.0),vec3(.94,.93,.92),limeCeiling);
+      #endif`);
       if(kind==='floor')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
-        // The reference parquet is pale, neutral oak. Keep the grain and joints
-        // of the existing map while lifting its dark reddish base colour.
-        float oakValue=dot(diffuseColor.rgb,vec3(.28,.59,.13));
-        diffuseColor.rgb=pow(mix(diffuseColor.rgb,vec3(oakValue),.28),vec3(.72))*vec3(1.0,.97,.94);
+        // Long pale planks of natural oak, warm honey as in the renders.
+        float oakValue=dot(diffuseColor.rgb,vec3(.2126,.7152,.0722));
+        diffuseColor.rgb=mix(vec3(oakValue),diffuseColor.rgb,.9)*vec3(1.14,1.0,.83)*1.30;
       `);
       if(kind==='wood')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
+        // Natural oak veneer: warm, slightly muted, never orange.
         float veneerValue=dot(diffuseColor.rgb,vec3(.28,.59,.13));
-        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(veneerValue),.24)*vec3(.94,1.0,1.07);
+        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(veneerValue),.24)*vec3(1.0,.97,.93);
       `);
+      if(kind==='lacquer'){
+        const [sage,cream]=['#bcc2b0','#e6e0d6'].map(c=>new THREE.Color(c));
+        shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+          float girlsRoom=step(15.78,houseWorld.x)*step(houseWorld.z,-4.80);
+          float playRoom=step(13.0,houseWorld.x)*(1.0-step(15.78,houseWorld.x))*step(houseWorld.z,-4.70);
+          diffuseColor.rgb=mix(diffuseColor.rgb,vec3(${[cream.r,cream.g,cream.b].map(v=>v.toFixed(4))}),playRoom);
+          diffuseColor.rgb=mix(diffuseColor.rgb,vec3(${[sage.r,sage.g,sage.b].map(v=>v.toFixed(4))}),girlsRoom);
+        `);
+      }
       if(kind==='wall'){
         let glow='float cove=0.0;';
         for(const r of data?.coves||[]){
           const [x0,z0,x1,z1,h]=r;
-          glow+=`{vec2 q=houseWorld.xz;vec2 lo=vec2(${x0.toFixed(5)},${z0.toFixed(5)}),hi=vec2(${x1.toFixed(5)},${z1.toFixed(5)});vec2 outer=max(max(lo-q,q-hi),vec2(0.0));float edge=min(min(abs(q.x-lo.x),abs(q.x-hi.x)),min(abs(q.y-lo.y),abs(q.y-hi.y)));cove+=exp(-edge*8.0-length(outer)*15.0-abs(houseWorld.y-${(h+.07).toFixed(3)})*7.0)*.34;}`;
+          glow+=`{vec2 q=houseWorld.xz;vec2 lo=vec2(${x0.toFixed(5)},${z0.toFixed(5)}),hi=vec2(${x1.toFixed(5)},${z1.toFixed(5)});vec2 outer=max(max(lo-q,q-hi),vec2(0.0));float edge=min(min(abs(q.x-lo.x),abs(q.x-hi.x)),min(abs(q.y-lo.y),abs(q.y-hi.y)));cove+=exp(-edge*7.0-length(outer)*13.0-abs(houseWorld.y-${(h+.07).toFixed(3)})*6.0)*.42;}`;
         }
-        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',glow+'\noutgoingLight+=vec3(1.0,.68,.40)*cove;\n#include <opaque_fragment>');
+        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',glow+'\noutgoingLight+=vec3(1.0,.62,.32)*cove;\n#include <opaque_fragment>');
       }
     };m.customProgramCacheKey=()=>kind||'plain';
   if(['fabric','linen','rug'].includes(kind))m.defines={USE_UV:''};
   return m;
 }
-const mats={wall:material('#d8c9b8','wall',.9),stone:material('#f2e7d7','stone',.46),kitchenStone:material('#f2e7d7','stone',.38),floor:material('#f2e8da','floor',.67),
+const mats={wall:material('#e0d3c8','wall',.92),stone:material('#efe4d2','kitchenStone',.5),kitchenStone:material('#f2e7d7','stone',.38),floor:material('#ffffff','floor',.62),
   tile:material('#d4c5ae','stone',.6),
-  wood:material('#ddd5c8','wood',.56),white:material('#ece8e0'),fabric:material('#bcb09d','fabric',.89),linen:material('#ebe5d9','linen',.93),
+  wood:material('#d6c5b0','wood',.58),white:material('#ece8e0'),fabric:material('#bcb09d','fabric',.89),linen:material('#ebe5d9','linen',.93),
   bronze:material('#765439',null,.31),dark:material('#28251f',null,.42),glass:new THREE.MeshPhysicalMaterial({color:'#d5c9b8',transparent:true,opacity:.13,roughness:.085,metalness:.16,depthWrite:false,side:THREE.DoubleSide}),
   led:new THREE.MeshStandardMaterial({color:'#ffe1a3',emissive:'#ffbe6d',emissiveIntensity:3.8}),
-  sage:material('#797e59','fabric'),lacquer:material('#bfb7a7',null,.4),rug:material('#b6a58a','rug',.96),
+  sage:material('#797e59','fabric'),lacquer:material('#d8ccba','lacquer',.42),rug:material('#b6a58a','rug',.96),
   blackstone:material('#39362d','stone',.35),clay:material('#a9613f',null,.65),curtain:material('#e9e0cf','fabric')};
 Object.assign(mats,{
-  kitchenOak:material('#a99c84','wood',.55),
+  kitchenOak:material('#c4ae95','wood',.55),
   kitchenFabric:material('#a69a89','fabric',.94),
   kitchenBronze:material('#66513a',null,.38),kitchenDark:material('#262622',null,.42),
   ovenGlass:material('#141916',null,.20),ovenWindow:material('#202820',null,.27),
@@ -94,16 +111,16 @@ Object.assign(mats,{
 });
 mats.kitchenBronze.metalness=.72;mats.sinkSteel.metalness=.72;mats.ovenGlass.metalness=.28;
 // Separate cream stone uses continuous metric UVs and matching surface maps.
-mats.kitchenStone=material('#e9e2d6','kitchenStone',.53);
+mats.kitchenStone=material('#ecdfca','kitchenStone',.55);
 mats.bronze.metalness=.65;
 mats.curtain.transparent=true;mats.curtain.opacity=.62;mats.curtain.depthWrite=false;
 
 async function surfaceTextures(){
   const loader=new THREE.TextureLoader();
-  for(const [asset,targets,scale,strength] of [
-    ['wood_floor',['floor'],.59,.22],
-    ['marble_01',['stone','tile','blackstone'],.55,.12],['white_plaster_02',['wall'],.8,.24]]){
-    const maps=await Promise.all(['diff','nor_gl','rough'].map(c=>loader.loadAsync(`./assets/textures/${asset}_${c}_1k.jpg`)));
+  for(const [asset,targets,scale,strength,colour='1k'] of [
+    ['laminate_floor_02',['floor'],.59,.28,'2k'],
+    ['marble_01',['tile','blackstone'],.55,.12],['white_plaster_02',['wall'],.8,.22]]){
+    const maps=await Promise.all([['diff',colour],['nor_gl','1k'],['rough','1k']].map(([c,r])=>loader.loadAsync(`./assets/textures/${asset}_${c}_${r}.jpg`)));
     maps.forEach((t,i)=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(scale,scale);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());if(i===0)t.colorSpace=THREE.SRGBColorSpace;});
     for(const key of targets){mats[key].map=maps[0];mats[key].normalMap=maps[1];mats[key].roughnessMap=maps[2];mats[key].normalScale.set(strength,strength);mats[key].needsUpdate=true;}
   }
@@ -113,9 +130,13 @@ async function surfaceTextures(){
   veneer.repeat.set(.65,.42);veneer.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
   mats.wood.map=veneer;mats.wood.bumpMap=veneer;mats.wood.bumpScale=.00065;mats.wood.needsUpdate=true;
   mats.kitchenOak.map=veneer;mats.kitchenOak.bumpMap=veneer;mats.kitchenOak.bumpScale=.00035;mats.kitchenOak.needsUpdate=true;
-  const stone=await loader.loadAsync('./assets/textures/kitchen-stone.png');
-  stone.colorSpace=THREE.SRGBColorSpace;stone.wrapS=stone.wrapT=THREE.RepeatWrapping;stone.repeat.set(.75,.75);stone.anisotropy=8;
-  mats.kitchenStone.map=stone;mats.kitchenStone.needsUpdate=true;
+  const stone=await loader.loadAsync('./assets/textures/travertine.png');
+  stone.colorSpace=THREE.SRGBColorSpace;stone.wrapS=stone.wrapT=THREE.RepeatWrapping;stone.anisotropy=8;
+  for(const key of ['kitchenStone','stone']){mats[key].map=stone;mats[key].bumpMap=stone;mats[key].bumpScale=.0012;mats[key].needsUpdate=true;}
+  // Limewash detail replaces the plaster colour map; its normal and roughness stay.
+  const lime=await loader.loadAsync('./assets/textures/limewash.png');
+  lime.wrapS=lime.wrapT=THREE.RepeatWrapping;lime.repeat.set(.6,.6);lime.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+  mats.wall.map=lime;mats.wall.needsUpdate=true;
 
 }
 
@@ -213,14 +234,14 @@ function setKitchenVariant(on,announce=true){
 async function initScene(buffer){
   renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);
-  renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;
+  renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.92;
   renderer.info.autoReset=false;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   scene=new THREE.Scene();scene.background=new THREE.Color('#c4d7de');
   camera=new THREE.PerspectiveCamera(67,innerWidth/innerHeight,.035,180);camera.rotation.order='YXZ';
-  scene.add(new THREE.HemisphereLight('#f1e7d6','#847459',.78));
+  scene.add(new THREE.HemisphereLight('#f6e5cc','#8a7254',.60));
   const environment=new RoomEnvironment(),pmrem=new THREE.PMREMGenerator(renderer);
-  scene.environment=pmrem.fromScene(environment,.035).texture;scene.environmentIntensity=.26;environment.dispose();pmrem.dispose();
-  const sun=new THREE.DirectionalLight('#fff1d9',1.8);sun.position.set(9,17,-25);sun.target.position.set(9,0,-3);
+  scene.environment=pmrem.fromScene(environment,.035).texture;scene.environmentIntensity=.24;environment.dispose();pmrem.dispose();
+  const sun=new THREE.DirectionalLight('#ffe2bd',2.1);sun.position.set(9,17,-25);sun.target.position.set(9,0,-3);
   sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-16,right:16,top:13,bottom:-13,near:1,far:65});sun.shadow.normalBias=.024;sun.shadow.bias=-.0001;scene.add(sun,sun.target);
   salon=await loadSalon(renderer,buffer);
   kitchenLight=await loadKitchen(renderer,buffer,data);
@@ -246,7 +267,7 @@ async function initScene(buffer){
   }
   // Soft electric fill complements daylight under the real ceiling geometry.
   for(const [x,z,power] of [[2,-7,4],[5,-7,4],[9,-6,6],[12,-6,6],[16,-7,4],[17.5,-7,4],[11,-1.6,5],[3,-2,5],[15,-2,4]]){
-    const l=new THREE.PointLight('#ffe0b8',power*.72,6,2);l.position.set(x,2.12,z);scene.add(l);
+    const l=new THREE.PointLight('#ffcf98',power*.95,7,2);l.position.set(x,1.9,z);scene.add(l);
   }
   physics=new WorldPhysics(kitchenColliders(data,false),data.floors);player=[...data.spawn];setupDoors();
   const m=data.vanityMirror;
@@ -260,9 +281,25 @@ async function initScene(buffer){
   const renderTarget=new THREE.WebGLRenderTarget(innerWidth,innerHeight,{type:THREE.HalfFloatType,samples:4});
   composer=new EffectComposer(renderer,renderTarget);composer.addPass(new RenderPass(scene,camera));
   ao=new SSAOPass(scene,camera,innerWidth,innerHeight,16);ao.kernelRadius=.24;ao.minDistance=.0001;ao.maxDistance=.04;
-  maskSalonAO(ao,camera);maskKitchenAO(ao);composer.addPass(ao);composer.addPass(new OutputPass());
+  maskSalonAO(ao,camera);maskKitchenAO(ao);composer.addPass(ao);composer.addPass(new OutputPass());composer.addPass(new ShaderPass(gradeShader));
   ao.setSize(Math.floor(innerWidth*.65),Math.floor(innerHeight*.65));
 }
+// Display-space grade shared with the studio renders: warm balance, lifted
+// shadows, softened contrast and a light vignette.
+const gradeShader={
+  uniforms:{tDiffuse:{value:null}},
+  vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+  fragmentShader:`uniform sampler2D tDiffuse;varying vec2 vUv;
+    void main(){
+      vec4 c=texture2D(tDiffuse,vUv);vec3 col=c.rgb*vec3(1.02,1.0,.955);
+      float l=dot(col,vec3(.2126,.7152,.0722));
+      col=mix(vec3(l),col,.88);
+      col=mix(col,col*col*(3.0-2.0*col),-.10);
+      col=col*.97+vec3(.022,.018,.012);
+      vec2 d=vUv-.5;col*=1.0-dot(d,d)*.42;
+      gl_FragColor=vec4(clamp(col,0.0,1.0),c.a);
+    }`
+};
 async function exterior(){
   const loader=new THREE.TextureLoader();
   const [park,city]=await Promise.all(['vista-parque.png','vista-ciudad.png'].map(n=>loader.loadAsync('./assets/'+n)));

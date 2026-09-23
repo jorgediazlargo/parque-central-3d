@@ -29,9 +29,9 @@ export async function loadKitchen(renderer,sourceBuffer,sourceData){
           roughnessFactor=mix(roughnessFactor,.78,smoothstep(-3.70,-3.0,houseWorld.z));
         `);
         if(kind==='kitchenOak')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
-          diffuseColor.rgb=mix(vec3(dot(diffuseColor.rgb,vec3(.2126,.7152,.0722))),diffuseColor.rgb,.60)*.78;
+          diffuseColor.rgb=mix(vec3(dot(diffuseColor.rgb,vec3(.2126,.7152,.0722))),diffuseColor.rgb,.62)*.96;
         `);
-        shader.fragmentShader=shader.fragmentShader.replace(/float cove=0\.0;[\s\S]*?outgoingLight\+=vec3\(1\.0,\.57,\.24\)\*cove;/,'');
+        shader.fragmentShader=shader.fragmentShader.replace(/float cove=0\.0;[\s\S]*?outgoingLight\+=vec3\([^)]*\)\*cove;/,'');
         shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_maps>',THREE.ShaderChunk.lights_fragment_maps.replace(/#ifdef USE_LIGHTMAP[\s\S]*?#endif/,''));
         shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_end>',`
           vec3 kitchenIrradiance=texture2D(lightMap,vLightMapUv).rgb;

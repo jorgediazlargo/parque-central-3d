@@ -18,8 +18,8 @@ export async function loadSalon(renderer,sourceBuffer) {
     if(kind==='linen')m.color.set('#eee8de');
     if(kind==='fabric')m.color.set('#a99b89');
     if(kind==='rug')m.color.set('#b9ab94');
-    if(kind==='wall'){m.color.set('#d8cbbd');m.normalScale.set(.12,.12);}
-    if(kind==='wood')m.color.set('#d4d1ca');
+    if(kind==='wall')m.normalScale.set(.12,.12);
+    
     m.onBeforeCompile=shader=>{
       base.onBeforeCompile(shader);
       shader.fragmentShader=shader.fragmentShader.replace('yarnCloth*.018','yarnCloth*.004');
@@ -27,7 +27,7 @@ export async function loadSalon(renderer,sourceBuffer) {
       shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nsalonWorldPos=(modelMatrix*vec4(position,1.0)).xyz;');
       shader.fragmentShader='varying vec3 salonWorldPos;\n'+shader.fragmentShader;
       // The cove contribution is now baked from actual ceiling geometry.
-      shader.fragmentShader=shader.fragmentShader.replace(/float cove=0\.0;[\s\S]*?outgoingLight\+=vec3\(1\.0,\.57,\.24\)\*cove;/,'');
+      shader.fragmentShader=shader.fragmentShader.replace(/float cove=0\.0;[\s\S]*?outgoingLight\+=vec3\([^)]*\)\*cove;/,'');
       shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_maps>',THREE.ShaderChunk.lights_fragment_maps.replace(/#ifdef USE_LIGHTMAP[\s\S]*?#endif/,''));
       shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_end>',`
         vec3 salonIrradiance=texture2D(lightMap,vLightMapUv).rgb;
