@@ -1,17 +1,13 @@
 import * as THREE from './assets/three.module.js';
 
-// Each layout owns its UVs and irradiance. Island offsets never reuse another bake.
-export async function loadKitchen(renderer,sourceBuffer,sourceData){
+// The kitchen owns its UVs and irradiance, tied to the current house geometry.
+export async function loadKitchen(renderer,sourceBuffer){
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',sourceBuffer)),v=>v.toString(16).padStart(2,'0')).join('');
-  const variants=await Promise.all(['original','alternative'].map(async variant=>{
+  const variants=await Promise.all(['original'].map(async variant=>{
     const [j,b]=await Promise.all([fetch(`./assets/kitchen-${variant}.json`),fetch(`./assets/kitchen-${variant}.bin`)]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar la luz de la cocina.');
     const data=await j.json(),buffer=await b.arrayBuffer();
     if(data.sourceSha256!==hash||data.variant!==variant)throw Error('La luz de cocina no corresponde a esta distribución.');
-    if(variant==='alternative'){
-      const layout={islandOffset:sourceData.kitchenVariant.islandOffset,pendantOffset:sourceData.kitchenVariant.pendantOffset,pendantRanges:sourceData.meshes.map(s=>s.pendantRanges||[])};
-      if(JSON.stringify(data.layout)!==JSON.stringify(layout))throw Error('La luz de cocina no corresponde a esta distribución.');
-    }
     const light=await new THREE.TextureLoader().loadAsync('./assets/'+data.lightmap);
     light.channel=1;light.colorSpace=THREE.NoColorSpace;light.generateMipmaps=false;light.minFilter=THREE.LinearFilter;
     const geometries=new Map(),materials=new Map(),bases=new Map();
@@ -56,14 +52,12 @@ export async function loadKitchen(renderer,sourceBuffer,sourceData){
     function sync(){for(const [kind,m] of materials){const b=bases.get(kind);for(const k of ['map','normalMap','roughnessMap','bumpMap','bumpScale'])m[k]=b[k];m.needsUpdate=true;}}
     return {geometries,material,sync};
   }));
-  const registered=[];
   return {
     register(mesh,index,base,kind){
       const choices=variants.map(v=>{const g=v.geometries.get(index);return g?{geometry:g,material:v.material(base,kind)}:null});
-      if(!choices.some(Boolean))return;
-      registered.push({mesh,choices});Object.assign(mesh,choices[0]||choices[1]);
+      if(!choices[0])return;
+      Object.assign(mesh,choices[0]);
     },
-    setVariant(on){for(const {mesh,choices} of registered){const choice=choices[on?1:0];if(choice)Object.assign(mesh,choice);}},
     syncTextures(){variants.forEach(v=>v.sync());}
   };
 }
