@@ -54,11 +54,6 @@ function material(color,kind,roughness=.7){
           float yarnCloth=sin(clothUv.x*.081+sin(clothUv.y*.061))*sin(clothUv.y*.077);
           diffuseColor.rgb*=.975+weaveCloth*fadeCloth*.035+yarnCloth*.018;
         `);
-        // Dressing-room bench: greige upholstery like the renders, not white linen.
-        if(kind==='linen')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
-          float dressingBench=step(2.12,houseWorld.x)*step(houseWorld.x,3.09)*step(-4.26,houseWorld.z)*step(houseWorld.z,-3.75)*step(houseWorld.y,.46);
-          diffuseColor.rgb*=mix(vec3(1.0),vec3(.78,.72,.67),dressingBench);
-        `);
       }
       if(kind==='kitchenStone'){
         shader.vertexShader='varying vec3 stoneWorldNormal;\n'+shader.vertexShader;
