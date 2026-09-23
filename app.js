@@ -168,15 +168,32 @@ function box(group,w,h,d,x,y,z,mat){
   }
   const o=new THREE.Mesh(geo,mat);o.position.set(x,y,z);o.castShadow=mat!==mats.glass;o.receiveShadow=true;group.add(o);return o;
 }
+// Studio screen after render 4: warm bronze-oak profiles, paired stiles at every joint,
+// rails at hand and transom height and arched side lites with an inner concentric arc.
+const STUDY={frame:.035,stile:.026,depth:.045,rails:[.88,2.08],height:2.40};
+const studyFrame=material('#7a5a3f',null,.46);studyFrame.metalness=.38;
+function studyPanel(group,width,height){
+  const {stile,depth,rails}=STUDY;
+  box(group,width-.02,height-.02,.010,width/2,height/2,0,mats.glass);
+  for(const x of [stile/2,width-stile/2])box(group,stile,height,depth,x,height/2,0,studyFrame);
+  for(const y of [.015,...rails,height-.015])box(group,width,.032,depth,width/2,y,0,studyFrame);
+  // Slim lever on a round rose towards the bedroom, as on the render; flush pull
+  // on the studio face so the leaf can pass in front of the fixed panel.
+  const rose=new THREE.Mesh(new THREE.CylinderGeometry(.021,.021,.010,24),studyFrame);
+  rose.rotation.x=Math.PI/2;rose.position.set(stile/2,1.02,depth/2+.005);group.add(rose);
+  box(group,.012,.012,.045,stile/2,1.02,depth/2+.028,studyFrame);
+  box(group,.115,.012,.012,stile/2+.05,1.02,depth/2+.047,studyFrame);
+  box(group,.012,.12,.002,stile/2,1.02,-depth/2-.0005,mats.dark);
+}
 function leaf(width,height,glass,door){
   const group=new THREE.Group();
-  if(glass){
+  if(glass&&door?.name==='Estudio')studyPanel(group,width,height);
+  else if(glass){
     box(group,width-.035,height-.035,.014,width/2,height/2,0,mats.glass);
     for(const x of [.012,width-.012])box(group,.024,height,.035,x,height/2,0,mats.bronze);
     const terrace=door?.name?.startsWith('Terraza');
     for(const y of terrace?[.012,height-.012]:door?.name==='Cocina'?[.012,height-.012,.78,.97]:[.012,height-.012,.73,height-.40])box(group,width,.020,.034,width/2,y,0,mats.bronze);
     if(door?.name==='Cocina')box(group,.016,height,.024,width*.72,height/2,0,mats.kitchenBronze);
-    if(door?.name==='Estudio')box(group,.022,height,.032,width/2,height/2,0,mats.bronze);
     if(door){
       for(const side of [-1,1]){
         box(group,.014,.29,.018,Math.max(.06,width-.075),1.02,side*.06,mats.bronze);
@@ -212,21 +229,44 @@ function setupDoors(){
     for(let i=0;i<n;i++){const g=leaf(w,d.height,d.glass,d);d.groups.push(g);scene.add(g);}
     placeDoor(d,0);return d;
   });
-  const [a,b]=data.fixedStudy,g=leaf(Math.hypot(b[0]-a[0],b[1]-a[1]),2.2,true,null);
+  const [a,b]=data.fixedStudy,g=new THREE.Group(),length=Math.hypot(b[0]-a[0],b[1]-a[1]);
   g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);scene.add(g);
-  const fixedWidth=Math.hypot(b[0]-a[0],b[1]-a[1]);
-  for(const x of [fixedWidth/2])box(g,.022,2.18,.028,x,1.09,0,mats.bronze);
-  const study=doors.find(d=>d.name==='Estudio'),length=Math.hypot(study.b[0]-a[0],study.b[1]-a[1]);
-  // Continuous arch with rounded upper corners matching the architect's bronze screen.
-  const path=new THREE.CurvePath(),v=(x,y)=>new THREE.Vector3(x,y,0),h=2.40,r=.34;
-  path.add(new THREE.LineCurve3(v(0,0),v(0,h-r)));
-  path.add(new THREE.QuadraticBezierCurve3(v(0,h-r),v(0,h),v(r,h)));
-  path.add(new THREE.LineCurve3(v(r,h),v(length-r,h)));
-  path.add(new THREE.QuadraticBezierCurve3(v(length-r,h),v(length,h),v(length,h-r)));
-  path.add(new THREE.LineCurve3(v(length,h-r),v(length,0)));
-  const arch=new THREE.Mesh(new THREE.TubeGeometry(path,100,.014,8,false),mats.bronze);g.add(arch);
-  for(let x=.36;x<length-.2;x+=.58)box(g,.021,.20,.027,x,2.30,0,mats.bronze);
-  box(g,length-.68,.18,.012,length/2,2.29,0,mats.glass);
+  const study=doors.find(d=>d.name==='Estudio'),along=p=>((p[0]-a[0])*(b[0]-a[0])+(p[1]-a[1])*(b[1]-a[1]))/length;
+  const {frame:f,stile,depth,rails,height:h}=STUDY,side=.31,doorFrom=along(study.a),doorTo=along(study.b),r=side;
+  const extrude=(shape,z=0,mat=studyFrame,d=depth)=>{
+    const geo=new THREE.ExtrudeGeometry(shape,{depth:d,bevelEnabled:false,curveSegments:24});geo.translate(0,0,z-d/2);
+    const o=new THREE.Mesh(geo,mat);o.castShadow=mat!==mats.glass;o.receiveShadow=true;g.add(o);return o;
+  };
+  const arched=(inset,x0=inset,x1=length-inset)=>{
+    const s=new THREE.Shape(),rr=r-inset;
+    s.moveTo(x0,inset);s.lineTo(x1,inset);
+    if(x1>length-r)s.lineTo(x1,h-r),s.absarc(length-r,h-r,rr,0,Math.PI/2,false);else s.lineTo(x1,h-inset);
+    if(x0<r)s.lineTo(r,h-inset),s.absarc(r,h-r,rr,Math.PI/2,Math.PI,false);else s.lineTo(x0,h-inset);
+    s.lineTo(x0,inset);return s;
+  };
+  // Outer frame with rounded upper corners, sill included.
+  const outer=arched(0);outer.holes.push(arched(f));extrude(outer);
+  // Fixed glazing on both sides of the sliding panel.
+  for(const [x0,x1] of [[f,doorFrom],[doorTo,length-f]])extrude(arched(f,x0,x1),0,mats.glass,.010);
+  // Paired stiles at each joint: side lites, three fixed panels and the door opening.
+  const panel=(doorTo-doorFrom);
+  for(const x of [side,side+panel,side+2*panel,doorFrom,doorTo]){
+    for(const dx of [-stile/2,stile/2]){
+      if((x===doorFrom&&dx>0)||(x===doorTo&&dx<0))continue;
+      box(g,stile,h-2*f,depth,x+dx,h/2,0,studyFrame);
+    }
+  }
+  for(const y of rails)for(const [x0,x1] of [[f,doorFrom],[doorTo,length-f]])box(g,x1-x0,.032,depth,(x0+x1)/2,y,0,studyFrame);
+  // Inner concentric arcs of the side lites.
+  const inset=.075,ri=r-inset;
+  for(const [cx,x,a0,a1] of [[side,inset,Math.PI/2,Math.PI],[length-side,length-inset,0,Math.PI/2]]){
+    const arc=new THREE.Shape();
+    arc.absarc(cx,h-r,ri+stile/2,a0,a1,false);arc.absarc(cx,h-r,ri-stile/2,a1,a0,true);extrude(arc);
+    box(g,stile,h-r-f,depth,x,(h-r+f)/2,0,studyFrame);
+  }
+  // Top track for the sliding panel, on the bedroom side.
+  const track=Math.abs((study.a[0]-a[0])*(b[1]-a[1])-(study.a[1]-a[1])*(b[0]-a[0]))/length;
+  box(g,2*panel,.025,.03,doorFrom,h-.02,track,studyFrame);
   g.traverse(o=>{if(o.isMesh)staticMeshes.push(o);});
 }
 function activeDoorPolys(){return doors.filter(d=>d.active!==false).flatMap(d=>d.polys);}
@@ -416,7 +456,7 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=kitchen-20260906'),fetch('./assets/house.bin?v=kitchen-20260906')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=study-20260923'),fetch('./assets/house.bin?v=study-20260923')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
     salon.syncTextures();kitchenLight.syncTextures();
