@@ -6,7 +6,7 @@ import {SSAOPass} from './assets/jsm/postprocessing/SSAOPass.js';
 import {OutputPass} from './assets/jsm/postprocessing/OutputPass.js';
 import {ShaderPass} from './assets/jsm/postprocessing/ShaderPass.js';
 import {RoomEnvironment} from './assets/jsm/environments/RoomEnvironment.js';
-import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=77bd3288b2';
+import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=2ba2cdb63d';
 import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=849b95075b';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileBump} from './textiles.mjs?v=30c4725840';
@@ -198,9 +198,8 @@ function leaf(width,height,glass,door){
       }
     }
   }else{
-    const finish=door?.name==='Entrada'?mats.wood:mats.wall;
-    // Flush plaster leaf with fine shadow gaps, matching the concealed doors.
-    box(group,width-.008,height-.012,.046,width/2,height/2,0,finish);
+    // Floor-to-ceiling oak leaf with fine shadow gaps.
+    box(group,width-.008,height-.012,.046,width/2,height/2,0,mats.wood);
     for(const x of [.003,width-.003])box(group,.003,height,.048,x,height/2,0,mats.dark);
     for(const z of [-.048,.048]) {
       box(group,.11,.018,.025,width-.10,1.03,z,mats.bronze);
@@ -452,7 +451,7 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=44c8bef378'),fetch('./assets/house.bin?v=3e82a44e4b')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=421341b39d'),fetch('./assets/house.bin?v=3525a7cab2')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
     salon.syncTextures();kitchenLight.syncTextures();
