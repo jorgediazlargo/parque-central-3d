@@ -4,11 +4,11 @@ import * as THREE from './assets/three.module.js';
 export async function loadKitchen(renderer,sourceBuffer){
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',sourceBuffer)),v=>v.toString(16).padStart(2,'0')).join('');
   const variants=await Promise.all(['original'].map(async variant=>{
-    const [j,b]=await Promise.all([fetch(`./assets/kitchen-${variant}.json`),fetch(`./assets/kitchen-${variant}.bin`)]);
+    const [j,b]=await Promise.all([fetch(`./assets/kitchen-${variant}.json`,{cache:'no-cache'}),fetch(`./assets/kitchen-${variant}.bin`,{cache:'no-cache'})]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar la luz de la cocina.');
     const data=await j.json(),buffer=await b.arrayBuffer();
     if(data.sourceSha256!==hash||data.variant!==variant)throw Error('La luz de cocina no corresponde a esta distribución.');
-    const light=await new THREE.TextureLoader().loadAsync('./assets/'+data.lightmap);
+    const light=await new THREE.TextureLoader().loadAsync('./assets/'+data.lightmap+'?v='+data.contextSha256.slice(0,10));
     light.channel=1;light.colorSpace=THREE.NoColorSpace;light.generateMipmaps=false;light.minFilter=THREE.LinearFilter;
     const geometries=new Map(),materials=new Map(),bases=new Map();
     for(const s of data.meshes){

@@ -1,15 +1,15 @@
 import * as THREE from './assets/three.module.js';
-import {textile,textileBump} from './textiles.mjs?v=furniture-20260923';
+import {textile,textileBump} from './textiles.mjs?v=30c4725840';
 
 // Generated irradiance affects only the geometry clipped to the salon boundary.
 // Dynamic doors continue to use the existing scene lighting and moving colliders.
 export async function loadSalon(renderer,sourceBuffer) {
-  const [j,b]=await Promise.all([fetch('./assets/salon.json?v=kitchen-20260906'),fetch('./assets/salon.bin?v=kitchen-20260906')]);
+  const [j,b]=await Promise.all([fetch('./assets/salon.json?v=27b7dae418'),fetch('./assets/salon.bin?v=fb3e3a8f33')]);
   if(!j.ok||!b.ok)throw Error('No se ha podido descargar la iluminación del salón.');
   const data=await j.json(),buffer=await b.arrayBuffer();
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',sourceBuffer)),v=>v.toString(16).padStart(2,'0')).join('');
   if(hash!==data.sourceSha256)throw Error('La geometría y la iluminación del salón no corresponden a la misma versión.');
-  const light=await new THREE.TextureLoader().loadAsync('./assets/'+data.lightmap+'?v=kitchen-20260906');
+  const light=await new THREE.TextureLoader().loadAsync('./assets/'+data.lightmap+'?v='+data.contextSha256.slice(0,10));
   light.channel=1;light.generateMipmaps=false;light.minFilter=THREE.LinearFilter;light.colorSpace=THREE.NoColorSpace;light.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
   const materials=new Map(),bases=new Map();
   function material(base,kind) {

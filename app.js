@@ -6,12 +6,12 @@ import {SSAOPass} from './assets/jsm/postprocessing/SSAOPass.js';
 import {OutputPass} from './assets/jsm/postprocessing/OutputPass.js';
 import {ShaderPass} from './assets/jsm/postprocessing/ShaderPass.js';
 import {RoomEnvironment} from './assets/jsm/environments/RoomEnvironment.js';
-import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=furniture-20260923';
-import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=furniture-20260923';
-import {kitchenColliders} from './kitchen.mjs';
-import {textile,textileBump} from './textiles.mjs?v=furniture-20260923';
-import {masterBedding,hideExportedBedding} from './bedding.mjs?v=bed-20260923';
-import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=study-doors-20260923';
+import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=7d4fa368e6';
+import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=849b95075b';
+import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
+import {textile,textileBump} from './textiles.mjs?v=30c4725840';
+import {masterBedding,hideExportedBedding} from './bedding.mjs?v=37c7853956';
+import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=4bc564f463';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,ao,data,physics,player,doors=[],staticMeshes=[],target=null;
@@ -142,16 +142,16 @@ async function surfaceTextures(){
     for(const key of targets){mats[key].map=maps[0];mats[key].normalMap=maps[1];mats[key].roughnessMap=maps[2];mats[key].normalScale.set(strength,strength);mats[key].needsUpdate=true;}
   }
   // Dedicated veneer: no flooring seams on cabinetry, doors, tables or slats.
-  const veneer=await loader.loadAsync('./assets/textures/oak_veneer.webp');
+  const veneer=await loader.loadAsync('./assets/textures/oak_veneer.webp?v=89e20ec041');
   veneer.colorSpace=THREE.SRGBColorSpace;veneer.wrapS=veneer.wrapT=THREE.RepeatWrapping;
   veneer.repeat.set(.65,.42);veneer.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
   mats.wood.map=veneer;mats.wood.bumpMap=veneer;mats.wood.bumpScale=.00065;mats.wood.needsUpdate=true;
   mats.kitchenOak.map=veneer;mats.kitchenOak.bumpMap=veneer;mats.kitchenOak.bumpScale=.00035;mats.kitchenOak.needsUpdate=true;
-  const stone=await loader.loadAsync('./assets/textures/travertine.webp');
+  const stone=await loader.loadAsync('./assets/textures/travertine.webp?v=12fc5de07e');
   stone.colorSpace=THREE.SRGBColorSpace;stone.wrapS=stone.wrapT=THREE.RepeatWrapping;stone.anisotropy=8;
   for(const key of ['kitchenStone','stone']){mats[key].map=stone;mats[key].bumpMap=stone;mats[key].bumpScale=.0012;mats[key].needsUpdate=true;}
   // Limewash detail replaces the plaster colour map; its normal and roughness stay.
-  const lime=await loader.loadAsync('./assets/textures/limewash.webp');
+  const lime=await loader.loadAsync('./assets/textures/limewash.webp?v=76a3d72611');
   lime.wrapS=lime.wrapT=THREE.RepeatWrapping;lime.repeat.set(.6,.6);lime.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
   mats.wall.map=lime;mats.wall.needsUpdate=true;
   // Bouclé, slub linen and knotted rug read as real textiles at walking distance.
@@ -457,7 +457,7 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=study-doors-20260923'),fetch('./assets/house.bin?v=study-20260923')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=76ac902565'),fetch('./assets/house.bin?v=2fec7aaa01')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
     salon.syncTextures();kitchenLight.syncTextures();
