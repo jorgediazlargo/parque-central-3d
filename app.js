@@ -20,11 +20,19 @@ let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,rayTime=0,roomTime=0;
 const mobile=matchMedia('(pointer:coarse)').matches,eye=1.69;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches};
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,floor:'mixed'};
 try{Object.assign(settings,JSON.parse(localStorage.getItem('parque-preferences')||'{}'));}catch{}
 for(const key of ['sound','bob']) {
   $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
 }
+// Pavement alternative: H01 porcelain + oak, or oak throughout. Only a shader
+// uniform changes, so the model, textures and baked light are shared.
+const floorPorcelain={value:1};
+const floorParam=new URLSearchParams(location.search).get('suelo');
+if(floorParam)settings.floor=floorParam==='madera'?'oak':'mixed';
+function setFloor(value){value=value==='oak'?'oak':'mixed';settings.floor=value;floorPorcelain.value=value==='oak'?0:1;$('floor').value=value;}
+setFloor(settings.floor);
+$('floor').onchange=()=>{setFloor($('floor').value);try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
 const porcelainMap={value:null};
@@ -80,13 +88,13 @@ function material(color,kind,roughness=.7){
       if(kind==='floor'){
         // H01 pavements: oak planks (no herringbone) in bedrooms, the play room, their
         // hall and the closet beside the kitchen; 90 cm porcelain at 45° elsewhere.
-        shader.uniforms.porcelainMap=porcelainMap;
-        shader.fragmentShader='uniform sampler2D porcelainMap;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+shader.fragmentShader;
+        shader.uniforms.porcelainMap=porcelainMap;shader.uniforms.floorPorcelain=floorPorcelain;
+        shader.fragmentShader='uniform sampler2D porcelainMap;\nuniform float floorPorcelain;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+shader.fragmentShader;
         shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
           vec2 floorAt=houseWorld.xz;
-          float porcelainMask=1.0-clamp(floorRect(floorAt,vec4(-2.0,-12.0,5.113,-5.896))+floorRect(floorAt,vec4(13.019,-12.0,20.0,-4.799))
+          float porcelainMask=floorPorcelain*(1.0-clamp(floorRect(floorAt,vec4(-2.0,-12.0,5.113,-5.896))+floorRect(floorAt,vec4(13.019,-12.0,20.0,-4.799))
             +floorRect(floorAt,vec4(15.008,-5.0,16.774,-3.664))+floorRect(floorAt,vec4(5.084,-3.674,7.295,1.0))
-            +floorRect(floorAt,vec4(4.783,-2.791,5.113,1.0)),0.0,1.0);
+            +floorRect(floorAt,vec4(4.783,-2.791,5.113,1.0)),0.0,1.0));
           // Long pale planks of natural oak, warm honey as in the renders.
           float oakValue=dot(diffuseColor.rgb,vec3(.2126,.7152,.0722));
           vec3 oakFloor=mix(vec3(oakValue),diffuseColor.rgb,.9)*vec3(1.14,1.0,.83)*1.30;
@@ -152,7 +160,7 @@ mats.kitchenBronze.metalness=.72;mats.sinkSteel.metalness=.72;mats.ovenGlass.met
 // Separate cream stone uses continuous metric UVs and matching surface maps.
 mats.kitchenStone=material('#ecdfca','kitchenStone',.55);
 mats.bronze.metalness=.65;
-// Wet-zone slabs share the porcelain of the H01 pavement plan.
+// Wet-zone slabs share the floor: porcelain of the H01 plan, or oak in the alternative.
 mats.tile=mats.floor;
 mats.curtain.transparent=true;mats.curtain.opacity=.62;mats.curtain.depthWrite=false;
 
