@@ -27,6 +27,7 @@ for(const key of ['sound','bob']) {
 }
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
+const porcelainMap={value:null};
 function material(color,kind,roughness=.7){
   const m=kind==='fabric'||kind==='linen'||kind==='rug'?new THREE.MeshPhysicalMaterial({color,roughness,sheen:.38,sheenRoughness:.85,sheenColor:'#e8dfd0',side:THREE.DoubleSide}):new THREE.MeshStandardMaterial({color,roughness,side:THREE.DoubleSide});
   m.onBeforeCompile=shader=>{
@@ -76,11 +77,38 @@ function material(color,kind,roughness=.7){
         diffuseColor.rgb*=1.0+lime*mix(.95,.42,limeCeiling)*vec3(.92,1.0,1.15);
         diffuseColor.rgb*=mix(vec3(1.0),vec3(.94,.93,.92),limeCeiling);
       #endif`);
-      if(kind==='floor')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
-        // Long pale planks of natural oak, warm honey as in the renders.
-        float oakValue=dot(diffuseColor.rgb,vec3(.2126,.7152,.0722));
-        diffuseColor.rgb=mix(vec3(oakValue),diffuseColor.rgb,.9)*vec3(1.14,1.0,.83)*1.30;
-      `);
+      if(kind==='floor'){
+        // H01 pavements: oak planks (no herringbone) in bedrooms, the play room, their
+        // hall and the closet beside the kitchen; 90 cm porcelain at 45° elsewhere.
+        shader.uniforms.porcelainMap=porcelainMap;
+        shader.fragmentShader='uniform sampler2D porcelainMap;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+shader.fragmentShader;
+        shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
+          vec2 floorAt=houseWorld.xz;
+          float porcelainMask=1.0-clamp(floorRect(floorAt,vec4(-2.0,-12.0,5.113,-5.896))+floorRect(floorAt,vec4(13.019,-12.0,20.0,-4.799))
+            +floorRect(floorAt,vec4(15.008,-5.0,16.774,-3.664))+floorRect(floorAt,vec4(5.084,-3.674,7.295,1.0))
+            +floorRect(floorAt,vec4(4.783,-2.791,5.113,1.0)),0.0,1.0);
+          // Long pale planks of natural oak, warm honey as in the renders.
+          float oakValue=dot(diffuseColor.rgb,vec3(.2126,.7152,.0722));
+          vec3 oakFloor=mix(vec3(oakValue),diffuseColor.rgb,.9)*vec3(1.14,1.0,.83)*1.30;
+          // Porcelain module 0.90 m on the diagonal, band crossing on the H01 set-out point
+          // at the entrance. Each piece is mirrored or turned at random to break repeats.
+          vec2 porcelainAt=floorAt-vec2(14.086,-.218);
+          vec2 porcelainUv=vec2(porcelainAt.x+porcelainAt.y,porcelainAt.x-porcelainAt.y)*(.70710678/.90)+.098;
+          vec2 porcelainCell=floor(porcelainUv),porcelainF=fract(porcelainUv);
+          float porcelainA=hashHouse(porcelainCell),porcelainB=hashHouse(porcelainCell+17.3);
+          const float porcelainBand=.196;
+          if(porcelainF.x>porcelainBand&&porcelainF.y>porcelainBand){
+            if(porcelainA>.5)porcelainF.x=1.0+porcelainBand-porcelainF.x;
+            if(fract(porcelainA*7.0)>.5)porcelainF.y=1.0+porcelainBand-porcelainF.y;
+            if(porcelainB>.5)porcelainF=porcelainF.yx;
+          }else if(porcelainF.x>porcelainBand&&porcelainB>.5)porcelainF.x=1.0+porcelainBand-porcelainF.x;
+          else if(porcelainF.y>porcelainBand&&porcelainB>.5)porcelainF.y=1.0+porcelainBand-porcelainF.y;
+          vec3 porcelainFloor=textureGrad(porcelainMap,porcelainF,dFdx(porcelainUv),dFdy(porcelainUv)).rgb*.96;
+          diffuseColor.rgb=mix(oakFloor,porcelainFloor,porcelainMask);
+        `);
+        shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.36,porcelainMask);')
+          .replace('#include <normal_fragment_maps>',THREE.ShaderChunk.normal_fragment_maps.replace('mapN.xy *= normalScale;','mapN.xy *= normalScale*(1.0-porcelainMask);'));
+      }
       if(kind==='wood')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
         // Natural oak veneer of the renders: sandy, muted, never orange.
         float veneerValue=dot(diffuseColor.rgb,vec3(.28,.59,.13));
@@ -108,7 +136,6 @@ function material(color,kind,roughness=.7){
   return m;
 }
 const mats={wall:material('#e0d3c8','wall',.92),stone:material('#efe4d2','kitchenStone',.5),kitchenStone:material('#f2e7d7','stone',.38),floor:material('#ffffff','floor',.62),
-  tile:material('#d4c5ae','stone',.6),
   wood:material('#d6c5b0','wood',.58),white:material('#ece8e0'),fabric:material('#aa9f98','fabric',.9),linen:material('#ece8e1','linen',.93),
   bronze:material('#765439',null,.31),dark:material('#28251f','trim',.42),glass:new THREE.MeshPhysicalMaterial({color:'#d5c9b8',transparent:true,opacity:.13,roughness:.085,metalness:.16,depthWrite:false,side:THREE.DoubleSide}),
   led:new THREE.MeshStandardMaterial({color:'#ffe1a3',emissive:'#ffbe6d',emissiveIntensity:3.8}),
@@ -125,17 +152,22 @@ mats.kitchenBronze.metalness=.72;mats.sinkSteel.metalness=.72;mats.ovenGlass.met
 // Separate cream stone uses continuous metric UVs and matching surface maps.
 mats.kitchenStone=material('#ecdfca','kitchenStone',.55);
 mats.bronze.metalness=.65;
+// Wet-zone slabs share the porcelain of the H01 pavement plan.
+mats.tile=mats.floor;
 mats.curtain.transparent=true;mats.curtain.opacity=.62;mats.curtain.depthWrite=false;
 
 async function surfaceTextures(){
   const loader=new THREE.TextureLoader();
   for(const [asset,targets,scale,strength,colour='1k'] of [
     ['laminate_floor_02',['floor'],.59,.28,'2k'],
-    ['marble_01',['tile','blackstone'],.55,.12],['white_plaster_02',['wall'],.8,.22]]){
+    ['marble_01',['blackstone'],.55,.12],['white_plaster_02',['wall'],.8,.22]]){
     const maps=await Promise.all([['diff',colour],['nor_gl','1k'],['rough','1k']].map(([c,r])=>loader.loadAsync(`./assets/textures/${asset}_${c}_${r}.${r==='2k'?'webp':'jpg'}`)));
     maps.forEach((t,i)=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(scale,scale);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());if(i===0)t.colorSpace=THREE.SRGBColorSpace;});
     for(const key of targets){mats[key].map=maps[0];mats[key].normalMap=maps[1];mats[key].roughnessMap=maps[2];mats[key].normalScale.set(strength,strength);mats[key].needsUpdate=true;}
   }
+  const porcelain=await loader.loadAsync('./assets/textures/porcelain.webp?v=46956a859b');
+  porcelain.colorSpace=THREE.SRGBColorSpace;porcelain.flipY=false;porcelain.wrapS=porcelain.wrapT=THREE.RepeatWrapping;
+  porcelain.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());porcelainMap.value=porcelain;
   // Dedicated veneer: no flooring seams on cabinetry, doors, tables or slats.
   const veneer=await loader.loadAsync('./assets/textures/oak_veneer.webp?v=89e20ec041');
   veneer.colorSpace=THREE.SRGBColorSpace;veneer.wrapS=veneer.wrapT=THREE.RepeatWrapping;
