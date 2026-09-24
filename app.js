@@ -2,20 +2,19 @@ import * as THREE from './assets/three.module.js';
 import {Reflector} from './assets/Reflector.js';
 import {EffectComposer} from './assets/jsm/postprocessing/EffectComposer.js';
 import {RenderPass} from './assets/jsm/postprocessing/RenderPass.js';
-import {SSAOPass} from './assets/jsm/postprocessing/SSAOPass.js';
 import {OutputPass} from './assets/jsm/postprocessing/OutputPass.js';
 import {ShaderPass} from './assets/jsm/postprocessing/ShaderPass.js';
 import {RoomEnvironment} from './assets/jsm/environments/RoomEnvironment.js';
-import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=df570798fb';
-import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=849b95075b';
+import {artwork,curtainMaterial} from './salon.mjs?v=be468231dc';
+import {loadLightmap} from './lightmap.mjs?v=a60dcd1261';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileBump} from './textiles.mjs?v=30c4725840';
 import {masterBedding,hideExportedBedding} from './bedding.mjs?v=37c7853956';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=d2ab8cd826';
 
 const $=id=>document.getElementById(id),canvas=$('world');
-let scene,camera,renderer,composer,ao,data,physics,player,doors=[],staticMeshes=[],target=null;
-let salon,kitchenLight;
+let scene,camera,renderer,composer,data,physics,player,doors=[],staticMeshes=[],target=null;
+let lightmap;
 let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last=0,walkPhase=0,bobAmount=0,stepDistance=0;
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,rayTime=0,roomTime=0;
 const mobile=matchMedia('(pointer:coarse)').matches,eye=1.69;
@@ -161,7 +160,7 @@ const mats={wall:material('#e0d3c8','wall',.92),stone:material('#efe4d2','kitche
   blackstone:material('#39362d','stone',.35),clay:material('#a9613f',null,.65),curtain:material('#e9e0cf','fabric')};
 Object.assign(mats,{
   kitchenOak:material('#c4ae95','wood',.55),
-  kitchenFabric:material('#a69a89','fabric',.94),shirt:material('#b4c4d6','linen',.9),
+  kitchenFabric:material('#a69a89','fabric',.94),shirt:material('#8ea7c6','linen',.9),
   kitchenBronze:material('#66513a',null,.38),kitchenDark:material('#262622',null,.42),
   ovenGlass:material('#141916',null,.20),ovenWindow:material('#202820',null,.27),
   ovenDisplay:material('#556158',null,.38),sinkSteel:material('#969c95',null,.36),hobMark:material('#575a52',null,.4)
@@ -323,8 +322,8 @@ async function initScene(buffer){
   scene.environment=pmrem.fromScene(environment,.035).texture;scene.environmentIntensity=.24;environment.dispose();pmrem.dispose();
   const sun=new THREE.DirectionalLight('#ffe2bd',2.1);sun.position.set(9,17,-25);sun.target.position.set(9,0,-3);
   sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-16,right:16,top:13,bottom:-13,near:1,far:65});sun.shadow.normalBias=.024;sun.shadow.bias=-.0001;scene.add(sun,sun.target);
-  salon=await loadSalon(renderer,buffer);
-  kitchenLight=await loadKitchen(renderer,buffer);
+  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer)),v=>v.toString(16).padStart(2,'0')).join('');
+  lightmap=await loadLightmap(renderer,hash);
   mats.art=artwork();const sheer=curtainMaterial(mats.curtain);
   for(const [sourceIndex,spec] of data.meshes.entries()){
     if(spec.layer==='alternative')continue;
@@ -332,15 +331,12 @@ async function initScene(buffer){
     geo.setAttribute('position',new THREE.InterleavedBufferAttribute(inter,3,0));geo.setAttribute('normal',new THREE.InterleavedBufferAttribute(inter,3,3));
     if(stride>=8)geo.setAttribute('uv',new THREE.InterleavedBufferAttribute(inter,2,6));
     geo.computeBoundingSphere();
-    const baked=salon.geometry(sourceIndex);
     let finish=mats[spec.material]||mats.wall;
-    if(baked){geo.dispose();finish=salon.material(finish,spec.material);}
-    else if(spec.region==='shared'&&['linen','fabric'].includes(spec.material))hideExportedBedding(geo);
+    if(lightmap.bind(geo,sourceIndex))finish=lightmap.material(finish,spec.material,spec.region);
+    if(spec.region==='shared'&&['linen','fabric'].includes(spec.material))hideExportedBedding(geo);
     else if(spec.region==='salon'&&spec.material==='curtain')finish=sheer;
-    const finalGeo=baked||geo;
-    if(spec.material==='art'){const uv=finalGeo.getAttribute('uv'),pos=finalGeo.getAttribute('position');for(let i=0;i<uv.count;i++)uv.setXY(i,(pos.getZ(i)+7.543)/(36.8/51.53901216893343),(pos.getY(i)-.74)/1.21);}
-    const mesh=new THREE.Mesh(finalGeo,finish);
-    kitchenLight.register(mesh,sourceIndex,finish,spec.material);
+    if(spec.material==='art'){const uv=geo.getAttribute('uv'),pos=geo.getAttribute('position');for(let i=0;i<uv.count;i++)uv.setXY(i,(pos.getZ(i)+7.543)/(36.8/51.53901216893343),(pos.getY(i)-.74)/1.21);}
+    const mesh=new THREE.Mesh(geo,finish);
     mesh.receiveShadow=true;mesh.castShadow=!['glass','led','curtain'].includes(spec.material);scene.add(mesh);staticMeshes.push(mesh);
   }
   // The master bed dressing replaces the exported duvet, pillows and blanket.
@@ -360,9 +356,8 @@ async function initScene(buffer){
   camera.position.set(player[0],eye,player[1]);
   const renderTarget=new THREE.WebGLRenderTarget(innerWidth,innerHeight,{type:THREE.HalfFloatType,samples:4});
   composer=new EffectComposer(renderer,renderTarget);composer.addPass(new RenderPass(scene,camera));
-  ao=new SSAOPass(scene,camera,innerWidth,innerHeight,16);ao.kernelRadius=.24;ao.minDistance=.0001;ao.maxDistance=.04;
-  maskSalonAO(ao,camera);maskKitchenAO(ao);composer.addPass(ao);composer.addPass(new OutputPass());composer.addPass(new ShaderPass(gradeShader));
-  ao.setSize(Math.floor(innerWidth*.65),Math.floor(innerHeight*.65));
+  // Baked light carries the contact shadows: no screen-space AO pass.
+  composer.addPass(new OutputPass());composer.addPass(new ShaderPass(gradeShader));
 }
 // Display-space grade shared with the studio renders: warm balance, lifted
 // shadows, softened contrast and a light vignette.
@@ -495,14 +490,14 @@ $('joystick').onpointerdown=e=>{joyId=e.pointerId;$('joystick').setPointerCaptur
 $('joystick').onpointermove=e=>{if(e.pointerId===joyId)joystick(e);};
 function stopJoy(){joyId=null;touchVector=[0,0];$('joystick').firstElementChild.style.transform='';}
 $('joystick').onpointerup=stopJoy;$('joystick').onpointercancel=stopJoy;
-addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer?.setSize(innerWidth,innerHeight);ao?.setSize(Math.floor(innerWidth*.65),Math.floor(innerHeight*.65));});
+addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer?.setSize(innerWidth,innerHeight);});
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
     const [j,b]=await Promise.all([fetch('./assets/house.json?v=9f51b80915'),fetch('./assets/house.bin?v=b112ed861d')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
-    salon.syncTextures();kitchenLight.syncTextures();
+    lightmap.syncTextures();
     renderer.compile(scene,camera);renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     ready=true;
     const params=new URLSearchParams(location.search);
