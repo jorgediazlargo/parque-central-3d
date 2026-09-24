@@ -11,7 +11,7 @@ import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=849b95075b';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileBump} from './textiles.mjs?v=30c4725840';
 import {masterBedding,hideExportedBedding} from './bedding.mjs?v=37c7853956';
-import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=b3a56f60ed';
+import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=d2ab8cd826';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,ao,data,physics,player,doors=[],staticMeshes=[],target=null;
@@ -173,13 +173,11 @@ function studyPanel(group,width,height){
   box(group,width-.02,height-.02,.010,width/2,height/2,0,mats.glass);
   for(const x of [stile/2,width-stile/2])box(group,stile,height,depth,x,height/2,0,studyFrame);
   for(const y of [.015,...rails,height-.015])box(group,width,.032,depth,width/2,y,0,studyFrame);
-  // Slim lever on a round rose at the meeting stile, on both faces, as on the render.
-  const x=width-stile/2;
+  // Sliding leaf: slim vertical pull near the meeting stile, on both faces.
+  const x=width-stile-.035;
   for(const side of [-1,1]){
-    const rose=new THREE.Mesh(new THREE.CylinderGeometry(.021,.021,.010,24),studyFrame);
-    rose.rotation.x=Math.PI/2;rose.position.set(x,1.02,side*(depth/2+.005));group.add(rose);
-    box(group,.012,.012,.045,x,1.02,side*(depth/2+.028),studyFrame);
-    box(group,.115,.012,.012,x-.05,1.02,side*(depth/2+.047),studyFrame);
+    box(group,.014,.32,.014,x,1.02,side*(depth/2+.030),studyFrame);
+    for(const y of [.88,1.16])box(group,.012,.012,.030,x,y,side*(depth/2+.015),studyFrame);
   }
 }
 function leaf(width,height,glass,door){
@@ -451,7 +449,7 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=421341b39d'),fetch('./assets/house.bin?v=3525a7cab2')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=f98e99040d'),fetch('./assets/house.bin?v=3525a7cab2')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
     salon.syncTextures();kitchenLight.syncTextures();
