@@ -6,7 +6,7 @@ import {SSAOPass} from './assets/jsm/postprocessing/SSAOPass.js';
 import {OutputPass} from './assets/jsm/postprocessing/OutputPass.js';
 import {ShaderPass} from './assets/jsm/postprocessing/ShaderPass.js';
 import {RoomEnvironment} from './assets/jsm/environments/RoomEnvironment.js';
-import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=7d4fa368e6';
+import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=77bd3288b2';
 import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=849b95075b';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileBump} from './textiles.mjs?v=30c4725840';
@@ -85,11 +85,6 @@ function material(color,kind,roughness=.7){
         // Natural oak veneer of the renders: sandy, muted, never orange.
         float veneerValue=dot(diffuseColor.rgb,vec3(.28,.59,.13));
         diffuseColor.rgb=mix(diffuseColor.rgb,vec3(veneerValue),.34)*vec3(1.0,.975,.95);
-      `);
-      // The master bed bench stands on an upholstered plinth, not a black one.
-      if(kind==='trim')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
-        float benchPlinth=step(2.25,houseWorld.x)*step(houseWorld.x,2.69)*step(-8.37,houseWorld.z)*step(houseWorld.z,-7.05)*step(houseWorld.y,.13);
-        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.32,.27,.23),benchPlinth);
       `);
       if(kind==='lacquer'){
         const [sage,cream]=['#bcc2b0','#e6e0d6'].map(c=>new THREE.Color(c));
@@ -457,7 +452,7 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=76ac902565'),fetch('./assets/house.bin?v=2fec7aaa01')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=7c4b6e762a'),fetch('./assets/house.bin?v=3e82a44e4b')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
     salon.syncTextures();kitchenLight.syncTextures();
