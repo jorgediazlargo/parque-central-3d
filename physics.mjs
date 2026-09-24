@@ -28,13 +28,15 @@ export function doorSegments(d,t) {
     const c=Math.cos(d.delta*t),s=Math.sin(d.delta*t);
     return [[d.a,[d.a[0]+dx*c+dz*s,d.a[1]+dz*c-dx*s]]];
   }
-  if(d.type==='doubleHinge') {
-    // French pair meeting at the centre: each leaf turns about its own jamb,
-    // the second one mirrored so both swing to the same side.
-    const hx=dx/2,hz=dz/2;
+  if(d.type==='doublePivot') {
+    // Hingeless pair meeting at the centre: each leaf turns about a floor pivot
+    // set d.pivot metres in from its jamb, the second one mirrored so both swing
+    // to the same side. The short tail behind the pivot swings the other way.
+    const hx=dx/2,hz=dz/2,f=d.pivot/Math.hypot(hx,hz);
     return [[d.a,1],[d.b,-1]].map(([p,k])=>{
       const c=Math.cos(d.delta*t),s=Math.sin(d.delta*t),x=hx*k,z=hz*k;
-      return [p,[p[0]+x*c+z*s*k,p[1]+z*c-x*s*k]];
+      const rx=x*c+z*s*k,rz=z*c-x*s*k,q=[p[0]+x*f,p[1]+z*f];
+      return [[q[0]-rx*f,q[1]-rz*f],[q[0]+rx*(1-f),q[1]+rz*(1-f)]];
     });
   }
   if(d.type==='slide')return [[[d.a[0]+d.slide[0]*t,d.a[1]+d.slide[1]*t],[d.b[0]+d.slide[0]*t,d.b[1]+d.slide[1]*t]]];
