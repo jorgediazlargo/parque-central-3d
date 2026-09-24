@@ -114,8 +114,18 @@ function material(color,kind,roughness=.7){
           vec3 porcelainFloor=textureGrad(porcelainMap,porcelainF,dFdx(porcelainUv),dFdy(porcelainUv)).rgb*.96;
           diffuseColor.rgb=mix(oakFloor,porcelainFloor,porcelainMask);
         `);
-        shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.36,porcelainMask);')
-          .replace('#include <normal_fragment_maps>',THREE.ShaderChunk.normal_fragment_maps.replace('mapN.xy *= normalScale;','mapN.xy *= normalScale*(1.0-porcelainMask);'));
+        // Honed porcelain, as in the reference: matte, no highlights. Its own pores
+        // and joints (darker is lower) give the relief the plank normals would fake.
+        shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.82,porcelainMask);')
+          .replace('#include <normal_fragment_maps>',THREE.ShaderChunk.normal_fragment_maps.replace('mapN.xy *= normalScale;','mapN.xy *= normalScale*(1.0-porcelainMask);')+`
+          if(porcelainMask>0.0){
+            float porcelainH=dot(porcelainFloor,vec3(.3333))*.0009;
+            vec3 porcelainDx=dFdx(-vViewPosition),porcelainDy=dFdy(-vViewPosition);
+            vec3 porcelainR1=cross(porcelainDy,normal),porcelainR2=cross(normal,porcelainDx);
+            float porcelainDet=dot(porcelainDx,porcelainR1)*faceDirection;
+            vec3 porcelainGrad=sign(porcelainDet)*(dFdx(porcelainH)*porcelainR1+dFdy(porcelainH)*porcelainR2);
+            normal=normalize(mix(normal,normalize(abs(porcelainDet)*normal-porcelainGrad),porcelainMask));
+          }`);
       }
       if(kind==='wood')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
         // Natural oak veneer of the renders: sandy, muted, never orange.
