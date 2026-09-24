@@ -6,7 +6,7 @@ import {SSAOPass} from './assets/jsm/postprocessing/SSAOPass.js';
 import {OutputPass} from './assets/jsm/postprocessing/OutputPass.js';
 import {ShaderPass} from './assets/jsm/postprocessing/ShaderPass.js';
 import {RoomEnvironment} from './assets/jsm/environments/RoomEnvironment.js';
-import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=2ba2cdb63d';
+import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=698705d8d8';
 import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=849b95075b';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileBump} from './textiles.mjs?v=30c4725840';
@@ -489,7 +489,7 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=f98e99040d'),fetch('./assets/house.bin?v=3525a7cab2')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=3901976ed1'),fetch('./assets/house.bin?v=40601d1c9a')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
     salon.syncTextures();kitchenLight.syncTextures();
