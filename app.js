@@ -6,7 +6,7 @@ import {SSAOPass} from './assets/jsm/postprocessing/SSAOPass.js';
 import {OutputPass} from './assets/jsm/postprocessing/OutputPass.js';
 import {ShaderPass} from './assets/jsm/postprocessing/ShaderPass.js';
 import {RoomEnvironment} from './assets/jsm/environments/RoomEnvironment.js';
-import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=698705d8d8';
+import {loadSalon,artwork,curtainMaterial,maskSalonAO} from './salon.mjs?v=df570798fb';
 import {loadKitchen,maskKitchenAO} from './kitchen-light.mjs?v=849b95075b';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileBump} from './textiles.mjs?v=30c4725840';
@@ -151,7 +151,7 @@ const mats={wall:material('#e0d3c8','wall',.92),stone:material('#efe4d2','kitche
   blackstone:material('#39362d','stone',.35),clay:material('#a9613f',null,.65),curtain:material('#e9e0cf','fabric')};
 Object.assign(mats,{
   kitchenOak:material('#c4ae95','wood',.55),
-  kitchenFabric:material('#a69a89','fabric',.94),
+  kitchenFabric:material('#a69a89','fabric',.94),shirt:material('#b4c4d6','linen',.9),
   kitchenBronze:material('#66513a',null,.38),kitchenDark:material('#262622',null,.42),
   ovenGlass:material('#141916',null,.20),ovenWindow:material('#202820',null,.27),
   ovenDisplay:material('#556158',null,.38),sinkSteel:material('#969c95',null,.36),hobMark:material('#575a52',null,.4)
@@ -190,7 +190,7 @@ async function surfaceTextures(){
   lime.wrapS=lime.wrapT=THREE.RepeatWrapping;lime.repeat.set(.6,.6);lime.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
   mats.wall.map=lime;mats.wall.needsUpdate=true;
   // Bouclé, slub linen and knotted rug read as real textiles at walking distance.
-  for(const [key,kind] of [['fabric','fabric'],['kitchenFabric','fabric'],['sage','fabric'],['clay','fabric'],['linen','linen'],['rug','rug']]){
+  for(const [key,kind] of [['fabric','fabric'],['kitchenFabric','fabric'],['sage','fabric'],['clay','fabric'],['linen','linen'],['shirt','linen'],['rug','rug']]){
     const t=textile(kind);mats[key].map=t;mats[key].bumpMap=t;mats[key].bumpScale=textileBump[kind];mats[key].needsUpdate=true;
   }
 
@@ -489,7 +489,7 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=3901976ed1'),fetch('./assets/house.bin?v=40601d1c9a')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=9f51b80915'),fetch('./assets/house.bin?v=b112ed861d')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
     salon.syncTextures();kitchenLight.syncTextures();

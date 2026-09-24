@@ -4,7 +4,7 @@ import {textile,textileBump} from './textiles.mjs?v=30c4725840';
 // Generated irradiance affects only the geometry clipped to the salon boundary.
 // Dynamic doors continue to use the existing scene lighting and moving colliders.
 export async function loadSalon(renderer,sourceBuffer) {
-  const [j,b]=await Promise.all([fetch('./assets/salon.json?v=9a670f9d40'),fetch('./assets/salon.bin?v=df0253ab77')]);
+  const [j,b]=await Promise.all([fetch('./assets/salon.json?v=53bf4ed1f3'),fetch('./assets/salon.bin?v=df0253ab77')]);
   if(!j.ok||!b.ok)throw Error('No se ha podido descargar la iluminación del salón.');
   const data=await j.json(),buffer=await b.arrayBuffer();
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',sourceBuffer)),v=>v.toString(16).padStart(2,'0')).join('');
