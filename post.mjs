@@ -31,7 +31,9 @@ export class Post{
     this.quadScene=new THREE.Scene();this.quadScene.add(this.quad);this.quadCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
     const mat=(fragmentShader,uniforms,extra={})=>new THREE.ShaderMaterial({uniforms,vertexShader:quadVertex,fragmentShader,depthTest:false,depthWrite:false,toneMapped:false,...extra});
     const viewPos=`uniform sampler2D depthTex;uniform mat4 projInv;
-      vec3 viewPos(vec2 uv){float d=texture2D(depthTex,uv).r;vec4 v=projInv*vec4(uv*2.0-1.0,d*2.0-1.0,1.0);return v.xyz/v.w;}`;
+      // Reconstruct at the centre of the depth texel actually read (nearest): otherwise
+      // grazing planes self-occlude by slope × sub-texel offset and show vertical stripes.
+      vec3 viewPos(vec2 uv){vec2 ds=vec2(textureSize(depthTex,0));uv=(floor(uv*ds)+.5)/ds;float d=texture2D(depthTex,uv).r;vec4 v=projInv*vec4(uv*2.0-1.0,d*2.0-1.0,1.0);return v.xyz/v.w;}`;
     // SAO: 16 samples on a rotated spiral within aoRadius metres; normal from depth.
     // Output r = visibility (1 = open), g = view depth (for the bilateral blur).
     this.aoMat=mat(`${viewPos}uniform vec2 texel,projScale;uniform float radius,bias,intensity;varying vec2 vUv;

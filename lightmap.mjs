@@ -8,7 +8,10 @@ import {loadProbes,patchLighting} from './lighting.mjs?v=1aa5e4f212';
 // HDR: RGBM of sqrt(linear / range) in lossless WebP. The same bake gives the
 // irradiance probes (lighting.mjs) used by doors, bedding and room props.
 // `lighting.uniforms` (probes + reflections) must be filled before the first render.
-export async function loadLightmap(renderer,sourceHash,lighting){
+// upCoves: raised ceilings lit from their riser ([x0,z0,x1,z1,h], house.json coves 0 and 1).
+// Their cove is baked about five times brighter than in renders 1 and 2: the share above
+// the room's ambient is scaled down so the wash grades instead of clipping to white.
+export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[]}={}){
   const [j,b]=await Promise.all([fetch('./assets/house-light.json?v=c61f8ed22f',{cache:'no-cache'}),fetch('./assets/house-light.bin?v=62edd41190',{cache:'no-cache'})]);
   if(!j.ok||!b.ok)throw Error('No se ha podido descargar la iluminación.');
   const data=await j.json(),buffer=await b.arrayBuffer();
@@ -55,6 +58,7 @@ export async function loadLightmap(renderer,sourceHash,lighting){
         vec4 rgbm=bakedUv.x<1.0?texture2D(lightMap,bakedUv):texture2D(planarLight,bakedUv-vec2(1.0,0.0));
         vec3 bakedSqrt=rgbm.rgb*rgbm.a;
         vec3 bakedE=bakedSqrt*bakedSqrt*${(RANGE*Math.PI).toFixed(4)};
+        ${kind==='wall'?upCoves.map(([x0,z0,x1,z1,h])=>`if(houseWorld.y>${(h+.01).toFixed(3)}&&all(greaterThan(houseWorld.xz,vec2(${(x0-.06).toFixed(3)},${(z0-.06).toFixed(3)})))&&all(lessThan(houseWorld.xz,vec2(${(x1+.06).toFixed(3)},${(z1+.06).toFixed(3)})))){float coveL=dot(bakedE,vec3(.2126,.7152,.0722));bakedE*=coveL>2.0?(2.0+.3*(coveL-2.0))/coveL:1.0;}`).join('\n'):''}
         // Texels the bake never wrote (outside every island: a few faces of mixed
         // orientation or slivers past the margin) read exactly black; they take the
         // probes instead of showing as black notches.

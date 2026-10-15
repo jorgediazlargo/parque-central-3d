@@ -1,9 +1,9 @@
 import * as THREE from './assets/three.module.js';
 import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=1aa5e4f212';
-import {Post} from './post.mjs?v=867b6592e7';
+import {Post} from './post.mjs?v=657f448527';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap} from './lightmap.mjs?v=9920b47f62';
+import {loadLightmap} from './lightmap.mjs?v=4f44c706f2';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=b27dcfc10d';
 import {masterBedding,hideExportedBedding} from './bedding.mjs?v=37c7853956';
@@ -379,7 +379,7 @@ async function initScene(buffer){
   const sun=new THREE.DirectionalLight('#ffe2bd',2.1);sun.position.set(9,17,-25);sun.target.position.set(9,0,-3);
   sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-16,right:16,top:13,bottom:-13,near:1,far:65});sun.shadow.normalBias=.024;sun.shadow.bias=-.0001;scene.add(sun,sun.target);
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer)),v=>v.toString(16).padStart(2,'0')).join('');
-  lightmap=await loadLightmap(renderer,hash,lighting);
+  lightmap=await loadLightmap(renderer,hash,lighting,{upCoves:(data.coves||[]).slice(0,2)});
   reflections=new ReflectionProbes(probeRooms(data));
   lighting.uniforms={...lightmap.probes.uniforms,...reflections.uniforms,...pocketUniforms(data)};
   mats.art=artwork();const sheer=curtainMaterial(mats.curtain);sheer.userData.translucency=.75;

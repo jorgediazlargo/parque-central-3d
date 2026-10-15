@@ -4,9 +4,13 @@
 //
 // Ronda 5: the exported L sofa and the two armchairs read as soft foam blobs. They are
 // rebuilt here as tailored upholstery on the same B01 footprints: modular frames, loose
-// box cushions (seat and back) with crowned tops, bellied sides and piped seams, knife-
+// box cushions (seat and back) with crowned tops, bellied sides and sewn seams, knife-
 // edge throw pillows, contact darkening baked into vertex colours and a crisp contact
 // shadow on the floor. The exported plinth and the armchair legs stay (baked light).
+// Ronda 6: about a quarter of the triangles (no piping tubes; each slab is one welded
+// mesh with smooth normals and a sewn groove), rounder and plumper cushions, creases
+// shaded into the vertex colours, stronger contact shadows (the armchairs' one was
+// under the rug) and a denser sheer.
 
 // Seeded value noise, smooth enough for fabric pulls.
 function noise2(seed){
@@ -19,7 +23,7 @@ function noise2(seed){
 }
 
 // Rounded rectangle outline in plan (x, z), corners of radius rc.
-function rrect(x0,z0,x1,z1,rc=.045,step=.07,seg=5){
+function rrect(x0,z0,x1,z1,rc=.045,step=.11,seg=4){
   const pts=[],cs=[[x1-rc,z1-rc,0],[x0+rc,z1-rc,Math.PI/2],[x0+rc,z0+rc,Math.PI],[x1-rc,z0+rc,Math.PI*1.5]];
   for(let c=0;c<4;c++){
     const [cx,cz,a0]=cs[c];
@@ -54,12 +58,15 @@ class Builder{
   }
 }
 
-// Upholstered slab on a plan outline: rounded edges of radius r, crowned top (convex
-// outlines), sides bellied between the seams and pinched at the corners, small pulls
-// where the top panel is sewn to the piping. Contacts darken the cloth near touching
-// surfaces ({axis, at, k, fall}), standing in for the occlusion the probes cannot resolve.
-// Returns the geometry and the two piping loops (top and bottom seams).
-function slab(T,{outline,corners=[],y0,y1,r=.03,crown=0,bulge=0,lean=null,wrinkle=.0025,seed=1,contacts=[],bottom=true,flatCap=false}){
+// Upholstered slab on a plan outline, as ONE connected mesh with welded smooth normals
+// (ronda 6: moderate tessellation, the softness comes from the normals, not polygons).
+// Rounded edges of radius r, crowned top, sides bellied between the seams and pinched
+// at the corners, a sewn groove at the top seam (and optionally the bottom one) with
+// small pulls along it, and creases where the top panel is drawn into the seam.
+// Vertex colours carry the contact occlusion the probes cannot resolve ({axis, at, k,
+// fall}), a low-side darkening (shade: [k, height]) and the dips of seams and creases.
+function slab(T,{outline,corners=[],y0,y1,r=.03,crown=0,bulge=0,lean=null,wrinkle=.0025,seed=1,contacts=[],
+  bottom=false,flatCap=false,seam=true,bottomSeam=false,sag=0,shade=null}){
   let pts=outline.map(p=>[...p]);
   let area=0;for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];area+=a[0]*b[1]-b[0]*a[1];}
   if(area<0)pts.reverse();
@@ -76,111 +83,130 @@ function slab(T,{outline,corners=[],y0,y1,r=.03,crown=0,bulge=0,lean=null,wrinkl
   const C=pts.reduce((s,p)=>[s[0]+p[0]/n,s[1]+p[1]/n],[0,0]);
   const nz=noise2(seed),ym=(y0+y1)/2,hs=Math.max(1e-3,(y1-y0)/2-r);
   const shear=y=>lean?[(y-y0)*lean[0],(y-y0)*lean[1]]:[0,0];
-  // Point of outline vertex i at profile angle phi (0 top, pi bottom).
-  const ring=(i,phi)=>{
+  // Pull pattern along the perimeter (0..1): broad puckers, ~18 cm apart.
+  const pull=i=>.5+.5*Math.sin(L[i]*34+nz(L[i]*3,seed*.7)*7);
+  const pos=[],uv=[],dip=[],weld=[],idx=[];
+  const vert=(p,u,d=0,wid=-1)=>{pos.push(...p);uv.push(...u);dip.push(d);weld.push(wid<0?pos.length/3-1:wid);return pos.length/3-1;};
+  // Point of outline vertex i at profile angle phi (0 top, pi/2..pi/2+1 side, pi/2+1+pi/2 bottom).
+  const ring=(i,phi,inset=0)=>{
     const [px,pz]=pts[i],[nx,nzz]=nor[i],q=[px-nx*r,pz-nzz*r];let off,y;
     if(phi<=Math.PI/2){off=r*Math.sin(phi);y=y1-r+r*Math.cos(phi);}
     else if(phi>=Math.PI/2+1){const a=phi-1;off=r*Math.sin(a);y=y0+r+r*Math.cos(a);}
     else{const t=phi-Math.PI/2;off=r;y=y1-r-t*(y1-y0-2*r);}
-    off+=bulge*w[i]*Math.max(0,1-((y-ym)/hs)**2)*(1+.25*nz(L[i]*6,seed));
+    off+=bulge*w[i]*Math.max(0,1-((y-ym)/hs)**2)*(1+.25*nz(L[i]*6,seed))-inset;
     const s=shear(y);return [q[0]+nx*off+s[0],y,q[1]+nzz*off+s[1]];
   };
-  const out=[];
-  const finish=(pos,uv,index,flip)=>{
-    if(flip)for(let i=0;i<index.length;i+=3){const t=index[i+1];index[i+1]=index[i+2];index[i+2]=t;}
-    const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));
-    g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(index);g.computeVertexNormals();
-    const col=[];
-    for(let i=0;i<pos.length;i+=3){
-      let ao=1;const p=[pos[i],pos[i+1],pos[i+2]];
-      for(const c of contacts){const d=Math.abs(p['xyz'.indexOf(c.axis)]-c.at);ao*=1-(c.k??.45)*Math.exp(-d/(c.fall??.03));}
-      col.push(ao,ao,ao);
-    }
-    g.setAttribute('color',new T.Float32BufferAttribute(col,3));out.push(g);
+  const rows=[];// each row: n vertex ids
+  const pushRow=row=>{
+    const prev=rows[rows.length-1];rows.push(row);if(!prev)return;
+    for(let i=0;i<n;i++){const a=prev[i],b=prev[(i+1)%n],c=row[i],d=row[(i+1)%n];idx.push(a,c,b,b,c,d);}
   };
-  // Cap (top or bottom): rings toward the centre (or a flat triangulated cap), then
-  // the rounded edge up to the seam at 45°.
-  const arcPhis=top=>top?[.27,.53,Math.PI/4]:[Math.PI+1-.27,Math.PI+1-.53,Math.PI+1-Math.PI/4];
-  const cap=(top)=>{
-    const pos=[],uv=[],index=[],y=top?y1:y0;let prev;
-    if(flatCap){
-      const sh=shear(y),inner=pts.map((p,i)=>[p[0]-nor[i][0]*r+sh[0],p[1]-nor[i][1]*r+sh[1]]);
-      const tri=T.ShapeUtils.triangulateShape(inner.map(p=>new T.Vector2(p[0],p[1])),[]);
-      for(const p of inner){pos.push(p[0],y,p[1]);uv.push(p[0],p[1]);}
-      for(const t of tri)index.push(...t);
-      prev=0;
-    }else{
-      // Crown, then pulls where the panel is sewn to the piping.
-      const sh=shear(y);pos.push(C[0]+sh[0],y+(top?crown:0),C[1]+sh[1]);uv.push(C[0],C[1]);prev=-1;
-      for(const s of [.2,.42,.62,.78,.89,.96,1]){
-        const start=pos.length/3;
-        for(let i=0;i<n;i++){
-          const q=[pts[i][0]-nor[i][0]*r,pts[i][1]-nor[i][1]*r];let yy=y;
-          if(top){
-            yy+=crown*(1-s**4)*(.6+.4*Math.sqrt(w[i]));
-            const e=Math.max(0,(s-.8)/.2);yy-=wrinkle*4*e*(1-e)*(.55+.45*Math.sin(L[i]*55+nz(L[i]*4,3)*6))*w[i];
-            yy+=.0025*nz(q[0]*7+s,q[1]*7)*s*(1-s**6);
-          }
-          const x=C[0]+(q[0]-C[0])*s+sh[0],z=C[1]+(q[1]-C[1])*s+sh[1];pos.push(x,yy,z);uv.push(x,z);
-        }
-        for(let i=0;i<n;i++){
-          if(prev<0)index.push(0,start+i,start+(i+1)%n);
-          else{const a=prev+i,b=prev+(i+1)%n,c=start+i,d=start+(i+1)%n;index.push(a,c,b,b,c,d);}
-        }
-        prev=start;
+  const capUV=p=>[p[0],p[2]],sideUV=(i,p)=>[L[i],p[1]];
+  // Top cap.
+  const yTop=y1,sh=shear(yTop);
+  if(flatCap){
+    const row=[];for(let i=0;i<n;i++){const p=ring(i,0);row.push(vert(p,capUV(p)));}
+    const tri=T.ShapeUtils.triangulateShape(row.map(k=>new T.Vector2(pos[k*3],pos[k*3+2])),[]);
+    // Same winding as the outline (positive plan area), like the rings below.
+    for(const t of tri){
+      const [a,b,c]=t.map(k=>row[k]),A=(pos[b*3]-pos[a*3])*(pos[c*3+2]-pos[a*3+2])-(pos[c*3]-pos[a*3])*(pos[b*3+2]-pos[a*3+2]);
+      idx.push(...(A>=0?[a,b,c]:[a,c,b]));
+    }
+    rows.push(row);
+  }else{
+    const c=vert([C[0]+sh[0],yTop+crown-sag,C[1]+sh[1]],[C[0],C[1]]);
+    const caps=[.38,.66,.84,.94,1];let first=true;
+    for(const s of caps){
+      const row=[];
+      for(let i=0;i<n;i++){
+        const q=[pts[i][0]-nor[i][0]*r,pts[i][1]-nor[i][1]*r];
+        let yy=yTop+crown*(1-s**4)*(.6+.4*Math.sqrt(w[i]))-sag*Math.exp(-(((s-.15)/.45)**2));
+        // Creases drawn into the seam: deepest just inside the edge, between the pulls.
+        const e=Math.max(0,(s-.55)/.45),cr=wrinkle*3.6*e*(1-e)*(.25+.75*pull(i))*w[i];
+        yy-=cr;yy+=.002*nz(q[0]*6+s,q[1]*6)*s*(1-s**6);
+        const x=C[0]+(q[0]-C[0])*s+sh[0],z=C[1]+(q[1]-C[1])*s+sh[1];
+        row.push(vert([x,yy,z],[x,z],cr/Math.max(wrinkle,1e-4)));
       }
+      if(first){for(let i=0;i<n;i++)idx.push(c,row[i],row[(i+1)%n]);rows.push(row);first=false;}
+      else pushRow(row);
     }
-    for(const phi of arcPhis(top)){
-      const start=pos.length/3;
-      for(let i=0;i<n;i++){const p=ring(i,phi);pos.push(...p);uv.push(p[0],p[2]);}
-      for(let i=0;i<n;i++){const a=prev+i,b=prev+(i+1)%n,c=start+i,d=start+(i+1)%n;index.push(a,c,b,b,c,d);}
-      prev=start;
-    }
-    finishCheck(pos,uv,index,top);
-  };
-  const finishCheck=(pos,uv,index,top)=>{
-    // Orientation: the cap must face up (top) or down (bottom).
-    let s=0;for(let i=0;i<index.length;i+=3){
-      const a=index[i]*3,b=index[i+1]*3,c=index[i+2]*3;
-      const ux=pos[b]-pos[a],uz=pos[b+2]-pos[a+2],vx=pos[c]-pos[a],vz=pos[c+2]-pos[a+2];s+=uz*vx-ux*vz;
-    }
-    finish(pos,uv,index,top?s<0:s>0);
-  };
-  cap(true);
-  // Boxing strip between the seams: uv along the perimeter.
-  {
-    const pos=[],uv=[],index=[],phis=[];
-    for(let k=0;k<=2;k++)phis.push(Math.PI/4+k/2*Math.PI/4);
-    for(let k=1;k<=4;k++)phis.push(Math.PI/2+k/5);
-    for(let k=0;k<=2;k++)phis.push(Math.PI/2+1+k/2*Math.PI/4);
-    for(const [row,phi] of phis.entries()){
-      for(let i=0;i<=n;i++){const p=ring(i%n,phi);pos.push(...p);uv.push(i<n?L[i]:per,p[1]);}
-      if(row){const a0=(row-1)*(n+1),b0=row*(n+1);for(let i=0;i<n;i++)index.push(a0+i,b0+i,a0+i+1,a0+i+1,b0+i,b0+i+1);}
-    }
-    // Outward: compare with the outline normal of the first column.
-    const a=index,p=pos;
-    const ux=p[a[1]*3]-p[a[0]*3],uy=p[a[1]*3+1]-p[a[0]*3+1],uz=p[a[1]*3+2]-p[a[0]*3+2];
-    const vx=p[a[2]*3]-p[a[0]*3],vy=p[a[2]*3+1]-p[a[0]*3+1],vz=p[a[2]*3+2]-p[a[0]*3+2];
-    const cx=uy*vz-uz*vy,cz=ux*vy-uy*vx;
-    finish(pos,uv,index,cx*nor[0][0]+cz*nor[0][1]<0);
   }
-  if(bottom)cap(false);
-  const loop=(phi)=>{const l=[];for(let i=0;i<n;i++)l.push(ring(i,phi));return l;};
-  return {parts:out,pipes:[loop(Math.PI/4),loop(Math.PI/2+1+Math.PI/4)]};
-}
-
-// Piping cord along a closed loop of points.
-function piping(T,points,radius=.0045){
-  const curve=new T.CatmullRomCurve3(points.map(p=>new T.Vector3(...p)),true,'centripetal');
-  const len=curve.getLength(),seg=Math.max(24,Math.round(len/.022));
-  const g=new T.TubeGeometry(curve,seg,radius,5,true),uv=g.getAttribute('uv');
-  for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*len,uv.getY(i)*radius*6.3);
-  return g;
+  // Rounded top edge with the sewn groove at 45°, then the side, then the bottom edge.
+  const d=Math.min(.35,.007/Math.max(r,.01)),Q=Math.PI/4;
+  const profile=[[Q*.5,0]];
+  if(seam)profile.push([Q-d,0],[Q,.0028,'groove'],[Q+d,0,'pull']);else profile.push([Q,0]);
+  profile.push([Q*1.5,0,'pull'],[Math.PI/2,0]);
+  for(const t of [.3,.62])profile.push([Math.PI/2+t,0]);
+  profile.push([Math.PI/2+1,0]);
+  if(bottomSeam)profile.push([Math.PI/2+1+Q-d,0],[Math.PI/2+1+Q,.0024,'groove'],[Math.PI/2+1+Q+d,0]);
+  else profile.push([Math.PI/2+1+Q,0]);
+  profile.push([Math.PI/2+1+Math.PI/2,0]);
+  let sideUv=false;
+  for(const [phi,inset,tag] of profile){
+    const row=[];
+    for(let i=0;i<n;i++){
+      let ins=inset,dd=0;
+      if(tag==='groove')dd=1.4;
+      if(tag==='pull'){const pu=wrinkle*.9*pull(i)*w[i];ins+=pu;dd=pu/Math.max(wrinkle,1e-4)*.5;}
+      const p=ring(i,phi,ins);
+      if(tag==='groove'&&!sideUv){
+        // Panel change: cap UVs end here, side UVs start (same point, welded normals).
+        const a=vert(p,capUV(p),dd);row.push(a);
+      }else row.push(vert(p,sideUv?sideUV(i,p):capUV(p),dd));
+    }
+    pushRow(row);
+    if(tag==='groove'&&!sideUv){
+      sideUv=true;const dup=row.map((k,i)=>vert([pos[k*3],pos[k*3+1],pos[k*3+2]],sideUV(i,[0,pos[k*3+1]]),dip[k],k));
+      rows[rows.length-1]=dup;
+    }
+  }
+  if(!seam&&!sideUv){/* no seam: keep cap UVs all the way (small slabs) */}
+  if(bottom){
+    const yb=y0,sb=shear(yb);
+    for(const s of [.7,.35]){
+      const row=[];
+      for(let i=0;i<n;i++){const q=[pts[i][0]-nor[i][0]*r,pts[i][1]-nor[i][1]*r],x=C[0]+(q[0]-C[0])*s+sb[0],z=C[1]+(q[1]-C[1])*s+sb[1];row.push(vert([x,yb,z],[x,z]));}
+      pushRow(row);
+    }
+    const c=vert([C[0]+sb[0],yb,C[1]+sb[1]],[C[0],C[1]]),last=rows[rows.length-1];
+    for(let i=0;i<n;i++)idx.push(last[i],c,last[(i+1)%n]);
+  }
+  // Orientation: the triangle fan around the top must face up.
+  {
+    const t=idx.slice(0,3).map(k=>[pos[k*3],pos[k*3+1],pos[k*3+2]]);
+    const ux=t[1][0]-t[0][0],uz=t[1][2]-t[0][2],vx=t[2][0]-t[0][0],vz=t[2][2]-t[0][2];
+    const up=uz*vx-ux*vz;
+    if(up<0)for(let i=0;i<idx.length;i+=3){const k=idx[i+1];idx[i+1]=idx[i+2];idx[i+2]=k;}
+  }
+  // Welded, area-weighted smooth normals.
+  const N=new Float32Array(pos.length);
+  for(let i=0;i<idx.length;i+=3){
+    const a=idx[i]*3,b=idx[i+1]*3,c=idx[i+2]*3;
+    const ux=pos[b]-pos[a],uy=pos[b+1]-pos[a+1],uz=pos[b+2]-pos[a+2],vx=pos[c]-pos[a],vy=pos[c+1]-pos[a+1],vz=pos[c+2]-pos[a+2];
+    const fx=uy*vz-uz*vy,fy=uz*vx-ux*vz,fz=ux*vy-uy*vx;
+    for(const k of [idx[i],idx[i+1],idx[i+2]]){const o=weld[k]*3;N[o]+=fx;N[o+1]+=fy;N[o+2]+=fz;}
+  }
+  for(let k=0;k<weld.length;k++){const o=weld[k]*3,l=Math.hypot(N[o],N[o+1],N[o+2])||1;N[k*3]=N[o]/l;N[k*3+1]=N[o+1]/l;N[k*3+2]=N[o+2]/l;}
+  for(let k=0;k<weld.length;k++)if(weld[k]!==k){const o=weld[k]*3;N[k*3]=N[o];N[k*3+1]=N[o+1];N[k*3+2]=N[o+2];}
+  const col=[];
+  for(let k=0;k<pos.length/3;k++){
+    const p=[pos[k*3],pos[k*3+1],pos[k*3+2]];let ao=1;
+    for(const c of contacts){const dd=Math.abs(p['xyz'.indexOf(c.axis)]-c.at);ao*=1-(c.k??.45)*Math.exp(-dd/(c.fall??.03));}
+    if(shade)ao*=1-shade[0]*Math.max(0,1-(p[1]-y0)/shade[1])**1.5;
+    // Down-facing cloth sees the floor and its own shadow.
+    ao*=1-.18*Math.max(0,-N[k*3+1]);
+    ao*=1-Math.min(.3,.14*dip[k]);
+    col.push(ao,ao,ao);
+  }
+  const g=new T.BufferGeometry();
+  g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('normal',new T.Float32BufferAttribute(N,3));
+  g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setAttribute('color',new T.Float32BufferAttribute(col,3));
+  g.setIndex(idx);return g;
 }
 
 // Knife-edge throw pillow (after bedding.mjs): pinched outline, full belly, corner pulls.
 function pillow(T,W,H,Th,seed){
-  const n=noise2(seed),nu=20,nv=20,parts=[];
+  const n=noise2(seed),nu=14,nv=14,parts=[];
   const rim=(u,v)=>[u*W/2*(1-.08*(1-v*v)),v*H/2*(1-.08*(1-u*u))];
   for(const side of [1,-1]){
     const pos=[],uv=[],index=[];
@@ -214,7 +240,7 @@ function contactShadow(T,{x0,z0,x1,z1,y,draw,core=.72,halo=.28,ppm=200}){
     lg.fillStyle='#000';draw(lg,toPx,grow*ppm);
     g.save();g.filter=`blur(${blur*ppm}px)`;g.globalAlpha=alpha;g.drawImage(l,0,0);g.restore();
   };
-  layer(.12,halo,.06);layer(.03,core*.7,.025);layer(.008,core,.012);
+  layer(.26,halo*.55,.12);layer(.11,halo,.05);layer(.03,core*.75,.02);layer(.008,core,.008);
   const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;
   const m=new T.MeshBasicMaterial({map:t,color:0x000000,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4,toneMapped:false});
   // Black RGB, darkness in alpha.
@@ -255,10 +281,11 @@ function painting(T,ctx){
   const canvas=new T.MeshStandardMaterial({map:artCanvas(T,1024,Math.round(1024*(y1-y0)/(z1-z0))),roughness:.96});
   const W=z1-z0,H=y1-y0,cz=(z0+z1)/2,cy=(y0+y1)/2;
   const face=new T.Mesh(new T.PlaneGeometry(W-2*fw,H-2*fw),canvas);face.rotation.y=Math.PI/2;face.position.set(x+depth-.006,cy,cz);g.add(face);
-  const bar=(w,h,yy,zz)=>{const m=new T.Mesh(new T.BoxGeometry(depth,h,w),frame);m.position.set(x+depth/2,yy,zz);g.add(m);};
-  bar(W,fw,y1-fw/2,cz);bar(W,fw,y0+fw/2,cz);bar(fw,H-2*fw,cy,z0+fw/2);bar(fw,H-2*fw,cy,z1-fw/2);
-  // Back board, so the canvas is not see-through at grazing angles.
-  const back=new T.Mesh(new T.BoxGeometry(.004,H,W),frame);back.position.set(x+.002,cy,cz);g.add(back);
+  // Frame bars and the back board (so the canvas is not see-through at grazing angles), one mesh.
+  const fb=new Builder(T),box=(dx,h,w,xx,yy,zz)=>fb.add(new T.BoxGeometry(dx,h,w).translate(xx,yy,zz));
+  box(depth,fw,W,x+depth/2,y1-fw/2,cz);box(depth,fw,W,x+depth/2,y0+fw/2,cz);
+  box(depth,H-2*fw,fw,x+depth/2,cy,z0+fw/2);box(depth,H-2*fw,fw,x+depth/2,cy,z1-fw/2);box(.004,H,W,x+.002,cy,cz);
+  g.add(new T.Mesh(fb.build(),frame));
   ctx.lightRuntimeObject(g);return g;
 }
 
@@ -267,51 +294,54 @@ export async function apply(ctx){
   // ---- L sofa (B01): main run against the west wall, chaise run along the south. ----
   const removed=ctx.removeExported({material:'linen',region:'salon',box:[[5.2,0,-8.4],[8.4,1.2,-4.7]]});
   const linen=ctx.cloneMaterial(ctx.mats.linen);linen.vertexColors=true;linen.color.set('#efebe3');
-  const sofa=new Builder(T),cords=new Builder(T);
-  const put=(res,{pipes=[0,1]}={})=>{for(const g of res.parts)sofa.add(g);for(const k of pipes)cords.add(piping(T,res.pipes[k]),.86);};
+  const sofa=new Builder(T);
+  const put=g=>sofa.add(g);
   const BX=5.257,FX=6.140,NZ=-8.28,SZ=-4.75,CX=8.278,CZ=-5.627,PL=.085,BASE=.30,SEAT=.465;
   const backX=5.475,backZ=-4.975,frameTop=.655;
   // Frames: back of the main run, back of the chaise run, north arm, two seat bases.
-  put(slab(T,{...rrect(BX,NZ,backX,SZ,.045),y0:PL,y1:frameTop,r:.035,bulge:.004,seed:2,bottom:false,
-    contacts:[{axis:'y',at:PL,k:.5,fall:.04},{axis:'x',at:backX,k:.35,fall:.025}]}));
-  put(slab(T,{...rrect(backX+.004,backZ,CX,SZ,.045),y0:PL,y1:frameTop,r:.035,bulge:.004,seed:3,bottom:false,
-    contacts:[{axis:'y',at:PL,k:.5,fall:.04},{axis:'z',at:backZ,k:.35,fall:.025},{axis:'x',at:backX,k:.4,fall:.02}]}));
-  put(slab(T,{...rrect(backX+.004,NZ,FX,-8.07,.045),y0:PL,y1:.62,r:.035,crown:.006,bulge:.006,seed:4,bottom:false,
-    contacts:[{axis:'y',at:PL,k:.5,fall:.04},{axis:'z',at:-8.07,k:.4,fall:.03},{axis:'x',at:backX,k:.35,fall:.02}]}));
-  put(slab(T,{...rrect(backX+.004,-8.066,FX,backZ-.004,.032),y0:PL,y1:BASE,r:.022,bulge:.003,seed:5,bottom:false,
-    contacts:[{axis:'y',at:PL,k:.5,fall:.035},{axis:'y',at:BASE,k:.45,fall:.02}]}),{pipes:[0]});
-  put(slab(T,{...rrect(FX+.004,CZ,CX,backZ-.004,.032),y0:PL,y1:BASE,r:.022,bulge:.003,seed:6,bottom:false,
-    contacts:[{axis:'y',at:PL,k:.5,fall:.035},{axis:'y',at:BASE,k:.45,fall:.02},{axis:'x',at:FX,k:.35,fall:.02}]}),{pipes:[0]});
-  // Loose seat cushions: three on the main run, two on the chaise run.
-  const gap=.008,mz0=-8.066,mz1=backZ-.004,mw=(mz1-mz0-2*gap)/3,cushion={y0:BASE+.002,y1:SEAT,r:.032,crown:.016,bulge:.009,wrinkle:.003};
+  // They darken toward the plinth (shade) so the sofa sits on it instead of floating.
+  const frameShade=[.30,.30],plinth={axis:'y',at:PL,k:.6,fall:.05};
+  put(slab(T,{...rrect(BX,NZ,backX,SZ,.06),y0:PL,y1:frameTop,r:.06,bulge:.008,wrinkle:.003,seed:2,shade:frameShade,
+    contacts:[plinth,{axis:'x',at:backX,k:.35,fall:.03}]}));
+  put(slab(T,{...rrect(backX+.004,backZ,CX,SZ,.06),y0:PL,y1:frameTop,r:.06,bulge:.008,wrinkle:.003,seed:3,shade:frameShade,
+    contacts:[plinth,{axis:'z',at:backZ,k:.35,fall:.03},{axis:'x',at:backX,k:.4,fall:.025}]}));
+  put(slab(T,{...rrect(backX+.004,NZ,FX,-8.07,.06),y0:PL,y1:.62,r:.06,crown:.008,bulge:.010,wrinkle:.003,seed:4,shade:frameShade,
+    contacts:[plinth,{axis:'z',at:-8.07,k:.45,fall:.035},{axis:'x',at:backX,k:.35,fall:.025}]}));
+  put(slab(T,{...rrect(backX+.004,-8.066,FX,backZ-.004,.04),y0:PL,y1:BASE,r:.035,bulge:.006,seed:5,shade:frameShade,
+    contacts:[plinth,{axis:'y',at:BASE,k:.5,fall:.025}]}));
+  put(slab(T,{...rrect(FX+.004,CZ,CX,backZ-.004,.04),y0:PL,y1:BASE,r:.035,bulge:.006,seed:6,shade:frameShade,
+    contacts:[plinth,{axis:'y',at:BASE,k:.5,fall:.025},{axis:'x',at:FX,k:.35,fall:.025}]}));
+  // Loose seat cushions: three on the main run, two on the chaise run. Thick round
+  // edges, bellied fronts, a shallow sit dip and creases drawn into the welt.
+  const gap=.008,mz0=-8.066,mz1=backZ-.004,mw=(mz1-mz0-2*gap)/3;
+  const cushion={y0:BASE+.002,y1:SEAT,r:.058,crown:.02,sag:.011,bulge:.016,wrinkle:.0065};
   const seatsMain=[0,1,2].map(k=>[mz0+k*(mw+gap),mz0+k*(mw+gap)+mw]);
   for(const [k,[z0,z1]] of seatsMain.entries())
-    put(slab(T,{...rrect(backX+.006,z0,FX+.006,z1,.045),...cushion,seed:10+k,bottom:false,
-      contacts:[{axis:'y',at:BASE,k:.5,fall:.025},{axis:'z',at:z0,k:k?.4:.3,fall:.02},{axis:'z',at:z1,k:k<2?.4:.3,fall:.02},{axis:'x',at:backX+.21,k:.25,fall:.04}]}));
+    put(slab(T,{...rrect(backX+.006,z0,FX+.006,z1,.07),...cushion,seed:10+k,
+      contacts:[{axis:'y',at:BASE,k:.55,fall:.03},{axis:'z',at:z0,k:k?.45:.3,fall:.025},{axis:'z',at:z1,k:k<2?.45:.3,fall:.025},{axis:'x',at:backX+.21,k:.4,fall:.05}]}));
   const cx0=FX+.012,cw=(CX+.006-cx0-gap)/2;
   for(const k of [0,1]){
     const x0=cx0+k*(cw+gap),x1=x0+cw;
-    put(slab(T,{...rrect(x0,CZ-.006,x1,backZ-.004,.045),...cushion,seed:20+k,bottom:false,
-      contacts:[{axis:'y',at:BASE,k:.5,fall:.025},{axis:'x',at:x0,k:.4,fall:.02},{axis:'x',at:x1,k:k?.25:.4,fall:.02},{axis:'z',at:backZ-.21,k:.25,fall:.04}]}));
+    put(slab(T,{...rrect(x0,CZ-.006,x1,backZ-.004,.07),...cushion,seed:20+k,
+      contacts:[{axis:'y',at:BASE,k:.55,fall:.03},{axis:'x',at:x0,k:.45,fall:.025},{axis:'x',at:x1,k:k?.25:.45,fall:.025},{axis:'z',at:backZ-.21,k:.4,fall:.05}]}));
   }
-  // Loose back cushions resting on the seats, leaning back 7°.
-  const lean=Math.tan(7*Math.PI/180),backTop=.865;
+  // Loose back cushions resting on the seats, leaning back 7°: plump, very round.
+  const lean=Math.tan(7*Math.PI/180),backTop=.865,backC={y0:SEAT-.01,y1:backTop,r:.075,crown:.014,bulge:.02,wrinkle:.0055};
   for(const [k,[z0,z1]] of seatsMain.entries())
-    put(slab(T,{...rrect(backX+.004,z0+.004,backX+.214,z1-.004,.06),y0:SEAT-.01,y1:backTop,r:.045,crown:.012,bulge:.012,lean:[-lean,0],wrinkle:.003,seed:30+k,bottom:false,
-      contacts:[{axis:'y',at:SEAT-.01,k:.45,fall:.03}]}));
+    put(slab(T,{...rrect(backX+.004,z0+.004,backX+.214,z1-.004,.08),...backC,lean:[-lean,0],seed:30+k,
+      contacts:[{axis:'y',at:SEAT-.01,k:.5,fall:.04}]}));
   const bx0=backX+.214+.004,bw=(CX-bx0-gap)/2;
   for(const k of [0,1]){
     const x0=bx0+k*(bw+gap);
-    put(slab(T,{...rrect(x0,backZ-.214,x0+bw,backZ-.004,.06),y0:SEAT-.01,y1:backTop,r:.045,crown:.012,bulge:.012,lean:[0,lean],wrinkle:.003,seed:40+k,bottom:false,
-      contacts:[{axis:'y',at:SEAT-.01,k:.45,fall:.03}]}));
+    put(slab(T,{...rrect(x0,backZ-.214,x0+bw,backZ-.004,.08),...backC,lean:[0,lean],seed:40+k,
+      contacts:[{axis:'y',at:SEAT-.01,k:.5,fall:.04}]}));
   }
-  const sofaMesh=new T.Mesh(sofa.build(),linen),cordMesh=new T.Mesh(cords.build(),linen);
-  // Throw pillows: three on the main run, two on the chaise run near the corner.
-  const pillowMat=ctx.cloneMaterial(ctx.mats.linen);pillowMat.vertexColors=true;pillowMat.color.set('#f2efe9');
-  const pillows=new T.Group();
+  // Throw pillows: three on the main run, two on the chaise run near the corner, in
+  // the same mesh and material as the sofa (one draw call, one program).
+  const pillowB=sofa,tmp=new T.Object3D();
   const addPillow=(W,H,Th,seed,x,y,z,ry,rx,rz)=>{
-    const b=new Builder(T);for(const g of pillow(T,W,H,Th,seed))b.add(g);
-    const m=new T.Mesh(b.build(),pillowMat);m.rotation.order='YXZ';m.rotation.set(rx,ry,rz);m.position.set(x,y,z);pillows.add(m);
+    tmp.rotation.order='YXZ';tmp.rotation.set(rx,ry,rz);tmp.position.set(x,y,z);tmp.updateMatrix();
+    for(const g of pillow(T,W,H,Th,seed)){g.applyMatrix4(tmp.matrix);pillowB.add(g,1.02);}
   };
   const front=backX+.214+.02;
   addPillow(.50,.48,.15,3,front+.06,SEAT+.23,-6.95,Math.PI/2,-.30,.03);
@@ -319,23 +349,23 @@ export async function apply(ctx){
   addPillow(.50,.48,.15,5,front+.06,SEAT+.23,-5.62,Math.PI/2,-.30,.06);
   addPillow(.46,.44,.14,6,6.42,SEAT+.215,backZ-.214-.08,Math.PI,-.31,-.04);
   addPillow(.50,.48,.15,7,7.05,SEAT+.23,backZ-.214-.08,Math.PI,-.29,.05);
-  for(const o of [sofaMesh,cordMesh,...pillows.children]){o.castShadow=true;o.receiveShadow=true;}
-  const sofaGroup=new T.Group();sofaGroup.name='salon:sofa';sofaGroup.add(sofaMesh,cordMesh,pillows);
+  const sofaMesh=new T.Mesh(sofa.build(),linen);sofaMesh.castShadow=true;sofaMesh.receiveShadow=true;
+  const sofaGroup=new T.Group();sofaGroup.name='salon:sofa';sofaGroup.add(sofaMesh);
   group.add(sofaGroup);
 
-  // ---- Armchairs (B01): seat shell, box seat cushion and curved back roll, piped. ----
+  // ---- Armchairs (B01): seat shell, box seat cushion and curved back roll. ----
   const removedChairs=ctx.removeExported({material:'fabric',region:'salon',box:[[8.2,.2,-7.55],[9.2,1.0,-5.65]]});
   const boucle=ctx.cloneMaterial(ctx.mats.fabric);boucle.vertexColors=true;
-  const chairs=new Builder(T),chairCords=new Builder(T);
+  const chairs=new Builder(T);
   const poly=name=>ctx.data.colliders.find(c=>c.name===name)?.poly;
   const smooth=(p,count)=>new T.CatmullRomCurve3(p.map(([x,z])=>new T.Vector3(x,0,z)),true,'centripetal').getSpacedPoints(count).slice(0,count).map(v=>[v.x,v.z]);
   for(const side of ['norte','sur']){
     const base=poly(`Butaca salon ${side} base asiento tapizado`),seat=poly(`Butaca salon ${side} asiento tapizado`),back=poly(`Butaca salon ${side} respaldo tapizado`);
     if(!base||!seat||!back)continue;
-    const b=slab(T,{outline:smooth(base,72),y0:.255,y1:.335,r:.025,bulge:.004,seed:50,bottom:true,contacts:[{axis:'y',at:.335,k:.4,fall:.02}]});
-    for(const g of b.parts)chairs.add(g);chairCords.add(piping(T,b.pipes[0],.004),.82);
-    const s=slab(T,{outline:smooth(seat,96),y0:.335,y1:.475,r:.035,crown:.018,bulge:.008,wrinkle:.003,seed:51,bottom:false,contacts:[{axis:'y',at:.335,k:.45,fall:.025}]});
-    for(const g of s.parts)chairs.add(g);for(const p of s.pipes)chairCords.add(piping(T,p,.0045),.82);
+    chairs.add(slab(T,{outline:smooth(base,40),y0:.255,y1:.335,r:.03,bulge:.006,seed:50,bottom:true,seam:false,bottomSeam:false,
+      contacts:[{axis:'y',at:.335,k:.45,fall:.02}]}));
+    chairs.add(slab(T,{outline:smooth(seat,48),y0:.335,y1:.475,r:.05,crown:.02,sag:.008,bulge:.012,wrinkle:.004,seed:51,
+      contacts:[{axis:'y',at:.335,k:.5,fall:.025}]}));
     // Back roll: circle fitted to the outer arc of the exported back, band 9 cm thick.
     const arc=back.slice(4,back.length-4);
     let sx=0,sz=0;for(const [x,z] of arc){sx+=x;sz+=z;}sx/=arc.length;sz/=arc.length;
@@ -349,34 +379,37 @@ export async function apply(ctx){
     let a0=angles[0],a1=a0;
     for(let k=1;k<angles.length;k++){let d=angles[k]-angles[k-1];while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;a1+=d;}
     if(a1<a0)[a0,a1]=[a1,a0];
-    const outline=[],N=40,Rm=R-t/2;
+    const outline=[],N=22,Rm=R-t/2;
     for(let k=0;k<=N;k++){const a=a0+(a1-a0)*k/N;outline.push([cxx+R*Math.cos(a),czz+R*Math.sin(a)]);}
-    for(let k=1;k<8;k++){const a=a1+Math.PI*k/8,e=[cxx+Rm*Math.cos(a1),czz+Rm*Math.sin(a1)];outline.push([e[0]+t/2*Math.cos(a1+Math.PI*k/8),e[1]+t/2*Math.sin(a1+Math.PI*k/8)]);}
+    for(let k=1;k<6;k++){const e=[cxx+Rm*Math.cos(a1),czz+Rm*Math.sin(a1)];outline.push([e[0]+t/2*Math.cos(a1+Math.PI*k/6),e[1]+t/2*Math.sin(a1+Math.PI*k/6)]);}
     for(let k=N;k>=0;k--){const a=a0+(a1-a0)*k/N;outline.push([cxx+(R-t)*Math.cos(a),czz+(R-t)*Math.sin(a)]);}
-    for(let k=1;k<8;k++){const e=[cxx+Rm*Math.cos(a0),czz+Rm*Math.sin(a0)];outline.push([e[0]+t/2*Math.cos(a0+Math.PI+Math.PI*k/8),e[1]+t/2*Math.sin(a0+Math.PI+Math.PI*k/8)]);}
-    const r=slab(T,{outline,y0:.645,y1:.885,r:.042,bulge:.008,seed:52,flatCap:true,bottom:true,contacts:[]});
-    for(const g of r.parts)chairs.add(g);for(const p of r.pipes)chairCords.add(piping(T,p,.0045),.82);
+    for(let k=1;k<6;k++){const e=[cxx+Rm*Math.cos(a0),czz+Rm*Math.sin(a0)];outline.push([e[0]+t/2*Math.cos(a0+Math.PI+Math.PI*k/6),e[1]+t/2*Math.sin(a0+Math.PI+Math.PI*k/6)]);}
+    chairs.add(slab(T,{outline,y0:.645,y1:.885,r:.042,bulge:.01,wrinkle:.003,seed:52,flatCap:true,bottom:false,bottomSeam:true,contacts:[]}));
   }
-  const chairMesh=new T.Mesh(chairs.build(),boucle),chairCordMesh=new T.Mesh(chairCords.build(),boucle);
-  for(const o of [chairMesh,chairCordMesh]){o.castShadow=true;o.receiveShadow=true;}
-  const chairGroup=new T.Group();chairGroup.name='salon:butacas';chairGroup.add(chairMesh,chairCordMesh);group.add(chairGroup);
+  const chairMesh=new T.Mesh(chairs.build(),boucle);chairMesh.castShadow=true;chairMesh.receiveShadow=true;
+  const chairGroup=new T.Group();chairGroup.name='salon:butacas';chairGroup.add(chairMesh);group.add(chairGroup);
   ctx.lightRuntimeObject(sofaGroup);ctx.lightRuntimeObject(chairGroup);
 
   // ---- Contact shadows on the rug / floor. ----
-  group.add(contactShadow(T,{x0:5.1,z0:-8.45,x1:8.45,z1:-4.6,y:.0125,core:.9,halo:.38,draw:(g,p,grow)=>{
+  group.add(contactShadow(T,{x0:5.1,z0:-8.55,x1:8.8,z1:-4.25,y:.0125,core:.92,halo:.5,draw:(g,p,grow)=>{
     const rect=(x0,z0,x1,z1)=>{const [a,b]=p(x0,z0),[c,d]=p(x1,z1);g.fillRect(a-grow,b-grow,c-a+2*grow,d-b+2*grow);};
     rect(BX,NZ,FX,SZ);rect(FX-.01,CZ,CX,SZ);
   }}));
-  group.add(contactShadow(T,{x0:8.0,z0:-7.75,x1:9.4,z1:-5.45,y:.003,core:.32,halo:.30,draw:(g,p,grow)=>{
+  group.add(contactShadow(T,{x0:7.8,z0:-7.95,x1:9.6,z1:-5.25,y:.0125,core:.5,halo:.42,draw:(g,p,grow)=>{
     for(const side of ['norte','sur']){
       const s=poly(`Butaca salon ${side} asiento tapizado`);if(!s)continue;
       g.beginPath();s.forEach(([x,z],i)=>{const [a,b]=p(x,z);i?g.lineTo(a,b):g.moveTo(a,b);});g.closePath();g.fill();
     }
   }}));
+  // ---- Sheer (ronda 6): the shared sheer (translucency .75) burns out against the
+  // daylight behind it. This room's piece gets its own clone: less light through, a
+  // touch denser and greyer, so the pleats read instead of a white block.
+  const sheers=ctx.splitExported({material:'curtain',region:'salon',box:[[5.15,-.2,-8.75],[10.1,3.2,-3.66]]});
+  for(const m of sheers){m.material.userData.translucency=.2;m.material.opacity=.86;m.material.color.multiplyScalar(.74);}
   // ---- Painting (secondary): larger canvas over the plaster/oak junction, dark lines. ----
   const removedArt=ctx.removeExported({material:'art',region:'salon',box:[[5.15,.6,-7.7],[5.3,2.1,-6.7]]})
     +ctx.removeExported({material:'wood',region:'salon',box:[[5.201,.7,-7.6],[5.24,2.0,-6.78]]});
   group.add(painting(T,ctx));
-  console.info(`[rooms/salon] painting replaced (${removedArt})`);
+  console.info(`[rooms/salon] painting replaced (${removedArt}), sheers ${sheers.length}`);
   console.info(`[rooms/salon] sofa rebuilt (${removed} exported triangles), armchairs rebuilt (${removedChairs})`);
 }
