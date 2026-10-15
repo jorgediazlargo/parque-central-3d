@@ -269,19 +269,36 @@ export async function apply(ctx){
   // The stock Reflector renders the whole view into its target, a full extra pass of
   // the house to fill a mirror covering a ninth of the frame (round 5 sized it to the
   // drawing buffer: 29 → 20 FPS). Here the reflected view is cropped to the mirror's
-  // own screen box, so the target holds only mirror pixels (1:1 up to 1024 per side),
-  // and the cropped frustum culls everything the mirror cannot show.
+  // own screen box, so the target holds only mirror pixels, and the cropped frustum
+  // culls everything the mirror cannot show.
+  // The reflection is drawn 1:1 with the screen (up to 2048 a side) and multisampled ×4
+  // like the main pass: at 1024 px without MSAA it was softer than the room around it
+  // and stair-stepped every edge (shelf LEDs, hangers, pillows, the ceiling step). The
+  // target is allocated once at the drawing-buffer size and the crop drawn into its
+  // corner, so walking past the mirror does not reallocate multisampled buffers.
   ctx.scene.traverse(o=>{
     if(!o.isReflector)return;
     const target=o.getRenderTarget(),virtualCamera=o.camera,textureMatrix=o.material.uniforms.textureMatrix.value;
-    const clipBias=.003,size=new THREE.Vector2(),crop=new THREE.Matrix4(),pv=new THREE.Matrix4(),corner=new THREE.Vector4();
+    target.samples=4;target.dispose();target.scissorTest=true;
+    const BUDGET=1e6,clipBias=.003,size=new THREE.Vector2(),crop=new THREE.Matrix4(),pv=new THREE.Matrix4(),corner=new THREE.Vector4();
     const plane=new THREE.Plane(),normal=new THREE.Vector3(),mirrorPos=new THREE.Vector3(),camPos=new THREE.Vector3(),rot=new THREE.Matrix4();
     const look=new THREE.Vector3(),view=new THREE.Vector3(),aim=new THREE.Vector3(),clip=new THREE.Vector4(),q=new THREE.Vector4();
     o.geometry.computeBoundingBox();const bb=o.geometry.boundingBox;
-    // Plain multiply instead of the stock overlay blend, which bends HDR values (bright
-    // lines and shirts clipped, mid-tones lifted) so the reflection never matched the room.
-    o.material.uniforms.color.value.setRGB(.74,.65,.55);
-    o.material.fragmentShader=o.material.fragmentShader.replace('blendOverlay( base.rgb, color )','base.rgb * color');
+    // Bronze mirror: silver behind a tinted pane. Plain multiply instead of the stock
+    // overlay blend, which bends HDR values (bright lines and shirts clipped, mid-tones
+    // lifted) so the reflection never matched the room. Seen obliquely the light crosses
+    // more tinted glass (deeper bronze) while the front face reflects more (Schlick,
+    // n = 1.5): along the wall the mirror reads as glass, not as a flat print. Square on,
+    // .04 + .92 × tint keeps the calibrated (.74, .65, .55).
+    o.material.uniforms.color.value.setRGB((.74-.04)/.92,(.65-.04)/.92,(.55-.04)/.92);
+    o.material.vertexShader=o.material.vertexShader.replace('varying vec4 vUv;','varying vec4 vUv;varying vec3 vMirrorView,vMirrorNormal;')
+      .replace('vUv = textureMatrix','vMirrorView=(modelViewMatrix*vec4(position,1.0)).xyz;vMirrorNormal=normalMatrix*vec3(0.0,0.0,1.0);\n\t\t\tvUv = textureMatrix');
+    o.material.fragmentShader=o.material.fragmentShader.replace('varying vec4 vUv;',`varying vec4 vUv;varying vec3 vMirrorView,vMirrorNormal;
+      vec3 mirrorTint(){
+        float c=clamp(abs(dot(normalize(vMirrorView),normalize(vMirrorNormal))),0.0,1.0);
+        float F=.04+.96*pow(1.0-c,5.0),ct=sqrt(1.0-(1.0-c*c)/2.25);
+        return F+(1.0-F)*(1.0-F)*pow(color,vec3(1.0/ct));
+      }`).replace('blendOverlay( base.rgb, color )','base.rgb*mirrorTint()');
     o.material.needsUpdate=true;
     o.onBeforeRender=function(renderer,scene,camera){
       mirrorPos.setFromMatrixPosition(o.matrixWorld);camPos.setFromMatrixPosition(camera.matrixWorld);
@@ -301,12 +318,20 @@ export async function apply(ctx){
       if(behind){x0=y0=-1;x1=y1=1;}
       x0=Math.max(-1,x0-mx);x1=Math.min(1,x1+mx);y0=Math.max(-1,y0-my);y1=Math.min(1,y1+my);
       if(x1<=x0||y1<=y0)return;
+      // The mirrored camera's image is flipped left to right (its right axis is the
+      // reflection of the camera's, negated), so the box is cropped at -ox. Cropping at
+      // ox (rounds 6–7) only held with the mirror centred on screen: seen from the side,
+      // the part of the mirror outside the overlap sampled past the reflection (streaks).
       const sx=2/(x1-x0),sy=2/(y1-y0),ox=(x0+x1)/2,oy=(y0+y1)/2;
-      crop.set(sx,0,0,-sx*ox, 0,sy,0,-sy*oy, 0,0,1,0, 0,0,0,1);
-      // Target: the box at screen resolution, in 64 px steps, at most 1024 a side.
-      const step=v=>Math.min(1024,Math.max(64,Math.ceil(v/64)*64));
-      const w=step((x1-x0)/2*size.x),h=step((y1-y0)/2*size.y);
-      if(target.width!==w||target.height!==h)target.setSize(w,h);
+      crop.set(sx,0,0,sx*ox, 0,sy,0,-sy*oy, 0,0,1,0, 0,0,0,1);
+      // Target at the drawing-buffer size (at most 2048 a side); the crop fills its
+      // lower-left w × h at screen resolution, or at most BUDGET pixels when the mirror
+      // fills the view (a second full-screen pass: 50 → 39 FPS at 1535 × 1024).
+      const W=Math.min(2048,size.x),H=Math.min(2048,size.y);
+      if(target.width!==W||target.height!==H)target.setSize(W,H);
+      const bw=(x1-x0)/2*size.x,bh=(y1-y0)/2*size.y,k=Math.min(1,Math.sqrt(BUDGET/(bw*bh)));
+      const w=Math.min(W,Math.ceil(bw*k)),h=Math.min(H,Math.ceil(bh*k));
+      target.viewport.set(0,0,w,h);target.scissor.set(0,0,w,h);
       // Stock Reflector placement of the mirrored camera.
       view.reflect(normal).negate().add(mirrorPos);
       rot.extractRotation(camera.matrixWorld);
@@ -315,7 +340,8 @@ export async function apply(ctx){
       virtualCamera.position.copy(view);virtualCamera.up.set(0,1,0).applyMatrix4(rot).reflect(normal);
       virtualCamera.lookAt(aim);virtualCamera.far=camera.far;virtualCamera.updateMatrixWorld();
       virtualCamera.projectionMatrix.multiplyMatrices(crop,camera.projectionMatrix);
-      textureMatrix.set(.5,0,0,.5, 0,.5,0,.5, 0,0,.5,.5, 0,0,0,1);
+      const u=w/W,v=h/H;
+      textureMatrix.set(.5*u,0,0,.5*u, 0,.5*v,0,.5*v, 0,0,.5,.5, 0,0,0,1);
       textureMatrix.multiply(virtualCamera.projectionMatrix).multiply(virtualCamera.matrixWorldInverse).multiply(o.matrixWorld);
       // Oblique near plane on the mirror (Lengyel), as the stock Reflector.
       plane.setFromNormalAndCoplanarPoint(normal,mirrorPos).applyMatrix4(virtualCamera.matrixWorldInverse);
