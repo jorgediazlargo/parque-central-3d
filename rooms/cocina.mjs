@@ -17,67 +17,167 @@
 // - The back wall darkens a little more towards the worktop, as in render 9.
 // - Props of render 9: a ceramic vase with leafy branches on the back worktop and a
 //   bowl of fruit on the island.
+// Round 7 (critics: flat dull light, no contact shadows, plastic stools, repeated
+// low-resolution wood and stone without credible joints):
+// - Light profile of the back wall measured on render 9 against our capture: a short
+//   bright wash under the slot, a plateau and a lighter backsplash (material gains by
+//   height, no light added), and the stone relief catches that light from above.
+// - Island in shade: the cheeks lose the round-5 boost, the recessed front darkens under
+//   the overhang, the worktop takes the light. Ceiling paint lighter and less orange.
+// - Contact shadows in the kitchen floor's own shader (its baked light, analytically
+//   occluded by the island footprint and each stool leg), replacing round 6's decals.
+// - Stools: felted wool upholstery (Poly Haven Caban, CC0) instead of channel seams,
+//   glides under the legs.
+// - Oak fronts: Oak Veneer 01 (Poly Haven, CC0, 2k, real 1.83 m scale); every front its
+//   own cut of the veneer and its own tone. Stone: every slab its own cut, the print
+//   contrast lowered and a large-scale cloud so the 1.82 m tile no longer repeats.
 
 import {mergeGeometries} from '../assets/jsm/utils/BufferGeometryUtils.js';
 
 const ZONE=[[7.3,-.2,-3.66],[13.4,3.2,-.2]];
-const VERSION='r6a';
-// Render 9's ceiling is plain white paint; the shared limewash is warmer (linear gain).
-const CEILING_TINT=[1.14,1.27,1.4];
+const VERSION='r7a';
+// Render 9's ceiling: lighter and far less orange than our bake (measured on the
+// captures: R x1.67, G x2.15, B x3.0 linear); part of it as a paint gain.
+const CEILING_TINT=[1.14*1.75,1.27*2.08,1.4*2.55];
 // B01 stool footprints (plan x ranges) on the island's north side, plan y 479.765.
 const STOOLS=[[581.64,603.30],[612.99,634.65],[644.34,666],[675.69,697.32]];
 const STOOL={seatR:.198,seatTop:.672,seatBottom:.592,edge:.034,ringY:.69,ringR:.214,tube:.0105,
   legR:.212,footY:.245,backR:.19,backThick:.032,backH:.056,backY:.758,backHalf:110*Math.PI/180};
+// Island (kitchen_geometry.py, plan units): stone cheeks, recessed front, worktop.
+const ISLAND={cheeks:[[563.12,578],[701,715.87]],y0:481.5,y1:524.58,front:498.8,top:480.17};
+// Back wall stone, height (m) -> gain over the baked light. Baked irradiance measured on
+// the wall (main run, x 10.1-12.6): 1.73 at 0.95 m, 2.2 at 1.3, 2.57 at 1.5, 3.9 at 1.75,
+// 5.2 at 1.85, 10.8 at 1.95, 19.5 at 2.0, 40.5 at 2.1 (the wash tails off over 60 cm).
+// Render 9 has a bright band only 15-20 cm deep over an even plateau that is a little
+// lighter towards the worktop and 1.3x ours: the product here is 2.9-3.3 from 0.95 to
+// 1.85 m, then the band rises to 4x the plateau (see review-loop/proposals/r7-cocina.md).
+const WALL_GAIN=[[.95,1.7],[1.3,1.48],[1.5,1.3],[1.65,1.02],[1.75,.78],[1.85,.56],[1.95,.4],[2.03,.32],[2.12,.34],[2.17,.42]];
+const curve=(pts,v)=>pts.slice(1).reduce((s,[x,g],i)=>`mix(${s},${g.toFixed(3)},smoothstep(${pts[i][0].toFixed(3)},${x.toFixed(3)},${v}))`,pts[0][1].toFixed(3));
+
+// One random number per connected piece (front, slab, cheek) of a non-indexed geometry,
+// as a vertex attribute: per-piece texture cuts and tones.
+function pieceSeeds(THREE,geo){
+  const pos=geo.getAttribute('position'),n=pos.count,parent=new Int32Array(n).map((_,i)=>i);
+  const find=i=>{while(parent[i]!==i)i=parent[i]=parent[parent[i]];return i;};
+  const join=(a,b)=>{a=find(a);b=find(b);if(a!==b)parent[a]=b;};
+  const at=new Map();
+  for(let i=0;i<n;i++){
+    const k=`${Math.round(pos.getX(i)*4000)},${Math.round(pos.getY(i)*4000)},${Math.round(pos.getZ(i)*4000)}`;
+    const j=at.get(k);if(j===undefined)at.set(k,i);else join(i,j);
+    if(i%3)join(i,i-1);
+  }
+  const seed=new Float32Array(n),hash=r=>{const x=Math.sin(r*12.9898+78.233)*43758.5453;return x-Math.floor(x);};
+  for(let i=0;i<n;i++)seed[i]=hash(find(i));
+  geo.setAttribute('pieceSeed',new THREE.BufferAttribute(seed,1));
+}
+const seedVertex=shader=>{
+  shader.vertexShader='attribute float pieceSeed;\nvarying float vPieceSeed;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvPieceSeed=pieceSeed;');
+  shader.fragmentShader='varying float vPieceSeed;\n'+shader.fragmentShader;
+};
+// Smooth value noise on the shared hash (large-scale cloud in the stone).
+const NOISE=`float cocinaNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+  return mix(mix(hashHouse(i),hashHouse(i+vec2(1,0)),f.x),mix(hashHouse(i+vec2(0,1)),hashHouse(i+vec2(1,1)),f.x),f.y);}
+`;
 
 export async function apply(ctx){
   const {THREE,mats}=ctx;
-  const [stoneMap,stoneNormal]=await Promise.all([
+  const aniso=Math.min(8,ctx.renderer.capabilities.getMaxAnisotropy());
+  const [stoneMap,stoneNormal,oakDiff,oakNor,oakRough]=await Promise.all([
     ctx.loadTexture(`./assets/rooms/cocina/stone.webp?v=${VERSION}`),
-    ctx.loadTexture(`./assets/rooms/cocina/stone_nor.webp?v=${VERSION}`,{srgb:false})]);
+    ctx.loadTexture(`./assets/rooms/cocina/stone_nor.webp?v=${VERSION}`,{srgb:false}),
+    ctx.loadTexture('./assets/polyhaven/oak_veneer_01/oak_veneer_01_diff_2k.webp'),
+    ctx.loadTexture('./assets/polyhaven/oak_veneer_01/oak_veneer_01_nor_gl_2k.webp',{srgb:false}),
+    ctx.loadTexture('./assets/polyhaven/oak_veneer_01/oak_veneer_01_rough_1k.webp',{srgb:false})]);
 
   // --- Stone (back wall lining, worktops, island) -----------------------------------
   const stoneRelief={value:stoneNormal};
+  const [cx0]=ctx.plan(ISLAND.cheeks[0][1],0),[cx1]=ctx.plan(ISLAND.cheeks[1][0],0);
+  const [,frontZ]=ctx.plan(0,ISLAND.front);
   for(const piece of ctx.splitExported({material:'kitchenStone',region:'kitchen',box:ZONE})){
     const m=piece.material,prior=m.onBeforeCompile;
+    pieceSeeds(THREE,piece.geometry);
     m.map=stoneMap;
-    // The island sits in the shade of its worktop; render 9 shows it as light as the wall.
-    // The kitchen's warm baked light over-saturates the cream stone: a slightly cooler tint.
     const island=piece.userData.exported.layer==='island';
-    if(island)m.color.multiply(new THREE.Color().setRGB(1.15,1.22,1.32));
-    else m.color.multiply(new THREE.Color().setRGB(.97,.99,1.04));
+    // The kitchen's warm baked light over-saturates the cream stone: a slightly cooler tint.
+    m.color.multiply(new THREE.Color().setRGB(...(island?[1.0,1.05,1.12]:[.97,1.0,1.06])));
     m.onBeforeCompile=(shader,r)=>{
       prior.call(m,shader,r);
+      seedVertex(shader);
       shader.uniforms.crosscutNormal=stoneRelief;
-      // 2048 px map over a 1.82 m tile (scripts/cocina_textures.py): the shared shader
-      // projects 1.1 tiles per metre.
-      if(!island)shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>',`
-        // Render 9's back wall darkens from the grazing wash at the top towards the
-        // worktop more than our baked light does (a material gain, no light added).
-        diffuseColor.rgb*=mix(.86,1.06,smoothstep(.95,2.1,houseWorld.y));
-        #include <normal_fragment_maps>`);
-      shader.fragmentShader=shader.fragmentShader.replace('#define CROSSCUT_RELIEF 1.0','#define CROSSCUT_RELIEF 0.85')
-        .replace('vec2 ccX=houseWorld.zy*1.1,ccY=houseWorld.xz*1.1,ccZ=houseWorld.xy*1.1;','vec2 ccX=houseWorld.zy*.55,ccY=houseWorld.xz*.55,ccZ=houseWorld.xy*.55;');
+      shader.fragmentShader=shader.fragmentShader.replace('void main() {',NOISE+'void main() {');
+      // 2048 px map over a 1.82 m tile (scripts/cocina_textures.py); each slab its own cut.
+      shader.fragmentShader=shader.fragmentShader.replace('#define CROSSCUT_RELIEF 1.0','#define CROSSCUT_RELIEF 0.95')
+        .replace('vec2 ccX=houseWorld.zy*1.1,ccY=houseWorld.xz*1.1,ccZ=houseWorld.xy*1.1;',`
+          vec2 ccCut=vec2(vPieceSeed,fract(vPieceSeed*17.31))*1.7;
+          vec2 ccX=houseWorld.zy*.55+ccCut,ccY=houseWorld.xz*.55+ccCut.yx,ccZ=houseWorld.xy*.55+ccCut;
+          vec3 ccBase=diffuseColor.rgb;`)
+        // The print read as wallpaper: 40 % less stroke contrast about the map's mean
+        // (linear .722/.603/.472), 30 % less, plus a slab tone and a 1-2 m cloud.
+        .replace('#include <normal_fragment_maps>',`
+        diffuseColor.rgb=mix(ccBase*vec3(.722,.603,.472),diffuseColor.rgb,.7);
+        diffuseColor.rgb*=(1.0+.05*(fract(vPieceSeed*41.7)-.5))*(.95+.1*cocinaNoise(houseWorld.xy*vec2(.9,1.6)+houseWorld.zz*.9));
+        {float vert=1.0-smoothstep(.5,.8,abs(houseNormal.y));
+        ${island?`
+        // Island in the shade of its worktop: the cheeks (x outside the recess) lose the
+        // round-5 boost (render 9: darker than the wall); the recessed front keeps the
+        // bake's own shade under the 36 cm overhang (0.63 at 0.8 m, 1.2 at 0.3 m).
+        float cheek=1.0-step(${cx0.toFixed(3)},houseWorld.x)*step(houseWorld.x,${cx1.toFixed(3)});
+        float recess=(1.0-cheek)*step(${(frontZ-.03).toFixed(3)},houseWorld.z);
+        float body=mix(1.0,.66,cheek)*mix(1.0,1.1,recess)*mix(.8,1.0,smoothstep(.02,.22,houseWorld.y));
+        diffuseColor.rgb*=houseWorld.y>.875?1.9:mix(1.0,body,vert);`:`
+        diffuseColor.rgb*=mix(1.5,${curve(WALL_GAIN,'houseWorld.y')},vert);
+        // Warm golden band under the slot, a calmer cream below (render 9).
+        diffuseColor.rgb*=mix(vec3(1.0),mix(vec3(1.0),vec3(1.05,.98,.86),smoothstep(1.8,2.1,houseWorld.y)),vert);`}}
+        #include <normal_fragment_maps>`)
+        // The slot and the downlights light the stone from above: relief facing up takes
+        // more of the baked light, facing down less (strongest in the grazing wash).
+        .replace('bakedE*=flatLum>1e-4?clamp(sqrt(bumpLum/flatLum),.75,1.35):1.0;}',`bakedE*=flatLum>1e-4?clamp(sqrt(bumpLum/flatLum),.75,1.35):1.0;}
+        {vec3 upV=normalize((viewMatrix*vec4(0.0,1.0,0.0,0.0)).xyz);
+        float rise=dot(normal,upV)-dot(nonPerturbedNormal,upV);
+        float k=${island?'2.0':'mix(2.3,5.0,smoothstep(1.5,2.12,houseWorld.y))'}*(1.0-smoothstep(.5,.8,abs(houseNormal.y)));
+        bakedE*=clamp(1.0+rise*k,.5,1.8);}`);
     };
     m.customProgramCacheKey=()=>'cocina-stone-'+VERSION+(island?'-island':'');
     m.needsUpdate=true;
   }
 
   // --- Oak fronts ---------------------------------------------------------------------
-  const oakMaps=['map','normalMap','roughnessMap'].map(k=>{
-    const t=mats.wood[k].clone();t.repeat.set(1.5,.75);t.needsUpdate=true;return t;
-  });
+  // Oak Veneer 01: 1.83 m square, vertical grain, 2k. Tint keeps r6's mean albedo
+  // (white oak .280/.193/.125 x r6 tint) over this veneer's mean (.361/.212/.099).
+  // Drawn out 3x along the grain: its flat-cut arches become the straight fine grain of
+  // render 9's fronts.
+  for(const t of [oakDiff,oakNor,oakRough]){t.repeat.set(1/1.25,1/5.5);t.anisotropy=aniso;}
   for(const piece of ctx.splitExported({material:'kitchenOak',region:'kitchen',box:ZONE})){
     const m=piece.material,prior=m.onBeforeCompile;
-    [m.map,m.normalMap,m.roughnessMap]=oakMaps;m.normalScale.set(.5,.5);m.bumpMap=null;
-    // Linear tint over the white oak veneer (about .28/.19/.125 linear): warm mid-brown.
-    m.color.setRGB(.98,1.32,1.72);
+    pieceSeeds(THREE,piece.geometry);
+    m.map=oakDiff;m.normalMap=oakNor;m.roughnessMap=oakRough;m.normalScale.set(.55,.55);m.bumpMap=null;
+    m.color.setRGB(.761*1.1,1.2*1.1,2.163*1.1);
     m.onBeforeCompile=(shader,r)=>{
       prior.call(m,shader,r);
-      // Stronger figure: scale by the veneer's own luminance contrast.
+      seedVertex(shader);
+      // Each front its own cut of the veneer (one piece per front, so per-vertex is exact).
+      shader.vertexShader=shader.vertexShader.replace('#include <uv_vertex>',`#include <uv_vertex>
+        {vec2 cut=vec2(pieceSeed,fract(pieceSeed*23.17))*vec2(1.0,1.0);
+        #ifdef USE_MAP
+        vMapUv+=cut;
+        #endif
+        #ifdef USE_NORMALMAP
+        vNormalMapUv+=cut;
+        #endif
+        #ifdef USE_ROUGHNESSMAP
+        vRoughnessMapUv+=cut;
+        #endif
+        }`);
       shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
         #ifdef USE_MAP
-        diffuseColor.rgb*=clamp(pow(dot(sampledDiffuseColor.rgb,vec3(.2126,.7152,.0722))/.20,.25),.75,1.3);
-        #endif`);
+        // Figure a little stronger; each front a touch lighter or darker, as veneer
+        // leaves are; the fronts darken towards the floor (render 9).
+        diffuseColor.rgb*=clamp(pow(dot(sampledDiffuseColor.rgb,vec3(.2126,.7152,.0722))/.2356,.45),.65,1.4);
+        #endif
+        diffuseColor.rgb*=(1.0+.07*(fract(vPieceSeed*29.3)-.5))*mix(.85,1.0,smoothstep(.05,1.1,houseWorld.y));
+        // West run (right of the pose), under the downlight 19 cm from its fronts: render 9
+        // has it lighter at mid height and darker at the foot (measured 84 vs 65 on screen).
+        diffuseColor.rgb*=mix(1.0,1.2*mix(.78,1.0,smoothstep(.3,1.2,houseWorld.y)),step(houseWorld.x,9.5));`);
     };
     m.customProgramCacheKey=()=>'cocina-oak-'+VERSION;
     m.needsUpdate=true;
@@ -122,31 +222,83 @@ export async function apply(ctx){
     }
   }
 
-  stools(ctx);
+  floorContact(ctx);
+  await stools(ctx);
   props(ctx);
-  contactShadows(ctx);
+}
+
+// --- Contact shadows in the floor ---------------------------------------------------------
+// The kitchen floor keeps its baked light and material; its own copy multiplies the light
+// by an analytic occlusion: the island footprint (cheeks and the recessed carcass under
+// the overhang) and, for each stool, its four legs and the soft shade of the seat.
+function floorContact(ctx){
+  const {THREE}=ctx,P=(x,y)=>ctx.plan(x,y).map(v=>v.toFixed(4));
+  const box=(x0,y0,x1,y1)=>{const [a,b]=P(x0,y0),[c,d]=P(x1,y1);return `vec4(${a},${b},${c},${d})`;};
+  const rects=[box(563.12,ISLAND.y0,578,ISLAND.y1),box(701,ISLAND.y0,715.87,ISLAND.y1),box(578,ISLAND.front,701,ISLAND.y1)];
+  const legs=[],seats=[];
+  for(const [x0,x1] of STOOLS){
+    const [x,z]=ctx.plan((x0+x1)/2,479.765);seats.push(`vec2(${x.toFixed(4)},${z.toFixed(4)})`);
+    for(let k=0;k<4;k++){const a=Math.PI/4+k*Math.PI/2;legs.push(`vec2(${(x+STOOL.legR*Math.cos(a)).toFixed(4)},${(z+STOOL.legR*Math.sin(a)).toFixed(4)})`);}
+  }
+  const code=`
+    float cocinaAO=1.0;
+    {vec2 q=houseWorld.xz;
+    float d=1e3;
+    ${rects.map(r=>`{vec4 r=${r};vec2 c=(r.xy+r.zw)*.5,h=abs(r.zw-r.xy)*.5;vec2 o=abs(q-c)-h+.12;d=min(d,length(max(o,0.0))+min(max(o.x,o.y),0.0)-.12);}`).join('\n')}
+    d=max(d,0.0);
+    cocinaAO*=1.0-.38*exp(-d/.04)-.15*exp(-d/.25);
+    ${seats.map(s=>`{float r=length(q-${s});cocinaAO*=1.0-.24*exp(-r*r/.045);}`).join('\n')}
+    ${legs.map(l=>`{float r=length(q-${l});cocinaAO*=1.0-.62*exp(-r*r/.00045)-.18*exp(-r*r/.006);}`).join('\n')}
+    }
+    bakedE*=cocinaAO;radiance*=cocinaAO;`;
+  for(const piece of ctx.splitExported({material:'floor',region:'kitchen',box:[[7.3,-.2,-3.66],[13.4,.2,-.2]]})){
+    const m=piece.material,prior=m.onBeforeCompile;
+    m.onBeforeCompile=(shader,r)=>{
+      prior.call(m,shader,r);
+      shader.fragmentShader=shader.fragmentShader.replace('float inside=max(baked,lpCover);',code+'\nfloat inside=max(baked,lpCover);');
+    };
+    m.customProgramCacheKey=()=>'cocina-floor-'+VERSION;m.needsUpdate=true;
+  }
 }
 
 // --- Stools of render 9 ----------------------------------------------------------------
-function stools(ctx){
+async function stools(ctx){
   const {THREE}=ctx;
   // Drop the exported stools: upholstery (kitchenFabric) and frames (kitchenBronze).
   const [bx0,bz0]=ctx.plan(570,458),[bx1,bz1]=ctx.plan(710,500);
   ctx.removeExported({material:['kitchenFabric','kitchenBronze'],region:'kitchen',box:[[bx0,-.1,bz0],[bx1,1.0,bz1]]});
 
   const S=STOOL;
-  const leather=new THREE.MeshPhysicalMaterial({color:'#8a7e70',roughness:.58,sheen:.35,sheenRoughness:.6,sheenColor:new THREE.Color('#d9cbb8')});
-  leather.map=seamTexture(THREE);leather.bumpMap=leather.map;leather.bumpScale=.25;
+  // Felted wool (Poly Haven Caban, 27 cm tile): its luminance as detail (0.5 = unchanged)
+  // and its normals; matte with a soft sheen, no seams. The colour is a cool grey because
+  // the probe light here is very orange (R/B 4.7): on screen it reads as render 9's taupe.
+  // The undersides fall into the seat's own shade.
+  const [detail,normal]=await Promise.all([
+    ctx.loadTexture('./assets/polyhaven/caban/caban_detail_1k.webp',{srgb:false}),
+    ctx.loadTexture('./assets/polyhaven/caban/caban_nor_gl_1k.webp',{srgb:false})]);
+  for(const t of [detail,normal])t.repeat.set(1/.274,1/.274);
+  const wool=new THREE.MeshPhysicalMaterial({color:'#9e9b9e',roughness:.93,sheen:.3,sheenRoughness:.55,sheenColor:new THREE.Color('#b8b4b0'),
+    map:detail,normalMap:normal,normalScale:new THREE.Vector2(1,1)});
+  wool.onBeforeCompile=shader=>{
+    shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#ifdef USE_MAP
+        diffuseColor.rgb*=texture2D(map,vMapUv).r*2.0;
+      #endif`).replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+      diffuseColor.rgb*=mix(.55,1.0,smoothstep(-.7,.45,inverseTransformDirection(normal,viewMatrix).y));`);
+  };
+  wool.customProgramCacheKey=()=>'cocina-wool-'+VERSION;
   // Satin brass: part metallic, so the probe light (not only the dim reflection probe)
-  // gives it its golden mid-tone.
-  const brass=new THREE.MeshStandardMaterial({color:'#9d8a66',metalness:.5,roughness:.34});
+  // gives it its golden mid-tone. Render 9's is an aged, darker bronze-brass.
+  const brass=new THREE.MeshStandardMaterial({color:'#a39a72',metalness:.6,roughness:.4});
+  const glide=new THREE.MeshStandardMaterial({color:'#2a2622',roughness:.6});
 
   // One stool in local space (back towards -z, the camera side; it faces the island at +z).
   const soft=[seat(THREE,S),back(THREE,S)];
   const metal=[];
   const ring=new THREE.TorusGeometry(S.ringR,S.tube,10,72);ring.rotateX(Math.PI/2);ring.translate(0,S.ringY,0);metal.push(ring);
   const legs=[0,1,2,3].map(k=>{const a=Math.PI/4+k*Math.PI/2;return [S.legR*Math.cos(a),S.legR*Math.sin(a)];});
-  for(const [x,z] of legs)metal.push(rod(THREE,[x,.004,z],[x,S.ringY,z],S.tube*1.1,12));
+  for(const [x,z] of legs)metal.push(rod(THREE,[x,.007,z],[x,S.ringY,z],S.tube*1.1,12));
+  // Floor glides: the legs stand on the floor, not just above it.
+  const feet=mergeGeometries(legs.map(([x,z])=>new THREE.CylinderGeometry(S.tube*1.25,S.tube*1.35,.007,12).translate(x,.0035,z)));
   for(let k=0;k<4;k++){
     const [ax,az]=legs[k],[cx,cz]=legs[(k+1)%4];
     metal.push(rod(THREE,[ax,S.footY,az],[cx,S.footY,cz],S.tube*.85,10));
@@ -156,13 +308,13 @@ function stools(ctx){
     const r=S.backR;metal.push(rod(THREE,[r*Math.cos(a),S.ringY,r*Math.sin(a)],[r*Math.cos(a),S.backY-S.backH*.6,r*Math.sin(a)],S.tube*.8,8));
   }
   const softOne=mergeGeometries(soft),metalOne=mergeGeometries(metal);
-  const all={soft:[],metal:[]};
+  const all={soft:[],metal:[],feet:[]};
   for(const [x0,x1] of STOOLS){
     const [x,z]=ctx.plan((x0+x1)/2,479.765);
-    all.soft.push(softOne.clone().translate(x,0,z));all.metal.push(metalOne.clone().translate(x,0,z));
+    all.soft.push(softOne.clone().translate(x,0,z));all.metal.push(metalOne.clone().translate(x,0,z));all.feet.push(feet.clone().translate(x,0,z));
   }
   const g=new THREE.Group();g.name='Cocina taburetes';
-  g.add(new THREE.Mesh(mergeGeometries(all.soft),leather),new THREE.Mesh(mergeGeometries(all.metal),brass));
+  g.add(new THREE.Mesh(mergeGeometries(all.soft),wool),new THREE.Mesh(mergeGeometries(all.metal),brass),new THREE.Mesh(mergeGeometries(all.feet),glide));
   ctx.group.add(g);ctx.lightRuntimeObject(g);
 }
 
@@ -211,13 +363,6 @@ function back(THREE,S){
     const a=-Math.PI/2+phi;return [(r+dr)*Math.cos(a),y+dy,(r+dr)*Math.sin(a)];
   };
   return parametric(THREE,P,48,16,(u,v)=>[u*2*span*r/.32*1.25,v*.35]);
-}
-// Vertical stitched panels on the upholstery (luminance + bump).
-function seamTexture(THREE){
-  const c=document.createElement('canvas');c.width=256;c.height=64;const g=c.getContext('2d');
-  g.fillStyle='#fff';g.fillRect(0,0,256,64);
-  for(let i=0;i<4;i++){const x=i*64+1;g.fillStyle='rgba(150,140,130,.7)';g.fillRect(x-1,0,2,64);g.fillStyle='rgba(225,220,215,.5)';g.fillRect(x-3,0,2,64);g.fillRect(x+1,0,2,64);}
-  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;
 }
 // Cylinder between two points.
 function rod(THREE,a,b,r,seg){
@@ -292,35 +437,3 @@ function props(ctx){
   ctx.group.add(g);ctx.lightRuntimeObject(g);
 }
 
-// --- Contact shadows ---------------------------------------------------------------------
-function contactShadows(ctx){
-  const {THREE}=ctx;
-  const blob=blurTexture(THREE,128,128,.0,.5),slab=blurTexture(THREE,512,160,.14,.16);
-  const decal=(tex,x,z,w,d,opacity,y=.0015)=>{
-    const m=new THREE.Mesh(new THREE.PlaneGeometry(w,d),new THREE.MeshBasicMaterial({map:tex,color:'#1c140d',transparent:true,opacity,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
-    m.rotation.x=-Math.PI/2;m.position.set(x,y,z);m.renderOrder=-1;m.name='cocina:sombra';ctx.group.add(m);
-  };
-  const S=STOOL;
-  for(const [x0,x1] of STOOLS){
-    const [x,z]=ctx.plan((x0+x1)/2,479.765);
-    decal(blob,x,z,.66,.66,.42);
-    for(let k=0;k<4;k++){const a=Math.PI/4+k*Math.PI/2;decal(blob,x+S.legR*Math.cos(a),z+S.legR*Math.sin(a),.07,.07,.75);}
-  }
-  // Island base (stone ends and recessed front between them), soft and wide.
-  const [ix0,iz0]=ctx.plan(563.12,481.5),[ix1,iz1]=ctx.plan(715.87,524.58);
-  decal(slab,(ix0+ix1)/2,(iz0+iz1)/2,(ix1-ix0)+.26,(iz1-iz0)+.26,.85);
-}
-// White rounded rectangle blurred to transparent edges (alpha in the colour map).
-function blurTexture(THREE,w,h,inset,blur){
-  const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');
-  if(!inset){
-    const grad=g.createRadialGradient(w/2,h/2,0,w/2,h/2,w/2);
-    for(const [s,a] of [[0,1],[.35,.78],[.6,.4],[.82,.12],[1,0]])grad.addColorStop(s,`rgba(255,255,255,${a})`);
-    g.fillStyle=grad;g.fillRect(0,0,w,h);
-  }else{
-    const m=Math.min(w,h),pad=m*inset;
-    g.filter=`blur(${m*blur*.5}px)`;g.fillStyle='#fff';
-    g.beginPath();g.roundRect(pad,pad,w-2*pad,h-2*pad,m*.12);g.fill();
-  }
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
-}

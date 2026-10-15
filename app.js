@@ -431,6 +431,14 @@ async function exterior(){
     mesh.position.set(x,eye+(.41-.5)*h,z);mesh.rotation.y=rot;scene.add(mesh);
   }
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(260,260),material('#73826a'));ground.rotation.x=-Math.PI/2;ground.position.set(8,-22,-20);scene.add(ground);
+  // Sky behind the two photographs: where they end, views read the flat background as
+  // an overexposed card. A vertical gradient (soft blue zenith, light warm horizon at
+  // eye level, hazy ground) at display brightness like the photos.
+  {const c=document.createElement('canvas');c.width=4;c.height=512;const g=c.getContext('2d'),gr=g.createLinearGradient(0,0,0,512);
+    for(const [t,col] of [[0,'#7f9bb3'],[.30,'#a3b8c8'],[.47,'#c9d2d6'],[.5,'#d6d6cf'],[.515,'#b9b6a6'],[.6,'#8f927f'],[1,'#6e7663']])gr.addColorStop(t,col);
+    g.fillStyle=gr;g.fillRect(0,0,4,512);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;
+    const dome=new THREE.Mesh(new THREE.SphereGeometry(150,32,24),new THREE.MeshBasicMaterial({map:tex,side:THREE.BackSide,toneMapped:false,depthWrite:false}));
+    dome.position.set(8,eye,-6);dome.renderOrder=-1;scene.add(dome);}
 }
 
 function pause(){

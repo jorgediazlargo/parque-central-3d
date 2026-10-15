@@ -1,5 +1,26 @@
 [
   {
+    "asset": "caban",
+    "name": "Caban",
+    "type": "texture",
+    "authors": [
+      "Rico Cilliers",
+      "colormass"
+    ],
+    "url": "https://polyhaven.com/a/caban",
+    "license": "CC0",
+    "resolution": "1k",
+    "files": [
+      "assets/polyhaven/caban/caban_detail_1k.webp",
+      "assets/polyhaven/caban/caban_nor_gl_1k.webp"
+    ],
+    "bytes": 444192,
+    "rooms": [
+      "cocina"
+    ],
+    "derived": "converted for dist/rooms/cocina.mjs: luminance detail, normal as WebP"
+  },
+  {
     "asset": "ceramic_vase_01",
     "name": "Ceramic Vase 01",
     "type": "model",
@@ -75,6 +96,27 @@
       "cocina"
     ],
     "derived": "scripts/derive_polyhaven.py: colour (contrast x2.2), normal, roughness as WebP"
+  },
+  {
+    "asset": "oak_veneer_01",
+    "name": "Oak Veneer 01",
+    "type": "texture",
+    "authors": [
+      "Jenelle van Heerden"
+    ],
+    "url": "https://polyhaven.com/a/oak_veneer_01",
+    "license": "CC0",
+    "resolution": "2k",
+    "files": [
+      "assets/polyhaven/oak_veneer_01/oak_veneer_01_diff_2k.webp",
+      "assets/polyhaven/oak_veneer_01/oak_veneer_01_nor_gl_2k.webp",
+      "assets/polyhaven/oak_veneer_01/oak_veneer_01_rough_1k.webp"
+    ],
+    "bytes": 1526294,
+    "rooms": [
+      "cocina"
+    ],
+    "derived": "converted for dist/rooms/cocina.mjs: colour, roughness, normal as WebP (roughness at 1k)"
   },
   {
     "asset": "rough_linen",

@@ -11,17 +11,35 @@
 // Round 6: about 2.3k triangles per chair (analytic normals keep them smooth) and all
 // six merged into one mesh per material; the decals are one mesh too.
 //
-// Raised ceiling (render 2): its cove is baked about five times brighter than the
-// render's, so the whole 1.2 m strip clipped to a flat white cut-out. The bake keeps
-// the right fall-off (edge ~40, 0.3 m ~13, centre ~6.5 against ~1.5 on the lower
-// ceiling); only the cove's share above the room's ambient is scaled down here, so the
-// wash grades from a bright edge to the ceiling tone as in the render.
+// Round 7 (render 2):
+// - Linear wall light. model_source places it (and the two relief panels) 1-4 cm
+//   behind the finished east wall face (x 12.967), so it was never seen nor baked.
+//   It is drawn here on that face (bronze bar, LED underside) and its grazing wash is
+//   added to the baked light of the wall in the shader (closed form of a line source
+//   4.5 cm off the wall, strong downward, weaker upward, fanning out at the ends; the
+//   plaster relief catches it). Relative to the wall's own baked light, so it holds
+//   if the bake changes.
+// - Table top rebuilt (the exported one had stretched, vertical grain on its edge):
+//   100 x 237 cm, R 10 cm corners, crisp 2 cm edge with a rounded arris and an
+//   undercut below, oak veneer running the length on the top and round the edge.
+// - Contact: chairs darken where they tuck under the top and on their undersides
+//   (vertex occlusion); deeper shadow under the top and at the pedestals.
 
 // Seat centres of the six exported chairs (world metres, measured from house.bin) and
 // which side their back is on: west row backs to -x, east row to +x.
 const CHAIRS=[[11.352,-7.070,-1],[11.078,-6.440,-1],[11.352,-5.810,-1],[12.182,-7.070,1],[12.182,-6.440,1],[12.182,-5.810,1]];
 const PEDESTALS=[[11.767,-7.137],[11.767,-5.740]];
 const TABLE={x0:11.267,x1:12.267,z0:-7.625,z1:-5.255};
+
+// Finished east wall face and the wall light on it (model_source 'Aplique comedor').
+const WALL_X=12.967;
+const SCONCE={z0:-7.661,z1:-5.488,y0:1.730,y1:1.756,depth:.025};
+// Wash relative to the wall's baked light: a tight grazing term (source d metres off
+// the wall, peak gain at the bar) and a broad one (light bounced off floor and table).
+// base: the bake lights this wall about 20 % above render 2 (daylight from the facade,
+// the render is an evening scene), which left the wall a flat bright plane.
+const WASH={y:1.735,tight:{d:.045,down:12.0,up:8.0},broad:{d:.3,down:.25,up:.08},base:.85,color:[1,.80,.60]};
+const TOP={y0:.715,y1:.76,r:.10,arris:.004,edge:.02,under:.03};
 
 const SEAT={r:.215,squash:.95,top:.474,bottom:.392,edge:.042,foot:.012};
 const BACK={r:.218,half:62*Math.PI/180,cap:.075,thick:.025,height:.088,y:.716,lean:.14,n:3.2};
@@ -54,8 +72,9 @@ export async function apply(ctx){
       metal.push([legGeo,m.copy(chair).multiply(rod(THREE,[px-.035,0,pz*1.06],[px+.006,BACK.y,pz]))]);
     }
   }
+  const clothGeo=merge(THREE,cloth);occlude(THREE,clothGeo);fabric.vertexColors=true;
   const chairs=new THREE.Group();chairs.name='comedor:sillas';
-  chairs.add(new THREE.Mesh(merge(THREE,cloth),fabric),new THREE.Mesh(merge(THREE,metal),legs));
+  chairs.add(new THREE.Mesh(clothGeo,fabric),new THREE.Mesh(merge(THREE,metal),legs));
   chairs.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;}});
   ctx.group.add(chairs);ctx.lightRuntimeObject(chairs);
 
@@ -76,27 +95,120 @@ export async function apply(ctx){
       decal(x+cos*(px-.035),z+cos*pz*1.06,.075,.075,.7);
     }
   }
-  for(const [x,z] of PEDESTALS)decal(x,z,.62,.62,.45);
-  decal((TABLE.x0+TABLE.x1)/2,(TABLE.z0+TABLE.z1)/2,(TABLE.x1-TABLE.x0)*1.15,(TABLE.z1-TABLE.z0)*1.06,.16);
+  for(const [x,z] of PEDESTALS){decal(x,z,.62,.62,.5);decal(x,z,.42,.42,.55);}
+  decal((TABLE.x0+TABLE.x1)/2,(TABLE.z0+TABLE.z1)/2,(TABLE.x1-TABLE.x0)*1.25,(TABLE.z1-TABLE.z0)*1.1,.34);
   const shadow=new THREE.Mesh(merge(THREE,decals.map(g=>[g,null]),['position','uv','color']),new THREE.MeshBasicMaterial({map:shadowTexture(THREE),color:'#1c140d',vertexColors:true,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,toneMapped:true}));
   shadow.renderOrder=-1;shadow.name='comedor:sombra';ctx.group.add(shadow);
+
+  tableTop(ctx);
+  wallLight(ctx);
 }
 
-// Raised dining ceiling (house.json coves[1], 2.55 m) and its riser faces: the baked
-// irradiance above the room's ambient (the cove's own share) is scaled down.
-const COVE_BOX=[[11.10,2.31,-7.94],[12.44,2.70,-4.68]];
-const COVE_AMBIENT=2.0,COVE_GAIN=.3;
-function coveWash(ctx){
-  for(const piece of ctx.splitExported({material:'wall',box:COVE_BOX})){
+// Table top: the exported slab goes; a new one with a crisp edge and veneer grain.
+function tableTop(ctx){
+  const {THREE}=ctx;
+  ctx.removeExported({material:'wood',box:[[TABLE.x0-.05,TOP.y0-.02,TABLE.z0-.05],[TABLE.x1+.05,TOP.y1+.01,TABLE.z1+.05]]});
+  const cx=(TABLE.x0+TABLE.x1)/2,cz=(TABLE.z0+TABLE.z1)/2,hx=(TABLE.x1-TABLE.x0)/2,hz=(TABLE.z1-TABLE.z0)/2,R=TOP.r;
+  // Rounded-rectangle outline inset by o: points, outward normals, arc length.
+  const outline=o=>{
+    const pts=[];
+    for(const [sx,sz,a0] of [[1,1,0],[-1,1,Math.PI/2],[-1,-1,Math.PI],[1,-1,1.5*Math.PI]])
+      for(let k=0;k<=8;k++){const a=a0+k/8*Math.PI/2,c=Math.cos(a),s=Math.sin(a);pts.push([cx+sx*(hx-R)+(R-o)*c,cz+sz*(hz-R)+(R-o)*s,c,s]);}
+    pts.push(pts[0]);
+    let s=0;return pts.map((p,i)=>{if(i)s+=Math.hypot(p[0]-pts[i-1][0],p[1]-pts[i-1][1]);return [...p,s];});
+  };
+  // Edge profile (inset, height, normal out, normal up): rounded arris, straight edge,
+  // undercut to the underside.
+  const {y0,y1,arris:ra,edge,under}=TOP,prof=[];
+  for(let k=0;k<=4;k++){const a=Math.PI/2*(1-k/4);prof.push([ra-ra*Math.cos(a),y1-ra+ra*Math.sin(a),Math.cos(a),Math.sin(a)]);}
+  prof.push([0,y1-edge,1,0]);
+  const ux=under,uy=y1-edge-y0,ul=Math.hypot(ux,uy);
+  prof.push([0,y1-edge,uy/ul,-ux/ul],[under,y0,uy/ul,-ux/ul]);
+  const pos=[],nor=[],uv=[],idx=[],ring=outline(0).length;
+  let along=0;
+  for(let j=0;j<prof.length;j++){
+    const [o,y,no,nu]=prof[j];if(j)along+=Math.hypot(o-prof[j-1][0],y-prof[j-1][1]);
+    for(const [x,z,c,s,len] of outline(o)){pos.push(x,y,z);nor.push(c*no,nu,s*no);uv.push(along,len);}
+  }
+  for(let j=0;j<prof.length-1;j++)for(let i=0;i<ring-1;i++){const k=j*ring+i;idx.push(k,k+1,k+ring,k+1,k+ring+1,k+ring);}
+  // Caps: top (veneer along the length: v runs with z) and underside.
+  for(const [o,y,up] of [[ra,y1,1],[under,y0,-1]]){
+    const base=pos.length/3,ol=outline(o).slice(0,-1);
+    pos.push(cx,y,cz);nor.push(0,up,0);uv.push(cx,cz);
+    for(const [x,z] of ol){pos.push(x,y,z);nor.push(0,up,0);uv.push(x,z);}
+    for(let i=0;i<ol.length;i++){const a=base+1+i,b=base+1+(i+1)%ol.length;idx.push(...(up>0?[base,b,a]:[base,a,b]));}
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
+  g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  g.setIndex(idx);g.computeBoundingSphere();
+  // Honey white oak of render 2, satin (catches the cove in a soft sheen).
+  const oak=ctx.cloneMaterial(ctx.mats.wood);oak.color.set('#e8d6c0');oak.roughness=.5;oak.normalScale.set(.6,.6);
+  const top=new THREE.Mesh(g,oak);top.name='comedor:mesa';top.castShadow=top.receiveShadow=false;
+  ctx.group.add(top);ctx.lightRuntimeObject(top);
+}
+
+// Linear wall light on the east wall and its wash on the plaster.
+function wallLight(ctx){
+  const {THREE}=ctx,{z0,z1,y0,y1,depth}=SCONCE,len=z1-z0;
+  const bronze=ctx.cloneMaterial(ctx.mats.bronze);bronze.roughness=.42;
+  const bar=new THREE.Mesh(new THREE.BoxGeometry(depth,y1-y0,len),bronze);
+  bar.position.set(WALL_X-depth/2,(y0+y1)/2,(z0+z1)/2);bar.name='comedor:aplique';
+  ctx.group.add(bar);ctx.lightRuntimeObject(bar);
+  const led=new THREE.Mesh(new THREE.PlaneGeometry(.012,len-.02).rotateX(Math.PI/2),ctx.mats.led);
+  led.position.set(WALL_X-depth/2,y0-.0005,(z0+z1)/2);led.name='comedor:aplique LED';ctx.group.add(led);
+
+  // Grazing wash: a uniform line source at distance d from the wall, emitting up or
+  // down (cosine about the vertical). On the wall, E ~ d|dy| * integral of dz/r^4 over
+  // the bar, in closed form; normalised to 1 at its peak (|dy| = d/sqrt2, mid-bar).
+  const f=(d,dy)=>d*Math.abs(dy)*Math.PI/2/Math.pow(dy*dy+d*d,1.5);
+  const term=({d,down,up},name)=>{
+    const peak=f(d,d/Math.SQRT2);
+    return `{float d=${d.toFixed(3)},r2=dy*dy+d*d,r=sqrt(r2);
+      float u1=${z1.toFixed(3)}-houseWorld.z,u0=${z0.toFixed(3)}-houseWorld.z;
+      float G=u1/(2.0*r2*(r2+u1*u1))+atan(u1/r)/(2.0*r2*r)-u0/(2.0*r2*(r2+u0*u0))-atan(u0/r)/(2.0*r2*r);
+      ${name}+=(dy<0.0?${down.toFixed(3)}:${up.toFixed(3)})*d*abs(dy)*G/${peak.toFixed(4)};}`;
+  };
+  const [cr,cg,cb]=WASH.color;
+  for(const piece of ctx.splitExported({material:'wall',box:[[WALL_X-.02,-.1,-8.8],[WALL_X+.02,2.6,-4.7]]})){
     const mat=piece.material,prev=mat.onBeforeCompile,key=mat.customProgramCacheKey();
     mat.onBeforeCompile=function(shader,renderer){
       prev.call(this,shader,renderer);
       shader.fragmentShader=shader.fragmentShader.replace(/(vec3 bakedE=bakedSqrt\*bakedSqrt\*[\d.]+;)/,`$1
-        {float coveL=dot(bakedE,vec3(.2126,.7152,.0722));
-        bakedE*=coveL>${COVE_AMBIENT.toFixed(2)}?(${COVE_AMBIENT.toFixed(2)}+${COVE_GAIN.toFixed(2)}*(coveL-${COVE_AMBIENT.toFixed(2)}))/coveL:1.0;}`);
+        if(houseNormal.x<-.5){
+          float dy=houseWorld.y-${WASH.y.toFixed(3)},tight=0.0,broad=0.0;
+          ${term(WASH.tight,'tight')}
+          ${term(WASH.broad,'broad')}
+          // Grazing light shows the plaster relief: perturbed against flat normal.
+          vec3 sconceL=normalize(vec3(-${WASH.tight.d.toFixed(3)},-dy,0.0));
+          vec3 sconceN=inverseTransformDirection(normal,viewMatrix);
+          float relief=clamp(max(dot(sconceN,sconceL),0.0)/max(dot(normalize(houseNormal),sconceL),.05),.55,1.8);
+          bakedE*=${WASH.base.toFixed(2)};
+          bakedE+=vec3(${cr.toFixed(2)},${cg.toFixed(2)},${cb.toFixed(2)})*dot(bakedE,vec3(.2126,.7152,.0722))*(tight*relief+broad);
+        }`);
     };
-    mat.customProgramCacheKey=()=>key+'-comedorCove';mat.needsUpdate=true;
+    mat.customProgramCacheKey=()=>key+'-comedorSconce';mat.needsUpdate=true;
   }
+}
+
+// Vertex occlusion of the merged upholstery (world space): undersides and the seat
+// edge darken; seats tucked under the table top lose most of the ceiling light.
+function occlude(THREE,g){
+  const p=g.getAttribute('position'),n=g.getAttribute('normal'),col=new Float32Array(p.count*3);
+  const s=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t);};
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i),y=p.getY(i),z=p.getZ(i),ny=n.getY(i);
+    let ao=1;
+    if(y<.5){ao=ny<-.5?.5:.62+.38*s(SEAT.bottom+.01,SEAT.top-.01,y);}
+    else ao=.8+.2*s(BACK.y-BACK.height*.8,BACK.y+BACK.height*.9,y);
+    if(y<TOP.y0){
+      const inside=Math.min(x-TABLE.x0,TABLE.x1-x,z-TABLE.z0,TABLE.z1-z);
+      ao*=1-.4*s(-.05,.12,inside);
+    }
+    col[i*3]=col[i*3+1]=col[i*3+2]=ao;
+  }
+  g.setAttribute('color',new THREE.BufferAttribute(col,3));
 }
 
 // Concatenates [geometry, matrix|null] pairs (non-indexed or indexed) into one geometry.

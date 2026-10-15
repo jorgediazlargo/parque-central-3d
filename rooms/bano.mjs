@@ -39,7 +39,10 @@ export async function apply(ctx){
   const profile=[
     [.115,.004],[.092,.012],[.068,.03],[.048,.06],[.032,.10],[.020,.16],[.011,.24],[.005,.33],[.0015,.43],[0,.50],[0,.535],
     [.002,.553],[.007,.563],[.014,H],[.022,H],[.029,.562],[.033,.552],
-    [.035,.53],[.038,.46],[.043,.39],[.052,.32],[.066,.25],[.087,.19],[.115,.145],[.15,.115],[.19,.098],[.225,.092]
+    // Bowl: an elliptical quadrant from the wall under the lip to the flat floor (round
+    // 7: the tighter bend at the bottom drew a dark crease that outlined the floor like
+    // a seat cut-out from the closet).
+    ...Array.from({length:12},(_,k)=>{const a=k/11*Math.PI/2;return [.035+.19*(1-Math.cos(a)),.092+.438*(1-Math.sin(a))];})
   ];
   const rimIndex=14;
   const pos=[],col=[],uv=[],idx=[];
@@ -47,7 +50,9 @@ export async function apply(ctx){
   profile.forEach(([d,y],j)=>{
     const inner=j>rimIndex+2;
     // Rim slightly brighter than both walls so the slim lip reads as a line.
-    const ao=inner?.40+.34*smooth(.08,.52,y):j>=rimIndex-2&&j<=rimIndex+2?1.12:.50+.30*smooth(0,.22,y);
+    // Round 7: more contrast between the shaded bowl and the lit crown, so from the
+    // closet (near end out of frame) the far rim reads as a thin lip over a bowl.
+    const ao=inner?.28+.40*smooth(.10,.52,y)-(j===rimIndex+3?.06:0):j>=rimIndex-1&&j<=rimIndex+1?1.18:j===rimIndex-2||j===rimIndex+2?1.0:.48+.30*smooth(0,.22,y);
     for(let i=0;i<N;i++){
       const t=i/N*Math.PI*2,[ox,oz]=outline(t);
       pos.push(cx+(A-d)*ox,y,cz+(B-d)*oz);col.push(ao,ao,ao);uv.push(i/N*6,y*1.6+j*.002);
@@ -59,7 +64,7 @@ export async function apply(ctx){
   }
   // Flat centre of the bowl.
   const last=(profile.length-1)*N,centre=pos.length/3,yb=profile[profile.length-1][1];
-  pos.push(cx,yb,cz);col.push(.44,.44,.44);uv.push(0,0);
+  pos.push(cx,yb,cz);col.push(.27,.27,.27);uv.push(0,0);
   for(let i=0;i<N;i++)idx.push(centre,last+i,last+(i+1)%N);
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
@@ -85,6 +90,12 @@ export async function apply(ctx){
   const resin=new THREE.MeshStandardMaterial({color:'#efe5d8',map:tex,vertexColors:true,roughness:.5,
     envMapIntensity:.7,side:THREE.DoubleSide});
   const tub=new THREE.Mesh(geo,resin);tub.name='Banera exenta resina';
+  // Brass waste at the west end of the bowl's flat floor: from the closet, whose view
+  // looks down into the tub, it says bath at once.
+  {
+    const drain=new THREE.Mesh(new THREE.CylinderGeometry(.034,.037,.006,32),new THREE.MeshPhysicalMaterial({color:'#d9c29a',metalness:1,roughness:.22,envMapIntensity:1.6}));
+    drain.position.set(cx-.32,yb+.002,cz);drain.name='Banera desague';group.add(drain);
+  }
   tub.castShadow=tub.receiveShadow=true;group.add(tub);
 
   // Contact shadow on the floor (the tub is lit by probes, which cannot occlude).
@@ -158,17 +169,18 @@ export async function apply(ctx){
   };
   const cyl=(r,h,x,y,z,rx=0,rz=0,r2=r)=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r2,h,24),bronze);m.position.set(x,y,z);m.rotation.set(rx,0,rz);group.add(m);return m;};
 
-  // Floor-standing bath mixer, near side, right end (render 5): a stout column on a
-  // floor rose with its own contact shadow, so it stands on the floor beside the tub.
+  // Floor-standing bath mixer at the near right corner of the tub, as in render 5: a
+  // slender 19 mm column 1.02 m tall on a small floor rose, 10 cm off the tub's wall,
+  // its gooseneck arching over the rim so the spout hangs 5 cm inside the bowl. Round 7:
+  // the round-6 mixer (38 mm, 0.9 m from the camera) was huge in the bath view and
+  // floated apart from the tub in the closet view; this one hugs the tub's wall.
   {
-    // Screen right is west (the view looks south). Column just off the near wall,
-    // gooseneck arching over the rim into the tub.
-    const u=.65,bx=cx-(A*u),bz=-4.09,dir=V(.3,0,1).normalize();   // 10 cm off the wall, inside the zone (z > -4.15)
-    cyl(.05,.008,bx,.004,bz,0,0,.055);cyl(.028,.05,bx,.033,bz,0,0,.034);   // floor rose + collar
-    gooseneck('Grifo banera exento',V(bx,.05,bz),.98,dir,.12,.06,.019);
-    cyl(.026,.13,bx,.80,bz);                                               // mixer body
-    const lever=cyl(.0075,.065,bx-.035,.84,bz-.01,0,Math.PI/2-.25);lever.rotation.y=-.9;
-    contact(bx,.0035,bz,.15,.15,.75);
+    const bx=2.10,bz=-4.10,dir=V(.6,0,.8);
+    cyl(.034,.007,bx,.0035,bz,0,0,.038);cyl(.0135,.035,bx,.024,bz,0,0,.016);   // floor rose + collar
+    gooseneck('Grifo banera exento',V(bx,.04,bz),.92,dir,.10,.06,.0095);
+    cyl(.0155,.10,bx,.70,bz);cyl(.0105,.012,bx,.756,bz,0,0,.0155);         // mixer body + cap
+    const lever=cyl(.005,.06,bx-.03,.735,bz-.02,0,Math.PI/2-.2);lever.rotation.y=.6;
+    contact(bx,.0035,bz,.07,.07,.7);
   }
   // Vanity gooseneck mixers with a lever beside each, contact shadows on the stone.
   // As in render 5 the neck turns towards screen right (west) over the basin, so it
@@ -210,6 +222,46 @@ export async function apply(ctx){
       const k=new THREE.Mesh(new THREE.CylinderGeometry(.012,.013,.03,16),cap);k.position.set(x,.85+.19*h+.015,z);group.add(k);
       const p=new THREE.Mesh(new THREE.CylinderGeometry(.004,.004,.035,8),cap);p.position.set(x,.85+.19*h+.04,z);p.rotation.z=Math.PI/2.2;p.position.x-=.01;group.add(p);
       contact(x,.8505,z,.05,.05,.55);
+    }
+  }
+
+  // --- Shower door: satin smoked glass in a dark frame -------------------------------
+  // Round 6 critics: the clear leaf showed the shower's back wall as a flat, blown-out
+  // white panel. Its own glass: a warm smoked satin body that takes half the light
+  // (the shower behind is only hinted), slightly blurred room reflections at full
+  // strength, and a dark bronze frame and pull. Doors are probe-lit after the modules.
+  {
+    const door=ctx.doors.find(d=>d.name==='Ducha suite');
+    if(door){
+      const glass=ctx.cloneMaterial(ctx.mats.glass);
+      glass.color.set('#a39584');glass.opacity=.52;glass.roughness=.14;
+      // Body shading in the leaf's own metres (box UVs are local x, y): light falling
+      // off from the downlights at the top and a soft diagonal sheen across the pane.
+      {
+        const w=128,h=512,c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');
+        const v=g.createLinearGradient(0,0,0,h);v.addColorStop(0,'#fff');v.addColorStop(.35,'#e2ddd6');v.addColorStop(1,'#a8a197');
+        g.fillStyle=v;g.fillRect(0,0,w,h);
+        g.globalCompositeOperation='lighter';g.filter='blur(14px)';
+        g.fillStyle='rgba(80,75,70,.55)';g.beginPath();g.moveTo(0,h*.42);g.lineTo(w,h*.22);g.lineTo(w,h*.34);g.lineTo(0,h*.56);g.fill();
+        g.fillStyle='rgba(55,52,48,.5)';g.beginPath();g.moveTo(0,h*.60);g.lineTo(w,h*.43);g.lineTo(w,h*.46);g.lineTo(0,h*.64);g.fill();
+        const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
+        const lw=Math.hypot(door.b[0]-door.a[0],door.b[1]-door.a[1]);
+        t.repeat.set(1/lw,1/door.height);t.offset.set(.5,.5);   // box UVs are centred on the pane
+        glass.map=t;
+      }
+      const prior=glass.onBeforeCompile;
+      glass.onBeforeCompile=(shader,r)=>{
+        prior.call(glass,shader,r);
+        // Room reflections at full strength (the stock glass keeps 60 %).
+        shader.fragmentShader=shader.fragmentShader.replace('totalSpecular*.6','totalSpecular*1.0');
+      };
+      glass.customProgramCacheKey=()=>'glass|bano-shower';
+      const frame=ctx.cloneMaterial(ctx.mats.bronze);frame.color.set('#2a221c');frame.roughness=.38;
+      for(const g of door.groups)g.traverse(o=>{
+        if(!o.isMesh)return;
+        if(o.material===ctx.mats.glass)o.material=glass;
+        else if(o.material===ctx.mats.bronze)o.material=frame;
+      });
     }
   }
 
@@ -288,6 +340,7 @@ export async function apply(ctx){
   for(const o of group.children)if(o.isMesh&&!shadows.includes(o)&&o.name!=='Banera sombra contacto'&&!o.userData.exported)
     ctx.lightRuntimeObject(o,{strength:o===tub?1.0:1});
   tub.material=liftProbes(ctx.cloneMaterial(tub.material));
+  {const drain=group.getObjectByName('Banera desague');drain.material=liftProbes(ctx.cloneMaterial(drain.material));}
   // Brass highlight: the room probe (128 px, soft) cannot give the crisp streaks of
   // the downlights that make the brass of render 5 read as solid metal. A virtual
   // light above and in front of the viewer adds them, scaled by the probe light.

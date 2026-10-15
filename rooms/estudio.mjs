@@ -19,6 +19,7 @@ export async function apply(ctx){
   screen(ctx,THREE);
   chairs(ctx,THREE);
   deskWall(ctx,THREE);
+  decor(ctx,THREE);
 }
 
 // --- Screen -------------------------------------------------------------------------
@@ -34,8 +35,27 @@ function screen(ctx,THREE){
   // the plaster (the bronze-dark profiles read as a wireframe). Vertex shade: the faces
   // keep full colour, the rounded edges and returns fall off, so each member shows
   // its section.
-  const oak=ctx.cloneMaterial(frame);
-  oak.color.set('#917a66');oak.metalness=0;oak.roughness=.38;oak.vertexColors=true;
+  // Round 7: the house's photographed oak veneer (grain along each member, its normal
+  // and roughness for the satin sheen), tinted to the mid oak of render 4 and with the
+  // grain contrast raised (the veneer is very even at 2 cm width).
+  const oak=ctx.cloneMaterial(frame),wood=ctx.mats.wood;
+  oak.color.set('#b2ab9c');oak.metalness=0;oak.roughness=.6;oak.vertexColors=true;
+  if(wood.map){oak.map=wood.map;oak.normalMap=wood.normalMap;oak.roughnessMap=wood.roughnessMap;oak.normalScale=new THREE.Vector2(.7,.7);}
+  {
+    const prior=oak.onBeforeCompile,priorKey=oak.customProgramCacheKey?.bind(oak);
+    oak.onBeforeCompile=(shader,r)=>{
+      prior.call(oak,shader,r);
+      shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#ifdef USE_MAP
+        {vec3 oakT=texture2D(map,vMapUv).rgb;
+        // Grain contrast x3 in luminance (hue kept); a slow figure along the member.
+        float oakL=dot(oakT,vec3(.2126,.7152,.0722))/.2024;
+        vec3 oakC=oakT*clamp(1.0+(oakL-1.0)*2.0,.35,1.8);
+        oakC*=.93+.07*texture2D(map,vMapUv*vec2(.13,.031)+.37).g/.191;
+        diffuseColor.rgb*=oakC;}
+        #endif`);
+    };
+    oak.customProgramCacheKey=()=>(priorKey?priorKey():'')+'|estudio-oak-7';
+  }
   // Glint lines: the fixed screen's stiles (world z) and the rails (world y).
   const stileZ=[];
   for(const g of groups)if(!study.groups.includes(g)){
@@ -53,7 +73,7 @@ function screen(ctx,THREE){
     geo.translate(0,0,-(depth-2*t)/2);return geo;
   };
   const rect=(w,h)=>{const s=new THREE.Shape();s.moveTo(-w/2,-h/2);s.lineTo(w/2,-h/2);s.lineTo(w/2,h/2);s.lineTo(-w/2,h/2);s.lineTo(-w/2,-h/2);return s;};
-  const bar=(w,h,d)=>extrudeShape(rect(w,h),d,bevel(w,h));
+  const bar=(w,h,d)=>{const g=extrudeShape(rect(w,h),d,bevel(w,h));memberUv(THREE,g,h>=w?'v':'h');return g;};
   // Door opening in the fixed screen's own x (it runs south from fixedStudy[0]).
   const z0=ctx.data.fixedStudy[0][1],doorFrom=Math.min(study.a[1],study.b[1])-z0,doorTo=Math.max(study.a[1],study.b[1])-z0;
   for(const g of groups){
@@ -95,11 +115,28 @@ function screen(ctx,THREE){
           return s;
         });
         // app.js translated its extrusion to the panel centre (z - depth/2), already done here.
-        // The outer arched frame (the one with a hole) is deeper, so its reveal shows.
-        const outer=shapes.some(s=>s.holes.length);
-        out=extrudeShape(shapes.length===1?shapes[0]:shapes,outer?.06:depth,.0075);
+        // The outer arched frame (the one with a hole) is deeper, so its reveal shows. It is
+        // rebuilt as its members (sill, jambs, arcs, head) with a joint between them, so the
+        // grain follows each member (one cap with a hole spans long triangles across them).
+        const outer=shapes.find(s=>s.holes.length);
+        if(outer){
+          const arcO=outer.curves.find(c=>c.isEllipseCurve),arcI=outer.holes[0].curves.find(c=>c.isEllipseCurve);
+          const b=new THREE.Box2();for(const q of outer.getPoints())b.expandByPoint(q);
+          const L=b.max.x,H=b.max.y,r=arcO.xRadius,f=r-arcI.xRadius,cy=H-r;
+          const box2=(x0,y0,x1,y1)=>{const s=new THREE.Shape();s.moveTo(x0,y0);s.lineTo(x1,y0);s.lineTo(x1,y1);s.lineTo(x0,y1);s.lineTo(x0,y0);return s;};
+          const ring=(cx,a0,a1)=>{const s=new THREE.Shape();s.absarc(cx,cy,r,a0,a1,false);s.absarc(cx,cy,r-f,a1,a0,true);return s;};
+          out=[];const j=.0015; // joint
+          for(const [s,how] of [[box2(0,0,L,f-j),'h'],[box2(0,f,f,cy-j),'v'],[box2(L-f,f,L,cy-j),'v'],[box2(r+j,H-f,L-r-j,H),'h'],
+                                [ring(r,Math.PI/2,Math.PI),null],[ring(L-r,0,Math.PI/2),null]]){
+            const g=extrudeShape(s,.06,.0075);memberUv(THREE,g,how||[s]);out.push(g);
+          }
+        }else{
+          out=extrudeShape(shapes.length===1?shapes[0]:shapes,depth,.0075);
+          memberUv(THREE,out,shapes);
+        }
       }else continue;
-      o.updateMatrix();out.applyMatrix4(o.matrix);out.translate(dx,0,0);shade(THREE,out,1);parts.push(out);
+      o.updateMatrix();
+      for(const piece of Array.isArray(out)?out:[out]){piece.applyMatrix4(o.matrix);piece.translate(dx,0,0);shade(THREE,piece,.92+.16*rand());parts.push(piece);}
       geo.dispose();drop.push(o);
     }
     if(!parts.length)continue;
@@ -124,6 +161,29 @@ function shade(THREE,geo,base){
   geo.setAttribute('color',new THREE.BufferAttribute(c,3));
   if(!geo.getAttribute('uv'))geo.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(n.count*2),2));
 }
+// Grain along each member (the veneer's grain runs along v; 1 uv = 1 m): stiles along
+// y, rails along x, arcs along their curve. A random offset per member, so no two
+// pieces show the same figure. `how`: 'v', 'h' or the extruded shapes (arcs inside).
+let seed=7;
+function rand(){seed=(seed*16807)%2147483647;return (seed-1)/2147483646;}
+function memberUv(THREE,geo,how){
+  const pos=geo.getAttribute('position'),uv=new Float32Array(pos.count*2),ou=rand(),ov=rand()*2;
+  const arcs=[];
+  if(Array.isArray(how))for(const s of how)for(const path of [s,...s.holes])for(const c of path.curves)if(c.isEllipseCurve){
+    const mid=(c.aStartAngle+c.aEndAngle)/2;arcs.push({x:c.aX,y:c.aY,r:c.xRadius,left:Math.cos(mid)<0});
+  }
+  let x0=Infinity,x1=-Infinity;
+  if(Array.isArray(how)){for(let i=0;i<pos.count;i++){x0=Math.min(x0,pos.getX(i));x1=Math.max(x1,pos.getX(i));}}
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);let u,v;
+    const arc=arcs.find(a=>y>=a.y-1e-4&&(a.left?x<=a.x+1e-4:x>=a.x-1e-4));
+    if(arc){const dx=x-arc.x,dy=y-arc.y;u=Math.hypot(dx,dy)+z;v=Math.atan2(dy,dx)*arc.r;}
+    else if(how==='v'||(Array.isArray(how)&&(x<x0+.08||x>x1-.08))){u=x+z;v=y;}
+    else{u=y+z;v=x;}
+    uv[i*2]=u+ou;uv[i*2+1]=v+ov;
+  }
+  geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+}
 // Pane outline (local x/y bounds) and whether it is a fixed pane, for the edge glint.
 function paneRect(THREE,geo,fixed){
   geo.computeBoundingBox();const b=geo.boundingBox,n=geo.getAttribute('position').count,a=new Float32Array(n*4),f=new Float32Array(n).fill(fixed);
@@ -132,12 +192,18 @@ function paneRect(THREE,geo,fixed){
 }
 
 const GLINT_Z=12;
+// Bedroom window wall: the sheers run along x at this z (north wall of the suite).
+const WIN={z:-9.40,x0:.15,x1:3.05,k:.16};
 function studyGlass(THREE,stileZ){
   const zs=[...stileZ.slice(0,GLINT_Z)];while(zs.length<GLINT_Z)zs.push(-1e3);
   // Float glass: a faint warm body that dims the study behind it by ~9 %, room
   // reflections with Fresnel (two faces), soft diagonal sheen bands and a thin glint
   // where each pane meets its frame, so the panes read as glass between the profiles.
-  const m=new THREE.MeshPhysicalMaterial({color:'#3b3129',transparent:true,premultipliedAlpha:true,opacity:.13,roughness:.02,metalness:0,depthWrite:false,side:THREE.DoubleSide,envMapIntensity:1});
+  // Round 7: the body is a light warm haze lit by the bedroom (it veils the study a
+  // little: less contrast, warmer), the room reflection is stronger, and the bedroom
+  // window wall (the sheers, WIN) is reflected analytically: light vertical folds
+  // on the left panes that move with the viewer, as in render 4.
+  const m=new THREE.MeshPhysicalMaterial({color:'#8f7d6a',transparent:true,premultipliedAlpha:true,opacity:.12,roughness:.02,metalness:0,depthWrite:false,side:THREE.DoubleSide,envMapIntensity:1});
   m.onBeforeCompile=shader=>{
     shader.uniforms.paneStileZ={value:zs};
     shader.vertexShader='attribute vec4 paneRect;\nattribute float paneFixed;\nvarying vec4 vPaneRect;\nvarying float vPaneFixed;\nvarying vec2 vPaneLocal;\nvarying vec3 vPaneWorld;\n'+shader.vertexShader
@@ -151,13 +217,24 @@ function studyGlass(THREE,stileZ){
       for(int i=0;i<2;i++)edge=min(edge,abs(vPaneWorld.y-(i==0?.88:2.08))-${(SLIM_RAIL/2).toFixed(4)});
       if(vPaneFixed>.5)for(int i=0;i<${GLINT_Z};i++)edge=min(edge,abs(vPaneWorld.z-paneStileZ[i])-${(SLIM_STILE/2).toFixed(4)});
       float glint=exp(-max(edge,0.0)/.004)*.8+exp(-max(edge,0.0)/.025)*.25;
-      // Sheen: two soft diagonal bands across the screen plane (z along, y up).
-      float t=vPaneWorld.z*.85+vPaneWorld.y*.55;
-      float sheen=pow(max(0.0,sin(t*2.3)),8.0)*.7+pow(max(0.0,sin(t*5.3+1.3)),14.0)*.3;
-      vec3 glow=vec3(1.0,.93,.84)*(glint*.18+sheen*.05);
-      gl_FragColor=vec4(totalDiffuse*diffuseColor.a+totalSpecular+glow,diffuseColor.a+(1.0-diffuseColor.a)*glassF*.85+glint*.05);}`);
+      // Window: the view ray mirrored in the screen plane (normal x) meets the sheers.
+      vec3 winV=normalize(vPaneWorld-cameraPosition),winR=vec3(-winV.x,winV.y,winV.z);float win=0.0;
+      if(winR.z<-.01){
+        vec3 h=vPaneWorld+winR*((${WIN.z.toFixed(3)}-vPaneWorld.z)/winR.z);
+        float inX=smoothstep(${WIN.x0.toFixed(3)},${(WIN.x0+.2).toFixed(3)},h.x)*(1.0-smoothstep(${(WIN.x1-.15).toFixed(3)},${WIN.x1.toFixed(3)},h.x));
+        float inY=smoothstep(.10,.55,h.y)*(1.0-smoothstep(2.20,2.45,h.y));
+        float folds=.45+.55*pow(.5+.5*sin(h.x*${(Math.PI*2/.115).toFixed(3)}+sin(h.x*7.0)),2.0);
+        win=inX*inY*folds*(.75+.25*smoothstep(.3,2.2,h.y));
+      }
+      // Sheen: soft vertical bands keyed to the reflected azimuth (the bedroom's sheer
+      // folds and window light), so they slide across the panes as the viewer moves.
+      vec3 shV=normalize(vPaneWorld-cameraPosition);
+      float t=atan(shV.z,abs(shV.x))*6.5+vPaneWorld.y*.2;
+      float sheen=(pow(max(0.0,sin(t)),4.0)*.75+pow(max(0.0,sin(t*2.9+1.3)),8.0)*.25)*smoothstep(.2,1.0,vPaneWorld.y)*(1.0-.4*smoothstep(1.6,2.4,vPaneWorld.y));
+      vec3 glow=vec3(1.0,.95,.88)*(glint*.18+sheen*.2)+vec3(1.0,.96,.90)*win*${WIN.k.toFixed(3)}*(.6+4.0*glassF);
+      gl_FragColor=vec4(totalDiffuse*diffuseColor.a+totalSpecular*2.0+glow,diffuseColor.a+(1.0-diffuseColor.a)*glassF*.85+glint*.05+win*.03);}`);
   };
-  m.customProgramCacheKey=()=>'glass-estudio-2';
+  m.customProgramCacheKey=()=>'glass-estudio-7';
   return m;
 }
 
@@ -243,14 +320,18 @@ function starBase(THREE){
   add(new THREE.CylinderGeometry(.048,.052,.05,16),0,.105,0);                  // hub
   const legLen=.28,legGeo=new THREE.BoxGeometry(legLen,.030,.040);
   legGeo.translate(legLen/2,0,0);
-  const wheel=new THREE.CylinderGeometry(.024,.024,.020,12);wheel.rotateX(Math.PI/2);
-  const fork=new THREE.BoxGeometry(.028,.038,.028);
+  // Twin-wheel casters (5.6 cm wheels under a hood), as in render 4.
+  const wheel=new THREE.CylinderGeometry(.028,.028,.012,16);wheel.rotateX(Math.PI/2);
+  const hub=new THREE.CylinderGeometry(.009,.009,.034,8);hub.rotateX(Math.PI/2);
+  const hood=new THREE.BoxGeometry(.036,.022,.030),fork=new THREE.CylinderGeometry(.008,.008,.02,8);
   for(let i=0;i<5;i++){
     const a=i/5*Math.PI*2+Math.PI/5;
     add(legGeo,0,.10,0,0,a,-.13);
-    const ex=Math.cos(a)*legLen*.99,ez=-Math.sin(a)*legLen*.99;
-    add(fork,ex,.066,ez,0,a,0);
-    add(wheel,ex+Math.cos(a)*.012,.025,ez-Math.sin(a)*.012,0,a,0);
+    const ex=Math.cos(a)*legLen*.99,ez=-Math.sin(a)*legLen*.99,px=Math.sin(a),pz=Math.cos(a);
+    add(fork,ex,.068,ez);
+    const wx=ex+Math.cos(a)*.016,wz=ez-Math.sin(a)*.016;
+    add(hood,wx,.052,wz,0,a,0);add(hub,wx,.029,wz,0,a,0);
+    for(const k of [-1,1])add(wheel,wx+px*k*.0115,.029,wz+pz*k*.0115,0,a,0);
   }
   return mergeGeometries(parts);
 }
@@ -263,11 +344,11 @@ function metricUv(THREE,geo,scale=2.5){
   }
   geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
 }
-function contactShadow(THREE){
+function contactShadow(THREE,k=1){
   // Soft dark disc under the base (probe light casts no shadow): radial falloff in the shader.
   return new THREE.ShaderMaterial({transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,
     vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-    fragmentShader:'varying vec2 vUv;void main(){float d=length(vUv-.5)*2.0;float a=.80*pow(1.0-smoothstep(0.0,1.0,d),1.6)+.25*(1.0-smoothstep(.15,.45,d));gl_FragColor=vec4(0.0,0.0,0.0,min(a,.9));}'});
+    fragmentShader:'varying vec2 vUv;void main(){float d=length(vUv-.5)*2.0;float a=.80*pow(1.0-smoothstep(0.0,1.0,d),1.6)+.25*(1.0-smoothstep(.15,.45,d));gl_FragColor=vec4(0.0,0.0,0.0,min(a,.9)*'+k.toFixed(3)+');}'});
 }
 
 // --- Desk wall ------------------------------------------------------------------------
@@ -294,4 +375,151 @@ function deskWall(ctx,THREE){
     m.customProgramCacheKey=()=>(priorKey?priorKey():'')+'|estudio-desk-wall';
     m.needsUpdate=true;
   }
+}
+
+// --- Shelf and desk decor -------------------------------------------------------------
+// Render 4: books in groups (upright rows and lying stacks, paper, linen and grey
+// covers), a black glazed bowl, a cream vase, a trailing plant over the right end of
+// the shelf, a bronze mushroom lamp and a stone bowl on the desk. Replaces the
+// exported row of 13 evenly spaced books, the T lamp and the stacked-disc plant.
+// One mesh per material; contact shades under each piece.
+const SHELF={front:4.648,lower:1.645,upper:1.985,desk:.75};
+const BAYS=[[-8.824,-8.108],[-8.087,-7.370],[-7.349,-6.749]];
+function decor(ctx,THREE){
+  ctx.removeExported({material:['fabric','clay'],box:[[4.70,1.64,-8.70],[4.93,1.93,-7.25]]});
+  ctx.removeExported({material:'clay',box:[[4.64,1.64,-7.10],[4.81,1.79,-6.94]]});
+  ctx.removeExported({material:'sage',box:[[4.58,1.18,-7.14],[4.82,1.82,-6.88]]});
+  ctx.removeExported({material:['dark','bronze','led'],box:[[4.49,.745,-8.43],[4.73,1.075,-8.17]]});
+
+  seed=4242;
+  const books=[],shades=[];
+  const COVERS=['#ebe6dc','#e2dccf','#d3cbbd','#c2b8a8','#a9a092','#8f897f','#ded5c3','#b9ab95','#77736c','#cfc6b6','#9a8b76','#e8e2d6'];
+  const book=(t,h,d,cover)=>{
+    // Canonical: depth along x (spine at -x), height y, thickness z; covers on ±z.
+    const g=new THREE.BoxGeometry(d,h,t).toNonIndexed(),n=g.getAttribute('normal'),c=new Float32Array(n.count*3);
+    const cv=new THREE.Color(cover),paper=new THREE.Color('#e9e2d2').multiplyScalar(.92+.08*rand());
+    for(let i=0;i<n.count;i++){
+      const nx=n.getX(i),nz=n.getZ(i),col=(nx<-.5||Math.abs(nz)>.5)?cv:paper;
+      c[i*3]=col.r;c[i*3+1]=col.g;c[i*3+2]=col.b;
+    }
+    g.setAttribute('color',new THREE.BufferAttribute(c,3));return g;
+  };
+  const pick=()=>COVERS[Math.floor(rand()*COVERS.length)];
+  // Upright row from z0 towards +z; the last book leans on the row when lean is set.
+  const row=(y0,z0,count,{hMin=.20,hMax=.27,lean=0}={})=>{
+    let z=z0;
+    for(let i=0;i<count;i++){
+      const t=.016+rand()*.026,h=hMin+rand()*(hMax-hMin),d=Math.min(.21,h*.68+rand()*.03),g=book(t,h,d,pick());
+      const x=SHELF.front+.05+rand()*.025+d/2;
+      if(lean&&i===count-1){
+        // Pivot on the bottom edge nearest the row, lean back onto it.
+        const pz=z+h*Math.sin(lean)*.92;g.translate(0,h/2,t/2);g.rotateX(-lean);g.translate(x,y0,pz);z=pz+t;
+      }else{g.translate(x,y0+h/2,z+t/2);z+=t+.0008+(rand()<.15?.004:0);}
+      books.push(g);
+    }
+    return z;
+  };
+  const stack=(y0,zc,count)=>{
+    let y=y0;
+    for(let i=0;i<count;i++){
+      const t=.02+rand()*.025,h=.20+rand()*.07,d=Math.min(.20,h*.7),g=book(t,h,d,pick());
+      g.rotateX(Math.PI/2);g.rotateY((rand()-.5)*.12);g.translate(SHELF.front+.06+d/2,y+t/2,zc+(rand()-.5)*.02);y+=t;books.push(g);
+    }
+    return y;
+  };
+  // Lower shelf.
+  row(SHELF.lower,-8.40,9);
+  row(SHELF.lower,-8.075,6,{lean:.22});stack(SHELF.lower,-7.56,4);
+  stack(SHELF.lower,-7.23,2);
+  // Upper shelf.
+  row(SHELF.upper,-8.81,5,{hMin:.22,hMax:.30,lean:.18});
+  row(SHELF.upper,-6.97,6,{hMin:.22,hMax:.31});
+  stack(SHELF.upper,-8.30,3);
+
+  const shelfX=SHELF.front+.16;
+  // Ceramics share one mesh (vertex colour); placed by translating their geometry.
+  const pots=[];
+  const ceramic=(geo,color)=>{
+    const g=geo.index?geo.toNonIndexed():geo,c=new THREE.Color(color),n=g.getAttribute('position').count,a=new Float32Array(n*3);
+    for(let i=0;i<n;i++)a.set([c.r,c.g,c.b],i*3);g.setAttribute('color',new THREE.BufferAttribute(a,3));pots.push(g);return g;
+  };
+  const at=(g,x,y,z)=>g.translate(x,y,z);
+  const items=[];
+  // Black glazed bowl, lower left bay; cream vase, upper middle bay.
+  at(ceramic(lathe(THREE,[[0,0],[.055,0],[.075,.012],[.088,.04],[.092,.066],[.085,.066],[.078,.043],[.062,.018],[0,.012]],28),'#1d1b19'),shelfX,SHELF.lower,-8.62);
+  shades.push([shelfX,SHELF.lower,-8.62,.22,.8]);
+  at(ceramic(lathe(THREE,[[0,0],[.04,0],[.058,.04],[.064,.10],[.05,.16],[.03,.20],[.034,.215],[.028,.215],[.022,.20],[0,.19]],24),'#d9d1c3'),shelfX+.02,SHELF.upper,-7.73);
+  shades.push([shelfX+.02,SHELF.upper,-7.73,.17,.7]);
+  // Pot with a trailing plant, right end of the lower shelf (over the desk).
+  const potZ=-6.93,potX=SHELF.front+.11;
+  at(ceramic(lathe(THREE,[[0,0],[.045,0],[.058,.02],[.066,.11],[.071,.125],[.064,.125],[.058,.11],[0,.105]],24),'#cdc5b8'),potX,SHELF.lower,potZ);
+  shades.push([potX,SHELF.lower,potZ,.18,.8]);
+  const leaves=new THREE.Mesh(trailingPlant(THREE,potX,SHELF.lower+.12,potZ),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.55,side:THREE.DoubleSide}));
+  items.push(leaves);
+  // Desk: bronze mushroom lamp where the T lamp stood, stone bowl at the right end.
+  const lamp=mushroomLamp(THREE);lamp.position.set(4.608,SHELF.desk,-8.302);items.push(lamp);
+  shades.push([4.608,SHELF.desk,-8.302,.22,.7]);
+  at(ceramic(lathe(THREE,[[0,0],[.06,0],[.09,.015],[.105,.045],[.108,.058],[.1,.058],[.094,.042],[.07,.02],[0,.014]],28),'#a39c91'),4.80,SHELF.desk,-7.06);
+  shades.push([4.80,SHELF.desk,-7.06,.26,.8]);
+
+  const paper=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.82});
+  const glaze=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.45,side:THREE.DoubleSide});
+  const decorGroup=new THREE.Group();decorGroup.add(new THREE.Mesh(mergeGeometries(books),paper),new THREE.Mesh(mergeGeometries(pots),glaze),...items);
+  decorGroup.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
+  ctx.lightRuntimeObject(decorGroup);
+  const quads=shades.map(([x,y,z,size])=>{const q=new THREE.PlaneGeometry(size,size);q.rotateX(-Math.PI/2);q.translate(x,y+.002,z);return q;});
+  const shadeMesh=new THREE.Mesh(mergeGeometries(quads),contactShadow(THREE,.75));shadeMesh.renderOrder=1;decorGroup.add(shadeMesh);
+  ctx.group.add(decorGroup);
+}
+function lathe(THREE,pts,segments){
+  const g=new THREE.LatheGeometry(pts.map(([r,y])=>new THREE.Vector2(r,y)),segments);g.computeVertexNormals();return g;
+}
+function mushroomLamp(THREE){
+  const g=new THREE.Group(),bronze=new THREE.MeshStandardMaterial({color:'#3d3128',roughness:.42,metalness:.45,side:THREE.DoubleSide});
+  const parts=[];
+  const base=new THREE.CylinderGeometry(.062,.066,.014,32);base.translate(0,.007,0);parts.push(base);
+  const stem=new THREE.CylinderGeometry(.011,.013,.18,16);stem.translate(0,.104,0);parts.push(stem);
+  const dome=[[.102,.188]];for(let i=0;i<=12;i++){const a=i/12*Math.PI/2;dome.push([Math.max(.0005,Math.cos(a)*.115),.19+Math.sin(a)*.10]);}
+  parts.push(lathe(THREE,dome,36));
+  g.add(new THREE.Mesh(mergeGeometries(parts.map(p=>p.index?p.toNonIndexed():p)),bronze));
+  // Warm glow under the dome (seen only from low angles).
+  const glow=new THREE.Mesh(new THREE.CircleGeometry(.1,24),new THREE.MeshBasicMaterial({color:'#ffd9a6'}));
+  glow.rotation.x=Math.PI/2;glow.position.y=.188;g.add(glow);
+  return g;
+}
+// Pothos-like trailing plant: a mound of leaves over the pot and strands that run to
+// the shelf edge and hang down the desk wall, leaves every ~3 cm turned to the room.
+function trailingPlant(THREE,px,py,pz){
+  const pos=[],col=[],green=['#4c5c33','#5b6b3c','#3f4e2b','#687845','#53643a'].map(c=>new THREE.Color(c));
+  const leaf=(x,y,z,size,yaw,pitch,roll,tone)=>{
+    const l=size,w=size*.62,fold=size*.12;
+    const v=[[0,0,0],[-w/2,l*.42,0],[0,l,0],[w/2,l*.42,0],[0,l*.45,-fold]];
+    const e=new THREE.Euler(pitch,yaw,roll,'YXZ'),q=new THREE.Quaternion().setFromEuler(e);
+    const p=v.map(a=>new THREE.Vector3(...a).applyQuaternion(q).add(new THREE.Vector3(x,y,z)));
+    const c=green[Math.floor(tone*green.length)%green.length];
+    for(const [a,b,d] of [[0,1,4],[1,2,4],[2,3,4],[3,0,4]]){
+      for(const k of [a,b,d]){pos.push(p[k].x,p[k].y,p[k].z);const s=k===4?1.12:.9;col.push(c.r*s,c.g*s,c.b*s);}
+    }
+  };
+  // Mound over the pot.
+  for(let i=0;i<26;i++){
+    const a=rand()*Math.PI*2,r=rand()*.07;
+    leaf(px+Math.cos(a)*r,py+rand()*.05,pz+Math.sin(a)*r,.045+rand()*.025,a+Math.PI/2+(rand()-.5),-.4-rand()*.8,(rand()-.5)*.6,rand());
+  }
+  // Strands: out to the shelf front edge, then down.
+  for(let s=0;s<9;s++){
+    const a=Math.PI+(rand()-.5)*2.2,len=.12+rand()*.5;
+    let x=px+Math.cos(a)*.05,y=py+.01,z=pz+Math.sin(a)*.05;
+    const edge=SHELF.front-.01,dz=(rand()-.5)*.35;
+    const steps=Math.round((Math.abs(x-edge)+len)/.028);
+    for(let k=0;k<steps;k++){
+      if(x>edge){x-=.028;z+=dz*.028;y=Math.max(SHELF.lower+.005,y-.006);}
+      else{y-=.022;x-=.002+rand()*.003;z+=Math.sin(k*.7+s)*.006;}
+      const size=.032+rand()*.02-(k/steps)*.01;
+      leaf(x,y,z+(rand()-.5)*.02,size,-Math.PI/2+(rand()-.5)*1.4,(rand()-.5)*.9+(x<=edge?.6:-.8),(rand()-.5)*.9,rand());
+    }
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.computeVertexNormals();return g;
 }

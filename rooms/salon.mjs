@@ -11,6 +11,10 @@
 // mesh with smooth normals and a sewn groove), rounder and plumper cushions, creases
 // shaded into the vertex colours, stronger contact shadows (the armchairs' one was
 // under the rug) and a denser sheer.
+// Ronda 7: the sofa in ivory bouclé (own texture scale, cloth mottle and slubs, no
+// gloss), flatter cushions, an oak plinth of its own set back under the upholstery
+// with a soft graded contact shadow (the exported plinth and the near-black core
+// read as a floating black slab) and the cove lines glowing amber instead of white.
 
 // Seeded value noise, smooth enough for fabric pulls.
 function noise2(seed){
@@ -232,7 +236,7 @@ function pillow(T,W,H,Th,seed){
 }
 
 // Floor contact shadow: a dark core under the footprint with a tight edge and a soft halo.
-function contactShadow(T,{x0,z0,x1,z1,y,draw,core=.72,halo=.28,ppm=200}){
+function contactShadow(T,{x0,z0,x1,z1,y,draw,core=.72,halo=.28,ppm=200,layers=null}){
   const W=Math.round((x1-x0)*ppm),H=Math.round((z1-z0)*ppm),c=document.createElement('canvas');c.width=W;c.height=H;
   const g=c.getContext('2d'),toPx=(x,z)=>[(x-x0)*ppm,(z-z0)*ppm];
   const layer=(blur,alpha,grow)=>{
@@ -240,7 +244,8 @@ function contactShadow(T,{x0,z0,x1,z1,y,draw,core=.72,halo=.28,ppm=200}){
     lg.fillStyle='#000';draw(lg,toPx,grow*ppm);
     g.save();g.filter=`blur(${blur*ppm}px)`;g.globalAlpha=alpha;g.drawImage(l,0,0);g.restore();
   };
-  layer(.26,halo*.55,.12);layer(.11,halo,.05);layer(.03,core*.75,.02);layer(.008,core,.008);
+  // [blur, alpha, grow] in metres, widest first.
+  for(const [b,a,gr] of layers||[[.26,halo*.55,.12],[.11,halo,.05],[.03,core*.75,.02],[.008,core,.008]])layer(b,a,gr);
   const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;
   const m=new T.MeshBasicMaterial({map:t,color:0x000000,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4,toneMapped:false});
   // Black RGB, darkness in alpha.
@@ -289,18 +294,71 @@ function painting(T,ctx){
   ctx.lightRuntimeObject(g);return g;
 }
 
+// Ronda 7: upholstery that reads as cloth at 3–5 m. The shared linen tile (27 cm of
+// fine weave) averages out to a flat white at that distance, so the sofa takes the
+// photographed bouclé (Poly Haven Curly Teddy) at a tighter loop scale on its own
+// texture copy, plus two things the photo tile cannot give: a cloth mottle of a few
+// centimetres (yarn lots, nap direction) and slub streaks along the weft, both filtered
+// by their screen footprint so they never shimmer. Lower specular: cloth has no gloss.
+async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05,slub=.04,specular=.25,sheen=.45,key}){
+  const T=ctx.THREE,m=ctx.cloneMaterial(source),dir='./assets/polyhaven/curly_teddy_natural/curly_teddy_natural_';
+  const [map,nor]=await Promise.all([ctx.loadTexture(dir+'detail_1k.webp',{srgb:false}),ctx.loadTexture(dir+'nor_gl_1k.webp',{srgb:false})]);
+  for(const t of [map,nor])t.repeat.set(1/tile,1/tile);
+  m.map=map;m.normalMap=nor;m.normalScale.setScalar(normal);m.vertexColors=true;m.color.set(color);
+  m.specularIntensity=specular;m.sheen=sheen;m.sheenRoughness=.9;m.roughness=.96;
+  const prior=m.onBeforeCompile;
+  m.onBeforeCompile=(s,r)=>{
+    prior.call(m,s,r);
+    s.fragmentShader=s.fragmentShader.replace(/texture2D\(map,vMapUv\)\.r\*2\.0,[0-9.]+\)/,`texture2D(map,vMapUv).r*2.0,${detail.toFixed(3)})`);
+    const hash='float hashHouse(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}';
+    s.fragmentShader=s.fragmentShader.replace(hash,hash+'\nfloat salonVN(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hashHouse(i),hashHouse(i+vec2(1,0)),f.x),mix(hashHouse(i+vec2(0,1)),hashHouse(i+1.0),f.x),f.y);}')
+      .replace('#include <color_fragment>',`#include <color_fragment>
+      {vec2 mo=vUv*vec2(16.0,16.0),sl=vUv*vec2(9.0,170.0);
+      float fm=1.0-smoothstep(.35,1.2,max(fwidth(mo).x,fwidth(mo).y)),fs=1.0-smoothstep(.35,1.2,max(fwidth(sl).x,fwidth(sl).y));
+      float mot=(salonVN(mo)+.5*salonVN(mo*2.3+7.1))/1.5-.5,sb=salonVN(sl)-.5;
+      diffuseColor.rgb*=1.0+${mottle.toFixed(3)}*mot*fm+${slub.toFixed(3)}*sb*fs;}`);
+  };
+  m.customProgramCacheKey=()=>'salon-upholstery-'+key;
+  return m;
+}
+
+// Oak plinth under the sofa (replaces the exported one, whose baked light left a black
+// band under the old overhang): set back from the upholstery so it reads as a shadowed
+// recess, vertex-darkened where the upholstery overhangs it and at its floor line.
+async function oakPlinth(ctx,boxes,{y0,y1}){
+  const T=ctx.THREE,b=new Builder(T),dir='./assets/polyhaven/white_oak_veneer/white_oak_veneer_';
+  for(const [x0,z0,x1,z1] of boxes){
+    const g=new T.BoxGeometry(x1-x0,y1-y0,z1-z0).translate((x0+x1)/2,(y0+y1)/2,(z0+z1)/2).toNonIndexed();
+    const p=g.getAttribute('position'),n=g.getAttribute('normal'),uv=g.getAttribute('uv'),col=[];
+    for(let i=0;i<p.count;i++){
+      // Grain runs along the long side of each face; metric UVs.
+      const along=Math.abs(n.getX(i))>.5?p.getZ(i):p.getX(i);
+      uv.setXY(i,along/1.2,Math.abs(n.getY(i))>.5?(Math.abs(n.getX(i))>.5?p.getX(i):p.getZ(i))/1.2:p.getY(i)/1.2);
+      const t=(p.getY(i)-y0)/(y1-y0);
+      const ao=Math.abs(n.getY(i))>.5?(n.getY(i)>0?.5:.2):.55+.4*Math.max(0,Math.sin(Math.PI*(.15+.75*t)));
+      col.push(ao,ao,ao);
+    }
+    g.setAttribute('color',new T.Float32BufferAttribute(col,3));b.add(g);
+  }
+  const [map,nor,rough]=await Promise.all(['diff_1k.webp','nor_gl_1k.webp','rough_1k.webp'].map((f,i)=>ctx.loadTexture(dir+f,{srgb:!i})));
+  const m=new T.MeshStandardMaterial({map,normalMap:nor,roughnessMap:rough,roughness:1,color:'#d4ad82',vertexColors:true});
+  m.normalScale.setScalar(.5);
+  const mesh=new T.Mesh(b.build(),m);mesh.name='salon:peana';mesh.receiveShadow=true;
+  return mesh;
+}
+
 export async function apply(ctx){
   const T=ctx.THREE,{group}=ctx;
   // ---- L sofa (B01): main run against the west wall, chaise run along the south. ----
   const removed=ctx.removeExported({material:'linen',region:'salon',box:[[5.2,0,-8.4],[8.4,1.2,-4.7]]});
-  const linen=ctx.cloneMaterial(ctx.mats.linen);linen.vertexColors=true;linen.color.set('#efebe3');
+  const linen=await upholstery(ctx,ctx.mats.linen,{color:'#ebe5da',tile:.24,detail:.62,normal:1.05,mottle:.06,slub:.03,key:'sofa'});
   const sofa=new Builder(T);
   const put=g=>sofa.add(g);
   const BX=5.257,FX=6.140,NZ=-8.28,SZ=-4.75,CX=8.278,CZ=-5.627,PL=.085,BASE=.30,SEAT=.465;
   const backX=5.475,backZ=-4.975,frameTop=.655;
   // Frames: back of the main run, back of the chaise run, north arm, two seat bases.
   // They darken toward the plinth (shade) so the sofa sits on it instead of floating.
-  const frameShade=[.30,.30],plinth={axis:'y',at:PL,k:.6,fall:.05};
+  const frameShade=[.16,.22],plinth={axis:'y',at:PL,k:.32,fall:.035};
   put(slab(T,{...rrect(BX,NZ,backX,SZ,.06),y0:PL,y1:frameTop,r:.06,bulge:.008,wrinkle:.003,seed:2,shade:frameShade,
     contacts:[plinth,{axis:'x',at:backX,k:.35,fall:.03}]}));
   put(slab(T,{...rrect(backX+.004,backZ,CX,SZ,.06),y0:PL,y1:frameTop,r:.06,bulge:.008,wrinkle:.003,seed:3,shade:frameShade,
@@ -314,7 +372,7 @@ export async function apply(ctx){
   // Loose seat cushions: three on the main run, two on the chaise run. Thick round
   // edges, bellied fronts, a shallow sit dip and creases drawn into the welt.
   const gap=.008,mz0=-8.066,mz1=backZ-.004,mw=(mz1-mz0-2*gap)/3;
-  const cushion={y0:BASE+.002,y1:SEAT,r:.058,crown:.02,sag:.011,bulge:.016,wrinkle:.0065};
+  const cushion={y0:BASE+.002,y1:SEAT,r:.05,crown:.011,sag:.013,bulge:.009,wrinkle:.0075};
   const seatsMain=[0,1,2].map(k=>[mz0+k*(mw+gap),mz0+k*(mw+gap)+mw]);
   for(const [k,[z0,z1]] of seatsMain.entries())
     put(slab(T,{...rrect(backX+.006,z0,FX+.006,z1,.07),...cushion,seed:10+k,
@@ -326,7 +384,7 @@ export async function apply(ctx){
       contacts:[{axis:'y',at:BASE,k:.55,fall:.03},{axis:'x',at:x0,k:.45,fall:.025},{axis:'x',at:x1,k:k?.25:.45,fall:.025},{axis:'z',at:backZ-.21,k:.4,fall:.05}]}));
   }
   // Loose back cushions resting on the seats, leaning back 7°: plump, very round.
-  const lean=Math.tan(7*Math.PI/180),backTop=.865,backC={y0:SEAT-.01,y1:backTop,r:.075,crown:.014,bulge:.02,wrinkle:.0055};
+  const lean=Math.tan(7*Math.PI/180),backTop=.865,backC={y0:SEAT-.01,y1:backTop,r:.064,crown:.009,bulge:.012,wrinkle:.0065};
   for(const [k,[z0,z1]] of seatsMain.entries())
     put(slab(T,{...rrect(backX+.004,z0+.004,backX+.214,z1-.004,.08),...backC,lean:[-lean,0],seed:30+k,
       contacts:[{axis:'y',at:SEAT-.01,k:.5,fall:.04}]}));
@@ -352,6 +410,17 @@ export async function apply(ctx){
   const sofaMesh=new T.Mesh(sofa.build(),linen);sofaMesh.castShadow=true;sofaMesh.receiveShadow=true;
   const sofaGroup=new T.Group();sofaGroup.name='salon:sofa';sofaGroup.add(sofaMesh);
   group.add(sofaGroup);
+  // Oak plinth set back 4 cm from the upholstery (the exported one goes).
+  const removedPlinth=ctx.removeExported({material:'wood',region:'salon',box:[[5.24,-.01,-8.3],[8.3,.095,-4.74]]});
+  const PI=.04,plinthBoxes=[[BX+PI,NZ+PI,FX,SZ-PI],[FX,CZ+PI,CX-PI,SZ-PI]];
+  const plinthMesh=await oakPlinth(ctx,plinthBoxes,{y0:0,y1:PL});
+  const plinthGroup=new T.Group();plinthGroup.add(plinthMesh);group.add(plinthGroup);ctx.lightRuntimeObject(plinthGroup);
+  // Under the sofa the nearest probes are inside the upholstery (no cover), so the
+  // plinth fell back to the outdoor sky and sun and glowed. It samples the probes
+  // 30 cm up and in front of its face instead, where the room light is valid.
+  {const m=plinthMesh.material,prior=m.onBeforeCompile,key=m.customProgramCacheKey.bind(m);
+    m.onBeforeCompile=(sh,r)=>{prior.call(m,sh,r);sh.vertexShader=sh.vertexShader.replace('lpWorld=(modelMatrix*lpw).xyz;}','lpWorld=(modelMatrix*lpw).xyz;lpWorld.y=max(lpWorld.y,.34);}');};
+    m.customProgramCacheKey=()=>key()+'|salon-plinth';}
 
   // ---- Armchairs (B01): seat shell, box seat cushion and curved back roll. ----
   const removedChairs=ctx.removeExported({material:'fabric',region:'salon',box:[[8.2,.2,-7.55],[9.2,1.0,-5.65]]});
@@ -391,11 +460,12 @@ export async function apply(ctx){
   ctx.lightRuntimeObject(sofaGroup);ctx.lightRuntimeObject(chairGroup);
 
   // ---- Contact shadows on the rug / floor. ----
-  group.add(contactShadow(T,{x0:5.1,z0:-8.55,x1:8.8,z1:-4.25,y:.0125,core:.92,halo:.5,draw:(g,p,grow)=>{
-    const rect=(x0,z0,x1,z1)=>{const [a,b]=p(x0,z0),[c,d]=p(x1,z1);g.fillRect(a-grow,b-grow,c-a+2*grow,d-b+2*grow);};
-    rect(BX,NZ,FX,SZ);rect(FX-.01,CZ,CX,SZ);
+  // Ronda 7: soft occlusion from the set-back plinth outwards (about 0.6 at the plinth,
+  // half that at the upholstery edge, gone 20 cm out), not a black slab.
+  group.add(contactShadow(T,{x0:5.1,z0:-8.55,x1:8.8,z1:-4.25,y:.0125,layers:[[.24,.16,.13],[.09,.22,.06],[.03,.28,.025],[.008,.34,.006]],draw:(g,p,grow)=>{
+    for(const [x0,z0,x1,z1] of plinthBoxes){const [a,b]=p(x0,z0),[c,d]=p(x1,z1);g.fillRect(a-grow,b-grow,c-a+2*grow,d-b+2*grow);}
   }}));
-  group.add(contactShadow(T,{x0:7.8,z0:-7.95,x1:9.6,z1:-5.25,y:.0125,core:.5,halo:.42,draw:(g,p,grow)=>{
+  group.add(contactShadow(T,{x0:7.8,z0:-7.95,x1:9.6,z1:-5.25,y:.0125,core:.4,halo:.34,draw:(g,p,grow)=>{
     for(const side of ['norte','sur']){
       const s=poly(`Butaca salon ${side} asiento tapizado`);if(!s)continue;
       g.beginPath();s.forEach(([x,z],i)=>{const [a,b]=p(x,z);i?g.lineTo(a,b):g.moveTo(a,b);});g.closePath();g.fill();
@@ -406,10 +476,16 @@ export async function apply(ctx){
   // touch denser and greyer, so the pleats read instead of a white block.
   const sheers=ctx.splitExported({material:'curtain',region:'salon',box:[[5.15,-.2,-8.75],[10.1,3.2,-3.66]]});
   for(const m of sheers){m.material.userData.translucency=.2;m.material.opacity=.86;m.material.color.multiplyScalar(.74);}
+  // ---- Cove lines (ronda 7): the shared LED material (emissive ×9) clips to a white
+  // wire along the coves; in render 1 the strip is hidden and only its warm wash shows.
+  // This room's lines glow amber, a few times the ceiling, not a burnt line.
+  const leds=ctx.splitExported({material:'led',region:'salon',box:[[5.15,2.2,-8.75],[10.1,2.5,-3.66]]});
+  for(const m of leds){m.material.emissive.set('#ffbe86');m.material.emissiveIntensity=1.6;m.material.color.set('#f3d6b0');}
   // ---- Painting (secondary): larger canvas over the plaster/oak junction, dark lines. ----
   const removedArt=ctx.removeExported({material:'art',region:'salon',box:[[5.15,.6,-7.7],[5.3,2.1,-6.7]]})
     +ctx.removeExported({material:'wood',region:'salon',box:[[5.201,.7,-7.6],[5.24,2.0,-6.78]]});
   group.add(painting(T,ctx));
   console.info(`[rooms/salon] painting replaced (${removedArt}), sheers ${sheers.length}`);
+  console.info(`[rooms/salon] plinth ${removedPlinth}, leds ${leds.length}`);
   console.info(`[rooms/salon] sofa rebuilt (${removed} exported triangles), armchairs rebuilt (${removedChairs})`);
 }
