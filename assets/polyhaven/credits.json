@@ -1,0 +1,115 @@
+[
+  {
+    "asset": "ceramic_vase_01",
+    "name": "Ceramic Vase 01",
+    "type": "model",
+    "authors": [
+      "James Ray Cock"
+    ],
+    "url": "https://polyhaven.com/a/ceramic_vase_01",
+    "license": "CC0",
+    "resolution": "1k",
+    "files": [
+      "assets/polyhaven/ceramic_vase_01/ceramic_vase_01.bin",
+      "assets/polyhaven/ceramic_vase_01/ceramic_vase_01_1k.gltf",
+      "assets/polyhaven/ceramic_vase_01/textures/ceramic_vase_01_arm_1k.jpg",
+      "assets/polyhaven/ceramic_vase_01/textures/ceramic_vase_01_diff_1k.jpg",
+      "assets/polyhaven/ceramic_vase_01/textures/ceramic_vase_01_nor_gl_1k.jpg"
+    ],
+    "bytes": 417407,
+    "entry": "./assets/polyhaven/ceramic_vase_01/ceramic_vase_01_1k.gltf"
+  },
+  {
+    "asset": "curly_teddy_natural",
+    "name": "Curly Teddy Natural",
+    "type": "texture",
+    "authors": [
+      "Rico Cilliers",
+      "colormass"
+    ],
+    "url": "https://polyhaven.com/a/curly_teddy_natural",
+    "license": "CC0",
+    "resolution": "1k",
+    "files": [
+      "assets/polyhaven/curly_teddy_natural/curly_teddy_natural_detail_1k.webp",
+      "assets/polyhaven/curly_teddy_natural/curly_teddy_natural_nor_gl_1k.webp"
+    ],
+    "bytes": 290572,
+    "derived": "scripts/derive_polyhaven.py: luminance detail, normal as WebP"
+  },
+  {
+    "asset": "hessian_230",
+    "name": "Hessian 230",
+    "type": "texture",
+    "authors": [
+      "Rico Cilliers",
+      "colormass"
+    ],
+    "url": "https://polyhaven.com/a/hessian_230",
+    "license": "CC0",
+    "resolution": "1k",
+    "files": [
+      "assets/polyhaven/hessian_230/hessian_230_detail_1k.webp",
+      "assets/polyhaven/hessian_230/hessian_230_nor_gl_1k.webp"
+    ],
+    "bytes": 901956,
+    "derived": "scripts/derive_polyhaven.py: luminance detail, normal as WebP"
+  },
+  {
+    "asset": "mocha_oak_veneer",
+    "name": "Mocha Oak Veneer",
+    "type": "texture",
+    "authors": [
+      "Jenelle van Heerden"
+    ],
+    "url": "https://polyhaven.com/a/mocha_oak_veneer",
+    "license": "CC0",
+    "resolution": "1k",
+    "files": [
+      "assets/polyhaven/mocha_oak_veneer/mocha_oak_veneer_diff_1k.webp",
+      "assets/polyhaven/mocha_oak_veneer/mocha_oak_veneer_nor_gl_1k.webp",
+      "assets/polyhaven/mocha_oak_veneer/mocha_oak_veneer_rough_1k.webp"
+    ],
+    "bytes": 644548,
+    "rooms": [
+      "cocina"
+    ],
+    "derived": "scripts/derive_polyhaven.py: colour (contrast x2.2), normal, roughness as WebP"
+  },
+  {
+    "asset": "rough_linen",
+    "name": "Rough Linen",
+    "type": "texture",
+    "authors": [
+      "Rico Cilliers",
+      "colormass"
+    ],
+    "url": "https://polyhaven.com/a/rough_linen",
+    "license": "CC0",
+    "resolution": "1k",
+    "files": [
+      "assets/polyhaven/rough_linen/rough_linen_detail_1k.webp",
+      "assets/polyhaven/rough_linen/rough_linen_nor_gl_1k.webp"
+    ],
+    "bytes": 821530,
+    "derived": "scripts/derive_polyhaven.py: luminance detail, normal as WebP"
+  },
+  {
+    "asset": "white_oak_veneer",
+    "name": "White Oak Veneer",
+    "type": "texture",
+    "authors": [
+      "Jenelle van Heerden"
+    ],
+    "url": "https://polyhaven.com/a/white_oak_veneer",
+    "license": "CC0",
+    "resolution": "1k",
+    "files": [
+      "assets/polyhaven/white_oak_veneer/white_oak_veneer_diff_1k.webp",
+      "assets/polyhaven/white_oak_veneer/white_oak_veneer_nor_gl_1k.webp",
+      "assets/polyhaven/white_oak_veneer/white_oak_veneer_rough_1k.webp"
+    ],
+    "bytes": 422570,
+    "derived": "scripts/derive_polyhaven.py: colour, normal, roughness as WebP"
+  }
+]

@@ -1,49 +1,28 @@
 import * as THREE from './assets/three.module.js';
 
-// Tileable upholstery maps shared by real-time and baked rooms. One texture
-// spans 25 cm (repeat 4 on metric UVs), so 1 px ≈ 0.5 mm.
-const cache=new Map();
-export function textile(kind){
-  if(cache.has(kind))return cache.get(kind);
-  const N=512,c=document.createElement('canvas');c.width=c.height=N;
-  const ctx=c.getContext('2d'),pixels=ctx.createImageData(N,N);
-  let seed=3817+kind.length*97;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-  const base=kind==='linen'?242:kind==='rug'?214:222;
-  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
-    const i=(y*N+x)*4;
-    let v;
-    if(kind==='linen'){
-      // Plain weave with irregular slubs along the weft.
-      const yarn=(x%4<2?3:-3)+(y%4<2?2:-2);
-      const slub=4*Math.sin(y*.09+2.3*Math.sin(x*.021))*Math.max(0,Math.sin(x*.047+y*.003));
-      v=base+yarn+slub+(random()-.5)*10;
-    }else if(kind==='rug'){
-      // Chunky knotted wool/jute: offset rows of 8 mm loops, visible at standing height.
-      const row=Math.floor(y/16),u=(x+row*8)%16-8,w=y%16-8,loop=1-Math.min(1,(u*u+w*w)/60);
-      v=base+34*loop-14+(row%2?4:-4)+(random()-.5)*14;
-    }else{
-      // Bouclé: fine grain; loops are drawn below.
-      v=base+(random()-.5)*14;
-    }
-    pixels.data.set([v,v-2,v-5,255],i);
-  }
-  ctx.putImageData(pixels,0,0);
-  if(kind!=='linen'&&kind!=='rug'){
-    // Dense curled loops, drawn with wrap-around so the tile stays seamless.
-    ctx.lineCap='round';
-    for(let k=0;k<5200;k++){
-      const x=random()*N,y=random()*N,r=2+random()*3.4,a=random()*Math.PI*2,light=random()<.55;
-      const ry=r*(.6+random()*.5),arc=Math.PI*(1.1+random()*.8);
-      ctx.strokeStyle=light?`rgba(255,250,242,${.13+random()*.15})`:`rgba(70,58,46,${.07+random()*.11})`;
-      ctx.lineWidth=1.1+random()*.9;
-      for(const ox of [-N,0,N])for(const oy of [-N,0,N]){
-        if(x+ox<-8||x+ox>N+8||y+oy<-8||y+oy>N+8)continue;
-        ctx.beginPath();ctx.ellipse(x+ox,y+oy,r,ry,a,0,arc);ctx.stroke();
-      }
-    }
-  }
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;
-  t.repeat.set(kind==='rug'?2.5:4,kind==='rug'?2.5:4);t.anisotropy=8;
-  cache.set(kind,t);return t;
+// Upholstery, linen and rug surfaces shared by real-time and baked rooms, from
+// photographed CC0 Poly Haven fabrics (scripts/derive_polyhaven.py):
+//   fabric -> Curly Teddy Natural (bouclé-like loops), tile 33 cm
+//   linen  -> Rough Linen, tile 27 cm
+//   rug    -> Hessian 230 shown at twice its scale (a jute weave), tile 54 cm
+// `textile(kind)` is a grey detail map (0.5 = the material's own colour, linear data):
+// shaders multiply by 2 * detail * amount, so each finish keeps its tuned colour and
+// only takes the photographed structure. `textileNormal(kind)` is its normal map.
+// Furniture UVs are metric; rugs use a world-plan projection of 4 units per metre.
+const SOURCES={fabric:'curly_teddy_natural',linen:'rough_linen',rug:'hessian_230'};
+const TILE={fabric:.33,linen:.27,rug:.54};
+export const textileDetail={fabric:.85,linen:.55,rug:.9};
+export const textileNormalScale={fabric:.9,linen:.55,rug:1.1};
+const cache=new Map(),loader=new THREE.TextureLoader();
+function load(kind,map){
+  const id=kind+map;if(cache.has(id))return cache.get(id);
+  const asset=SOURCES[kind];
+  const t=loader.load(`./assets/polyhaven/${asset}/${asset}_${map}_1k.webp`);
+  t.colorSpace=THREE.NoColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=8;
+  const r=kind==='rug'?1/(TILE.rug*4):1/TILE[kind];t.repeat.set(r,r);
+  cache.set(id,t);return t;
 }
-export const textileBump={rug:.0007,linen:.00015,fabric:.00055};
+export const textile=kind=>load(SOURCES[kind]?kind:'fabric','detail');
+export const textileNormal=kind=>load(SOURCES[kind]?kind:'fabric','nor_gl');
+// Kept for callers of the former procedural bump maps: no bump with normal maps.
+export const textileBump={rug:0,linen:0,fabric:0};

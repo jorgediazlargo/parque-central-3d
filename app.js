@@ -1,20 +1,20 @@
 import * as THREE from './assets/three.module.js';
 import {Reflector} from './assets/Reflector.js';
-import {EffectComposer} from './assets/jsm/postprocessing/EffectComposer.js';
-import {RenderPass} from './assets/jsm/postprocessing/RenderPass.js';
-import {OutputPass} from './assets/jsm/postprocessing/OutputPass.js';
-import {ShaderPass} from './assets/jsm/postprocessing/ShaderPass.js';
-import {RoomEnvironment} from './assets/jsm/environments/RoomEnvironment.js';
-import {artwork,curtainMaterial} from './salon.mjs?v=be468231dc';
-import {loadLightmap} from './lightmap.mjs?v=a60dcd1261';
+import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=1aa5e4f212';
+import {Post} from './post.mjs?v=867b6592e7';
+import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
+import {loadLightmap} from './lightmap.mjs?v=e8aa99d08e';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
-import {textile,textileBump} from './textiles.mjs?v=30c4725840';
+import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=b27dcfc10d';
 import {masterBedding,hideExportedBedding} from './bedding.mjs?v=37c7853956';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=d2ab8cd826';
+import {applyRooms} from './rooms.mjs?v=e78f927492';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,data,physics,player,doors=[],staticMeshes=[],target=null;
-let lightmap;
+let lightmap,roomStatus={},reflections;const runtimeObjects=[];
+// Probe and reflection uniforms shared by every lit material (filled in initScene).
+const lighting={uniforms:{}};
 let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last=0,walkPhase=0,bobAmount=0,stepDistance=0;
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,rayTime=0,roomTime=0;
 const mobile=matchMedia('(pointer:coarse)').matches,eye=1.69;
@@ -34,7 +34,26 @@ setFloor(settings.floor);
 $('floor').onchange=()=>{setFloor($('floor').value);try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
-const porcelainMap={value:null};
+const porcelainMap={value:null},crosscutNormal={value:null};
+// Clear glass: a faint tinted body, reflections (box-projected room probes) at full
+// strength and the background let through by what neither takes (Schlick Fresnel),
+// in premultiplied alpha. A plain transparent material scaled its reflections by its
+// 13 % opacity, so glazing read as a smoky film with no reflections.
+function glassMaterial(){
+  // Each face takes 4 % (8 % a pane) with a faint bronze body; the lit body colour is
+  // kept low, since added light is what made the glazing read as a milky veil.
+  const m=new THREE.MeshPhysicalMaterial({color:'#6f6355',transparent:true,premultipliedAlpha:true,opacity:.04,roughness:.03,metalness:0,depthWrite:false,side:THREE.DoubleSide});
+  m.onBeforeCompile=shader=>{
+    shader.fragmentShader=shader.fragmentShader.replace('#include <premultiplied_alpha_fragment>',`
+      // Room reflections at 60 %: a 128 px probe reflected at grazing angles read as a
+      // frosted smear over whatever is behind the glass.
+      {float glassNV=saturate(abs(dot(normal,geometryViewDir)));
+      float glassF=(.04+.96*pow(1.0-glassNV,5.0))*.6;
+      gl_FragColor=vec4(totalDiffuse*diffuseColor.a+totalSpecular*.6,diffuseColor.a+(1.0-diffuseColor.a)*glassF);}`);
+  };
+  m.customProgramCacheKey=()=>'glass';
+  return m;
+}
 function material(color,kind,roughness=.7){
   const m=kind==='fabric'||kind==='linen'||kind==='rug'?new THREE.MeshPhysicalMaterial({color,roughness,sheen:.38,sheenRoughness:.85,sheenColor:'#e8dfd0',side:THREE.DoubleSide}):new THREE.MeshStandardMaterial({color,roughness,side:THREE.DoubleSide});
   m.onBeforeCompile=shader=>{
@@ -48,11 +67,15 @@ function material(color,kind,roughness=.7){
         #ifdef USE_MAP
         vMapUv=rugUv;
         #endif
-        #ifdef USE_BUMPMAP
-        vBumpMapUv=rugUv;
+        #ifdef USE_NORMALMAP
+        vNormalMapUv=rugUv;
         #endif
         }`);
       if(['fabric','linen','rug'].includes(kind)){
+        // Photographed fabric (textiles.mjs): grey detail on the material's own colour.
+        shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#ifdef USE_MAP
+          diffuseColor.rgb*=mix(1.0,texture2D(map,vMapUv).r*2.0,${textileDetail[kind].toFixed(3)});
+        #endif`);
         // Derivative-filtered weave remains stable at walking distance.
         const freq=kind==='rug'?240:kind==='linen'?1350:950;
         shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
@@ -75,12 +98,34 @@ function material(color,kind,roughness=.7){
           diffuseColor.rgb*=stoneSurface;
         #endif`);
       }
+      if(kind==='crosscut'){
+        // Kitchen travertine of render 9 (style_textures.py crosscut): colour and relief
+        // projected in world metres (0.91 m tile), so the island ends, worktop and tall
+        // panel share one continuous figure; the relief is a world-space normal map
+        // blended per axis (UDN), so its curled strokes catch the cove light.
+        shader.uniforms.crosscutNormal=crosscutNormal;
+        shader.vertexShader='varying vec3 stoneWorldNormal;\n'+shader.vertexShader;
+        shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nstoneWorldNormal=normalize(mat3(modelMatrix)*normal);');
+        shader.fragmentShader='uniform sampler2D crosscutNormal;\nvarying vec3 stoneWorldNormal;\n'+shader.fragmentShader;
+        shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`
+          vec3 ccW=pow(abs(normalize(stoneWorldNormal)),vec3(4.0));ccW/=dot(ccW,vec3(1.0));
+          vec2 ccX=houseWorld.zy*1.1,ccY=houseWorld.xz*1.1,ccZ=houseWorld.xy*1.1;
+          #ifdef USE_MAP
+          diffuseColor.rgb*=texture2D(map,ccX,CROSSCUT_BIAS).rgb*ccW.x+texture2D(map,ccY,CROSSCUT_BIAS).rgb*ccW.y+texture2D(map,ccZ,CROSSCUT_BIAS).rgb*ccW.z;
+          #endif`);
+        shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+          {vec3 ccN=inverseTransformDirection(normal,viewMatrix);
+          vec2 ccTX=(texture2D(crosscutNormal,ccX).xy*2.0-1.0)*CROSSCUT_RELIEF,ccTY=(texture2D(crosscutNormal,ccY).xy*2.0-1.0)*CROSSCUT_RELIEF,
+            ccTZ=(texture2D(crosscutNormal,ccZ).xy*2.0-1.0)*CROSSCUT_RELIEF;
+          ccN=normalize(vec3(ccN.x,ccTX.y+ccN.y,ccTX.x+ccN.z)*ccW.x+vec3(ccTY.x+ccN.x,ccN.y,ccTY.y+ccN.z)*ccW.y+vec3(ccTZ.xy+ccN.xy,ccN.z)*ccW.z);
+          normal=normalize((viewMatrix*vec4(ccN,0.0)).xyz);}`).replace('void main() {','#define CROSSCUT_RELIEF 1.0\n#define CROSSCUT_BIAS -0.8\nvoid main() {');
+      }
       if(kind==='stone')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#ifdef USE_MAP\nvec2 stoneUv=vec2(.045,.25)+fract(vMapUv)*vec2(.26,.17);diffuseColor*=texture2D(map,stoneUv);\n#endif');
       if(kind==='wall')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#ifdef USE_MAP
         // Limewash of the renders: soft clouds and brushed patches, two
         // unrelated scales to hide tiling. Ceilings keep a calmer finish.
         float limeCeiling=smoothstep(-.45,-.85,houseNormal.y);
-        float lime=(texture2D(map,vMapUv).r-.5)*.85+(texture2D(map,vMapUv*.37+vec2(.31,.17)).r-.5)*.65;
+        float lime=(texture2D(map,vMapUv).r-.5)*.5+(texture2D(map,vMapUv*.37+vec2(.31,.17)).r-.5)*.4;
         diffuseColor.rgb*=1.0+lime*mix(.95,.42,limeCeiling)*vec3(.92,1.0,1.15);
         diffuseColor.rgb*=mix(vec3(1.0),vec3(.94,.93,.92),limeCeiling);
       #endif`);
@@ -127,9 +172,9 @@ function material(color,kind,roughness=.7){
           }`);
       }
       if(kind==='wood')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
-        // Natural oak veneer of the renders: sandy, muted, never orange.
+        // Natural oak veneer of the renders (photographed white oak): sandy, muted, never orange.
         float veneerValue=dot(diffuseColor.rgb,vec3(.28,.59,.13));
-        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(veneerValue),.34)*vec3(1.0,.975,.95);
+        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(veneerValue),.12)*vec3(1.0,.975,.95);
       `);
       if(kind==='lacquer'){
         const [sage,cream]=['#bcc2b0','#e6e0d6'].map(c=>new THREE.Color(c));
@@ -152,14 +197,16 @@ function material(color,kind,roughness=.7){
   if(['fabric','linen','rug'].includes(kind))m.defines={USE_UV:''};
   return m;
 }
-const mats={wall:material('#e0d3c8','wall',.92),stone:material('#efe4d2','kitchenStone',.5),kitchenStone:material('#f2e7d7','stone',.38),floor:material('#ffffff','floor',.62),
-  wood:material('#d6c5b0','wood',.58),white:material('#ece8e0'),fabric:material('#aa9f98','fabric',.9),linen:material('#ece8e1','linen',.93),
-  bronze:material('#765439',null,.31),dark:material('#28251f','trim',.42),glass:new THREE.MeshPhysicalMaterial({color:'#d5c9b8',transparent:true,opacity:.13,roughness:.085,metalness:.16,depthWrite:false,side:THREE.DoubleSide}),
-  led:new THREE.MeshStandardMaterial({color:'#ffe1a3',emissive:'#ffbe6d',emissiveIntensity:3.8}),
-  sage:material('#797e59','fabric'),lacquer:material('#d8ccba','lacquer',.42),rug:material('#b8aa95','rug',.96),
+const mats={wall:material('#e0d3c8','wall',.92),stone:material('#ebe5dc','kitchenStone',.5),kitchenStone:material('#f2e7d7','stone',.38),floor:material('#ffffff','floor',.62),
+  wood:material('#ffffff','wood',.58),white:material('#ece8e0'),fabric:material('#aa9f98','fabric',.9),linen:material('#ece8e1','linen',.93),
+  bronze:material('#5e4733',null,.36),dark:material('#28251f','trim',.42),glass:glassMaterial(),
+  led:new THREE.MeshStandardMaterial({color:'#ffe1a3',emissive:'#ffc98a',emissiveIntensity:9}),
+  sage:material('#797e59','fabric'),lacquer:material('#d8ccba','lacquer',.58),rug:material('#b8aa95','rug',.96),
   blackstone:material('#39362d','stone',.35),clay:material('#a9613f',null,.65),curtain:material('#e9e0cf','fabric')};
 Object.assign(mats,{
-  kitchenOak:material('#c4ae95','wood',.55),
+  // Kitchen oak: a cool tint offsets the warm cove light so the fronts read as the
+  // muted grey-brown oak of render 9 (about 96/68/44 on screen), not orange walnut.
+  kitchenOak:material('#c0c3c8','wood',.55),
   kitchenFabric:material('#a69a89','fabric',.94),shirt:material('#8ea7c6','linen',.9),
   kitchenBronze:material('#66513a',null,.38),kitchenDark:material('#262622',null,.42),
   ovenGlass:material('#141916',null,.20),ovenWindow:material('#202820',null,.27),
@@ -167,11 +214,13 @@ Object.assign(mats,{
 });
 mats.kitchenBronze.metalness=.72;mats.sinkSteel.metalness=.72;mats.ovenGlass.metalness=.28;
 // Separate cream stone uses continuous metric UVs and matching surface maps.
-mats.kitchenStone=material('#ecdfca','kitchenStone',.55);
+mats.kitchenStone=material('#e9e1d6','kitchenStone',.55);
+// Kitchen island, worktops and tall panel (region kitchen): cross-cut travertine.
+mats.kitchenCrosscut=material('#e9f2ff','crosscut',.5);
 mats.bronze.metalness=.65;
 // Wet-zone slabs share the floor: porcelain of the H01 plan, or oak in the alternative.
 mats.tile=mats.floor;
-mats.curtain.transparent=true;mats.curtain.opacity=.62;mats.curtain.depthWrite=false;
+mats.curtain.transparent=true;mats.curtain.opacity=.62;mats.curtain.depthWrite=false;mats.curtain.userData.translucency=.75;
 
 async function surfaceTextures(){
   const loader=new THREE.TextureLoader();
@@ -186,21 +235,29 @@ async function surfaceTextures(){
   porcelain.colorSpace=THREE.SRGBColorSpace;porcelain.flipY=false;porcelain.wrapS=porcelain.wrapT=THREE.RepeatWrapping;
   porcelain.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());porcelainMap.value=porcelain;
   // Dedicated veneer: no flooring seams on cabinetry, doors, tables or slats.
-  const veneer=await loader.loadAsync('./assets/textures/oak_veneer.webp?v=89e20ec041');
-  veneer.colorSpace=THREE.SRGBColorSpace;veneer.wrapS=veneer.wrapT=THREE.RepeatWrapping;
-  veneer.repeat.set(.65,.42);veneer.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
-  mats.wood.map=veneer;mats.wood.bumpMap=veneer;mats.wood.bumpScale=.00065;mats.wood.needsUpdate=true;
-  mats.kitchenOak.map=veneer;mats.kitchenOak.bumpMap=veneer;mats.kitchenOak.bumpScale=.00035;mats.kitchenOak.needsUpdate=true;
-  const stone=await loader.loadAsync('./assets/textures/travertine.webp?v=12fc5de07e');
+  // Photographed CC0 white oak veneer (Poly Haven), 50 cm tile, vertical grain; its own
+  // normal and roughness give the satin sheen and pores the renders show.
+  const oak=await Promise.all(['diff','nor_gl','rough'].map(m=>loader.loadAsync(`./assets/polyhaven/white_oak_veneer/white_oak_veneer_${m}_1k.webp`)));
+  oak.forEach((t,i)=>{t.colorSpace=i?THREE.NoColorSpace:THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,2);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
+  {const m=mats.wood;m.map=oak[0];m.normalMap=oak[1];m.roughnessMap=oak[2];m.normalScale.set(.45,.45);m.bumpMap=null;m.needsUpdate=true;}
+  // Kitchen fronts of render 9: fine straight quarter-cut grain (Mocha Oak Veneer, CC0,
+  // 1 m tile, grain contrast raised by derive_polyhaven.py), turned to run vertically.
+  const kitchenOak=await Promise.all(['diff','nor_gl','rough'].map(m=>loader.loadAsync(`./assets/polyhaven/mocha_oak_veneer/mocha_oak_veneer_${m}_1k.webp`)));
+  kitchenOak.forEach((t,i)=>{t.colorSpace=i?THREE.NoColorSpace:THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.rotation=Math.PI/2;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
+  {const m=mats.kitchenOak;m.map=kitchenOak[0];m.normalMap=kitchenOak[1];m.roughnessMap=kitchenOak[2];m.normalScale.set(.6,.6);m.bumpMap=null;m.needsUpdate=true;}
+  const stone=await loader.loadAsync('./assets/textures/travertine.webp?v=2bc29d0cfa');
   stone.colorSpace=THREE.SRGBColorSpace;stone.wrapS=stone.wrapT=THREE.RepeatWrapping;stone.anisotropy=8;
   for(const key of ['kitchenStone','stone']){mats[key].map=stone;mats[key].bumpMap=stone;mats[key].bumpScale=.0012;mats[key].needsUpdate=true;}
+  const [crosscut,crosscutNor]=await Promise.all(['stone_crosscut','stone_crosscut_nor'].map(n=>loader.loadAsync(`./assets/textures/${n}.webp`)));
+  for(const t of [crosscut,crosscutNor]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
+  crosscut.colorSpace=THREE.SRGBColorSpace;mats.kitchenCrosscut.map=crosscut;mats.kitchenCrosscut.needsUpdate=true;crosscutNormal.value=crosscutNor;
   // Limewash detail replaces the plaster colour map; its normal and roughness stay.
   const lime=await loader.loadAsync('./assets/textures/limewash.webp?v=76a3d72611');
   lime.wrapS=lime.wrapT=THREE.RepeatWrapping;lime.repeat.set(.6,.6);lime.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
   mats.wall.map=lime;mats.wall.needsUpdate=true;
   // Bouclé, slub linen and knotted rug read as real textiles at walking distance.
   for(const [key,kind] of [['fabric','fabric'],['kitchenFabric','fabric'],['sage','fabric'],['clay','fabric'],['linen','linen'],['shirt','linen'],['rug','rug']]){
-    const t=textile(kind);mats[key].map=t;mats[key].bumpMap=t;mats[key].bumpScale=textileBump[kind];mats[key].needsUpdate=true;
+    const m=mats[key];m.map=textile(kind);m.normalMap=textileNormal(kind);m.normalScale.setScalar(textileNormalScale[kind]);m.bumpMap=null;m.needsUpdate=true;
   }
 
 }
@@ -216,7 +273,7 @@ function box(group,w,h,d,x,y,z,mat){
 // Studio screen after render 4: warm bronze-oak profiles, paired stiles at every joint,
 // rails at hand and transom height and arched side lites with an inner concentric arc.
 const STUDY={frame:.035,stile:.026,depth:.045,rails:[.88,2.08],height:2.40};
-const studyFrame=material('#7a5a3f',null,.46);studyFrame.metalness=.38;
+const studyFrame=material('#5c4535',null,.42);studyFrame.metalness=.5;
 function studyPanel(group,width,height){
   const {stile,depth,rails}=STUDY;
   box(group,width-.02,height-.02,.010,width/2,height/2,0,mats.glass);
@@ -269,11 +326,11 @@ function setupDoors(){
   doors=data.doors.map(spec=>{
     const d={...spec,t:0,goal:0,groups:[],polys:[]};
     const n=d.panels||1,w=Math.hypot(d.b[0]-d.a[0],d.b[1]-d.a[1])/n;
-    for(let i=0;i<n;i++){const g=leaf(w,d.height,d.glass,d);d.groups.push(g);scene.add(g);}
+    for(let i=0;i<n;i++){const g=leaf(w,d.height,d.glass,d);d.groups.push(g);scene.add(g);runtimeObjects.push(g);}
     placeDoor(d,0);return d;
   });
   const [a,b]=data.fixedStudy,g=new THREE.Group(),length=Math.hypot(b[0]-a[0],b[1]-a[1]);
-  g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);scene.add(g);
+  g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);scene.add(g);runtimeObjects.push(g);
   const study=doors.find(d=>d.name==='Estudio'),along=p=>((p[0]-a[0])*(b[0]-a[0])+(p[1]-a[1])*(b[1]-a[1]))/length;
   const {frame:f,stile,depth,rails,height:h}=STUDY,side=.31,doorFrom=along(study.a),doorTo=along(study.b),r=side;
   const extrude=(shape,z=0,mat=studyFrame,d=depth)=>{
@@ -313,38 +370,44 @@ function shown(o){for(let n=o;n;n=n.parent)if(!n.visible)return false;return tru
 async function initScene(buffer){
   renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);
-  renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.92;
+  renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.AgXToneMapping;renderer.toneMappingExposure=1;
   renderer.info.autoReset=false;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   scene=new THREE.Scene();scene.background=new THREE.Color('#c4d7de');
   camera=new THREE.PerspectiveCamera(67,innerWidth/innerHeight,.035,180);camera.rotation.order='YXZ';
-  scene.add(new THREE.HemisphereLight('#f6e5cc','#8a7254',.60));
-  const environment=new RoomEnvironment(),pmrem=new THREE.PMREMGenerator(renderer);
-  scene.environment=pmrem.fromScene(environment,.035).texture;scene.environmentIntensity=.24;environment.dispose();pmrem.dispose();
+  // Sky and sun light only what is outdoors (terrace, facade): indoors every surface
+  // takes the baked light or the probes baked with it (lighting.mjs).
+  scene.add(new THREE.HemisphereLight('#dfe9f2','#8a7a64',.9));
   const sun=new THREE.DirectionalLight('#ffe2bd',2.1);sun.position.set(9,17,-25);sun.target.position.set(9,0,-3);
   sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-16,right:16,top:13,bottom:-13,near:1,far:65});sun.shadow.normalBias=.024;sun.shadow.bias=-.0001;scene.add(sun,sun.target);
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer)),v=>v.toString(16).padStart(2,'0')).join('');
-  lightmap=await loadLightmap(renderer,hash);
-  mats.art=artwork();const sheer=curtainMaterial(mats.curtain);
+  lightmap=await loadLightmap(renderer,hash,lighting);
+  reflections=new ReflectionProbes(probeRooms(data));
+  lighting.uniforms={...lightmap.probes.uniforms,...reflections.uniforms,...pocketUniforms(data)};
+  mats.art=artwork();const sheer=curtainMaterial(mats.curtain);sheer.userData.translucency=.75;
   for(const [sourceIndex,spec] of data.meshes.entries()){
     if(spec.layer==='alternative')continue;
     const stride=data.stride||6,floats=new Float32Array(buffer,spec.offset,spec.count*stride),inter=new THREE.InterleavedBuffer(floats,stride),geo=new THREE.BufferGeometry();
     geo.setAttribute('position',new THREE.InterleavedBufferAttribute(inter,3,0));geo.setAttribute('normal',new THREE.InterleavedBufferAttribute(inter,3,3));
     if(stride>=8)geo.setAttribute('uv',new THREE.InterleavedBufferAttribute(inter,2,6));
+    // Sheers hang along the facade (x): their pleats turn the normals up to ±45°, which
+    // striped them hard in the probe light. Soft cloth scatters more evenly: damp the
+    // pleat component of the shading normals.
+    if(spec.material==='curtain')for(let i=0;i<spec.count;i++){
+      const o=i*stride+3,nx=floats[o]*.45,ny=floats[o+1],nz=floats[o+2],l=Math.hypot(nx,ny,nz)||1;
+      floats[o]=nx/l;floats[o+1]=ny/l;floats[o+2]=nz/l;
+    }
     geo.computeBoundingSphere();
-    let finish=mats[spec.material]||mats.wall;
-    if(lightmap.bind(geo,sourceIndex))finish=lightmap.material(finish,spec.material,spec.region);
+    const key=spec.region==='kitchen'&&spec.material==='kitchenStone'?'kitchenCrosscut':spec.material;
+    let finish=mats[key]||mats.wall;
+    if(lightmap.bind(geo,sourceIndex))finish=lightmap.material(finish,key,spec.region);
     if(spec.region==='shared'&&['linen','fabric'].includes(spec.material))hideExportedBedding(geo);
-    else if(spec.region==='salon'&&spec.material==='curtain')finish=sheer;
+    else if(spec.material==='curtain')finish=sheer;
     if(spec.material==='art'){const uv=geo.getAttribute('uv'),pos=geo.getAttribute('position');for(let i=0;i<uv.count;i++)uv.setXY(i,(pos.getZ(i)+7.543)/(36.8/51.53901216893343),(pos.getY(i)-.74)/1.21);}
-    const mesh=new THREE.Mesh(geo,finish);
+    const mesh=new THREE.Mesh(geo,finish);mesh.userData.exported={material:spec.material,region:spec.region,layer:spec.layer,sourceIndex};
     mesh.receiveShadow=true;mesh.castShadow=!['glass','led','curtain'].includes(spec.material);scene.add(mesh);staticMeshes.push(mesh);
   }
   // The master bed dressing replaces the exported duvet, pillows and blanket.
-  const bedding=masterBedding();scene.add(bedding);bedding.traverse(o=>{if(o.isMesh)staticMeshes.push(o);});
-  // Soft electric fill complements daylight under the real ceiling geometry.
-  for(const [x,z,power] of [[2,-7,4],[5,-7,4],[9,-6,6],[12,-6,6],[16,-7,4],[17.5,-7,4],[11,-1.6,5],[3,-2,5],[15,-2,4]]){
-    const l=new THREE.PointLight('#ffcf98',power*.95,7,2);l.position.set(x,1.9,z);scene.add(l);
-  }
+  const bedding=masterBedding();scene.add(bedding);runtimeObjects.push(bedding);bedding.traverse(o=>{if(o.isMesh)staticMeshes.push(o);});
   physics=new WorldPhysics(kitchenColliders(data),data.floors);player=[...data.spawn];setupDoors();
   const m=data.vanityMirror;
   if(m){
@@ -354,27 +417,11 @@ async function initScene(buffer){
   }
   if(physics.blocked(player,activeDoorPolys()))throw Error('El punto de entrada no está libre.');
   camera.position.set(player[0],eye,player[1]);
-  const renderTarget=new THREE.WebGLRenderTarget(innerWidth,innerHeight,{type:THREE.HalfFloatType,samples:4});
-  composer=new EffectComposer(renderer,renderTarget);composer.addPass(new RenderPass(scene,camera));
-  // Baked light carries the contact shadows: no screen-space AO pass.
-  composer.addPass(new OutputPass());composer.addPass(new ShaderPass(gradeShader));
+  // HDR scene, auto exposure, bloom, tone mapping and grain (post.mjs). Baked light
+  // carries the contact shadows: no screen-space AO pass.
+  composer=new Post(renderer,scene,camera);
+  const size=renderer.getDrawingBufferSize(new THREE.Vector2());composer.setSize(size.x,size.y);
 }
-// Display-space grade shared with the studio renders: warm balance, lifted
-// shadows, softened contrast and a light vignette.
-const gradeShader={
-  uniforms:{tDiffuse:{value:null}},
-  vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-  fragmentShader:`uniform sampler2D tDiffuse;varying vec2 vUv;
-    void main(){
-      vec4 c=texture2D(tDiffuse,vUv);vec3 col=c.rgb*vec3(1.02,1.0,.955);
-      float l=dot(col,vec3(.2126,.7152,.0722));
-      col=mix(vec3(l),col,.88);
-      col=mix(col,col*col*(3.0-2.0*col),-.10);
-      col=col*.97+vec3(.022,.018,.012);
-      vec2 d=vUv-.5;col*=1.0-dot(d,d)*.42;
-      gl_FragColor=vec4(clamp(col,0.0,1.0),c.a);
-    }`
-};
 async function exterior(){
   const loader=new THREE.TextureLoader();
   const [park,city]=await Promise.all(['vista-parque.webp','vista-ciudad.webp'].map(n=>loader.loadAsync('./assets/'+n)));
@@ -458,7 +505,7 @@ function frame(time){
       $('room').textContent=name;roomTime=0;
     }
   }
-  renderer.info.reset();composer.render();
+  renderer.info.reset();composer.render(dt||1/60);
 }
 function look(dx,dy){yaw-=dx*.0021;pitch=THREE.MathUtils.clamp(pitch-dy*.0021,-1.3,1.3);}
 $('enter').onclick=enter;$('pause').onclick=pause;$('interaction').onclick=interact;$('touchDoor').onclick=interact;
@@ -490,14 +537,21 @@ $('joystick').onpointerdown=e=>{joyId=e.pointerId;$('joystick').setPointerCaptur
 $('joystick').onpointermove=e=>{if(e.pointerId===joyId)joystick(e);};
 function stopJoy(){joyId=null;touchVector=[0,0];$('joystick').firstElementChild.style.transform='';}
 $('joystick').onpointerup=stopJoy;$('joystick').onpointercancel=stopJoy;
-addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer?.setSize(innerWidth,innerHeight);});
+addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);const size=renderer.getDrawingBufferSize(new THREE.Vector2());composer?.setSize(size.x,size.y);});
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=9f51b80915'),fetch('./assets/house.bin?v=b112ed861d')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=73b34e8834'),fetch('./assets/house.bin?v=efb551319c')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
     lightmap.syncTextures();
+    // Per-room refinements (rooms/<id>.mjs); a failing module is logged and skipped.
+    roomStatus=await applyRooms({scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,lighting});
+    // Doors, the study screen, the master bedding and the mirror frame are not baked:
+    // they take the probes. Then each room is captured for its reflections, props included.
+    for(const o of runtimeObjects)lightObject(o,lighting);
+    for(const o of staticMeshes)if(o.userData.exported&&!o.material.userData?.bakedLit)lightObject(o,lighting);
+    reflections.capture(renderer,scene);
     renderer.compile(scene,camera);renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     ready=true;
     const params=new URLSearchParams(location.search);

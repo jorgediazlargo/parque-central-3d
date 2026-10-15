@@ -19,7 +19,7 @@ export function artwork() {
 }
 
 export function curtainMaterial(base) {
-  const m=base.clone();m.defines={...m.defines,...base.defines};m.color.set('#ece5d9');m.opacity=.88;m.roughness=1;m.depthWrite=true;
+  const m=base.clone();m.defines={...m.defines,...base.defines};m.color.set('#ece5d9');m.opacity=.80;m.roughness=1;m.depthWrite=true;
   m.onBeforeCompile=shader=>{
     base.onBeforeCompile(shader);
     shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_end>',`

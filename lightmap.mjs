@@ -1,18 +1,28 @@
 import * as THREE from './assets/three.module.js';
-import {textile,textileBump} from './textiles.mjs?v=30c4725840';
+import {textile,textileNormal,textileNormalScale} from './textiles.mjs?v=b27dcfc10d';
+import {loadProbes,patchLighting} from './lighting.mjs?v=1aa5e4f212';
 
 // Irradiance baked for the whole dwelling in one Cycles solution (scripts/bake_house.py).
 // Each house.bin vertex gets a lightmap UV: (page + u) / 2 and v, with 1,1 for surfaces
-// left to the runtime lights (terrace, facade, sheers). Doors and the master bedding
-// are not in house.bin and keep the runtime lights.
-export async function loadLightmap(renderer,sourceHash){
-  const [j,b]=await Promise.all([fetch('./assets/house-light.json?v=547d5a6c26',{cache:'no-cache'}),fetch('./assets/house-light.bin?v=f38209eb8e',{cache:'no-cache'})]);
+// left to the probes (sheers) or, outdoors, to the sun (terrace, facade). Pages are
+// HDR: RGBM of sqrt(linear / range) in lossless WebP. The same bake gives the
+// irradiance probes (lighting.mjs) used by doors, bedding and room props.
+// `lighting.uniforms` (probes + reflections) must be filled before the first render.
+export async function loadLightmap(renderer,sourceHash,lighting){
+  const [j,b]=await Promise.all([fetch('./assets/house-light.json?v=85dcad6249',{cache:'no-cache'}),fetch('./assets/house-light.bin?v=0d2b2830d5',{cache:'no-cache'})]);
   if(!j.ok||!b.ok)throw Error('No se ha podido descargar la iluminación.');
   const data=await j.json(),buffer=await b.arrayBuffer();
   if(data.sourceSha256!==sourceHash)throw Error('La geometría y la iluminación no corresponden a la misma versión.');
+  if(data.encoding!=='rgbm-sqrt-range-64')throw Error('Iluminación con un formato antiguo.');
   const version=data.contextSha256.slice(0,10)+data.samples;
-  const pages=await Promise.all(data.lightmaps.map(name=>new THREE.TextureLoader().loadAsync('./assets/'+name+'?v='+version)));
-  for(const t of pages){t.channel=1;t.generateMipmaps=false;t.minFilter=THREE.LinearFilter;t.colorSpace=THREE.NoColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
+  // RGBM needs the alpha untouched: decode without premultiplication or colour conversion.
+  const bitmaps=new THREE.ImageBitmapLoader().setOptions({imageOrientation:'flipY',premultiplyAlpha:'none',colorSpaceConversion:'none'});
+  const [pages,probes]=await Promise.all([
+    Promise.all(data.lightmaps.map(name=>bitmaps.loadAsync('./assets/'+name+'?v='+version).then(b=>new THREE.Texture(b)))),
+    loadProbes(data.probes,version)]);
+  for(const t of pages){t.channel=1;t.flipY=false;t.premultiplyAlpha=false;t.generateMipmaps=false;t.minFilter=THREE.LinearFilter;t.colorSpace=THREE.NoColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());t.needsUpdate=true;}
+  lighting.probes=probes;
+  const RANGE=data.range;
   const spans=new Map(data.meshes.map(m=>[m.sourceIndex,m]));
   const materials=new Map(),bases=new Map();
   function bind(geometry,sourceIndex){
@@ -40,28 +50,52 @@ export async function loadLightmap(renderer,sourceHash){
       shader.fragmentShader=shader.fragmentShader.replace(/float cove=0\.0;[\s\S]*?outgoingLight\+=vec3\([^)]*\)\*cove;/,'');
       shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_maps>',THREE.ShaderChunk.lights_fragment_maps.replace(/#ifdef USE_LIGHTMAP[\s\S]*?#endif/,''));
       shader.fragmentShader='uniform sampler2D planarLight;\n'+shader.fragmentShader.replace('#include <lights_fragment_end>',`
-        vec2 bakedUv=vec2(vLightMapUv.x*2.0,vLightMapUv.y);
+        {vec2 bakedUv=vec2(vLightMapUv.x*2.0,vLightMapUv.y);
         float baked=step(bakedUv.x,1.999);
-        vec3 bakedLight=mix(texture2D(lightMap,bakedUv).rgb,texture2D(planarLight,bakedUv-vec2(1.0,0.0)).rgb,step(1.0,bakedUv.x));
-        irradiance=mix(irradiance,bakedLight*bakedLight*(4.0*PI),baked);
-        reflectedLight.directDiffuse*=1.0-baked;
-        reflectedLight.directSpecular*=1.0-baked;
-        iblIrradiance*=mix(1.0,.12,baked);
-        radiance*=mix(1.0,.20,baked);
+        vec4 rgbm=bakedUv.x<1.0?texture2D(lightMap,bakedUv):texture2D(planarLight,bakedUv-vec2(1.0,0.0));
+        vec3 bakedSqrt=rgbm.rgb*rgbm.a;
+        vec3 bakedE=bakedSqrt*bakedSqrt*${(RANGE*Math.PI).toFixed(4)};
+        // Texels the bake never wrote (outside every island: a few faces of mixed
+        // orientation or slivers past the margin) read exactly black; they take the
+        // probes instead of showing as black notches.
+        baked*=smoothstep(.0004,.003,dot(bakedE,vec3(.2126,.7152,.0722)));
+        #if defined( USE_ENVMAP ) && defined( ENVMAP_TYPE_CUBE_UV )
+        // The bake is non-directional: relief (normal and bump maps) is shaded by how the
+        // room's light (its reflection probe, diffuse) changes between the flat and the
+        // perturbed normal.
+        {float flatLum=dot(getIBLIrradiance(nonPerturbedNormal),vec3(.2126,.7152,.0722));
+        float bumpLum=dot(iblIrradiance,vec3(.2126,.7152,.0722));
+        bakedE*=flatLum>1e-4?clamp(sqrt(bumpLum/flatLum),.75,1.35):1.0;}
+        #endif
+        // Specular occlusion: where the bake is darker than the room's own light
+        // (under furniture, in corners) reflections fade the same way.
+        float envLum=dot(iblIrradiance,vec3(.2126,.7152,.0722));
+        float specOcc=envLum>1e-4?clamp(dot(bakedE,vec3(.2126,.7152,.0722))/envLum*1.5,0.0,1.0):1.0;
+        // Unbaked fragments (sheers indoors) take the probes; outdoors the sun and sky.
+        float lpCover=0.0;vec3 lpE=vec3(0.0);
+        if(baked<.999){lpCover=probeInterior(lpWorld+lpNormalW*.1);lpE=probeIrradiance(lpWorld+lpNormalW*.1,inverseTransformDirection(geometryNormal,viewMatrix));}
+        float inside=max(baked,lpCover);
+        irradiance*=1.0-inside;
+        iblIrradiance=mix(mix(iblIrradiance,lpE,lpCover),bakedE,baked);
+        reflectedLight.directDiffuse*=1.0-inside;
+        reflectedLight.directSpecular*=1.0-inside;
+        radiance*=mix(1.0,specOcc,baked);}
         #include <lights_fragment_end>
       `);
+      patchLighting(shader,lighting.uniforms,'baked');
     };
-    m.customProgramCacheKey=()=>'baked-'+id;
+    m.customProgramCacheKey=()=>'baked-'+id;m.userData={...m.userData,bakedLit:true};
     materials.set(id,m);bases.set(id,[base,kind,region]);return m;
   }
   function syncTextures(){
     for(const [id,m] of materials){
       const [base,kind,region]=bases.get(id);
       for(const k of ['map','normalMap','roughnessMap','bumpMap','bumpScale'])m[k]=base[k];
+      m.normalScale.copy(base.normalScale);
       if(region==='salon'&&kind==='wall')m.normalScale.set(.12,.12);
-      if(region==='salon'&&['linen','fabric','rug'].includes(kind)){const t=textile(kind);m.map=t;m.bumpMap=t;m.bumpScale=textileBump[kind];}
+      if(region==='salon'&&['linen','fabric','rug'].includes(kind)){m.map=textile(kind);m.normalMap=textileNormal(kind);m.normalScale.setScalar(textileNormalScale[kind]);m.bumpMap=null;}
       m.needsUpdate=true;
     }
   }
-  return {bind,material,syncTextures};
+  return {bind,material,syncTextures,pages,probes,data};
 }
