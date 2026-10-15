@@ -37,11 +37,18 @@
 //   wall, larger ochre swirls on a cleaner cream ground on the island. No relief.
 // - The island cheeks keep the bake's light (r7 darkened them to 0.66: measured on the
 //   render, the cheek in shade is as light as ours without it).
+// Designer's stone (15/10/2026): render 9's travertine gives way to the quartzite the
+// designer sent (white-grey, olive-beige veins; scripts/cocina_textures.py), one photo
+// of a whole 320 x 195 cm slab. Every piece is cut from inside one slab, lying or
+// standing, whichever fits; the tall wall panel (3.4 m) is two bookmatched halves.
+// No cloud: the slab has its own.
 
 import {mergeGeometries} from '../assets/jsm/utils/BufferGeometryUtils.js';
 
 const ZONE=[[7.3,-.2,-3.66],[13.4,3.2,-.2]];
-const VERSION='r8';
+const VERSION='r9';
+// Designer's slab (m): length, width.
+const SLAB=[3.2,1.95],CEILING=2.2;
 // Render 9's ceiling: lighter and far less orange than our bake (measured on the
 // captures: R x1.67, G x2.15, B x3.0 linear); part of it as a paint gain.
 const CEILING_TINT=[1.14*1.75,1.27*2.08,1.4*2.55];
@@ -60,6 +67,7 @@ const ISLAND={cheeks:[[563.12,578],[701,715.87]],y0:481.5,y1:524.58,front:498.8,
 const WALL_GAIN=[[.95,1.7],[1.3,1.48],[1.5,1.3],[1.65,1.02],[1.75,.78],[1.85,.56],[1.95,.4],[2.03,.32],[2.12,.34],[2.17,.42]];
 const curve=(pts,v)=>pts.slice(1).reduce((s,[x,g],i)=>`mix(${s},${g.toFixed(3)},smoothstep(${pts[i][0].toFixed(3)},${x.toFixed(3)},${v}))`,pts[0][1].toFixed(3));
 
+const hash=r=>{const x=Math.sin(r*12.9898+78.233)*43758.5453;return x-Math.floor(x);};
 // One random number per connected piece (front, slab, cheek) of a non-indexed geometry,
 // as a vertex attribute: per-piece texture cuts and tones.
 function pieceSeeds(THREE,geo){
@@ -72,25 +80,59 @@ function pieceSeeds(THREE,geo){
     const j=at.get(k);if(j===undefined)at.set(k,i);else join(i,j);
     if(i%3)join(i,i-1);
   }
-  const seed=new Float32Array(n),hash=r=>{const x=Math.sin(r*12.9898+78.233)*43758.5453;return x-Math.floor(x);};
-  for(let i=0;i<n;i++)seed[i]=hash(find(i));
+  const seed=new Float32Array(n);
+  const root=Int32Array.from({length:n},(_,i)=>find(i));
+  for(let i=0;i<n;i++)seed[i]=hash(root[i]);
   geo.setAttribute('pieceSeed',new THREE.BufferAttribute(seed,1));
+  return root;
 }
 const seedVertex=shader=>{
   shader.vertexShader='attribute float pieceSeed;\nvarying float vPieceSeed;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvPieceSeed=pieceSeed;');
   shader.fragmentShader='varying float vPieceSeed;\n'+shader.fragmentShader;
 };
-// Smooth value noise on the shared hash (large-scale cloud in the stone).
-const NOISE=`float cocinaNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
-  return mix(mix(hashHouse(i),hashHouse(i+vec2(1,0)),f.x),mix(hashHouse(i+vec2(0,1)),hashHouse(i+vec2(1,1)),f.x),f.y);}
-`;
+// Where each stone piece sits in the slab, per vertex: origin, a 2x2 map from the piece's
+// own plane (metres from the origin, horizontal first) to slab UV, and offset + bookmatch
+// flag. Lying (slab length horizontal) or standing, whichever fits, at a random place
+// inside the slab. Wider than both: two mirrored halves, meeting at one of the lining's
+// joints if both sides fit (a bookmatch needs a joint), else at the centre; a piece taller
+// than the slab keeps the slab's top edge at the ceiling (the joint goes low, behind the
+// island). Planes: x-facing (z,y), y-facing (x,z), z-facing (x,y).
+function slabLayout(THREE,geo,root,joints){
+  const pos=geo.getAttribute('position'),n=pos.count,box=new Map();
+  for(let i=0;i<n;i++){
+    let b=box.get(root[i]);if(!b)box.set(root[i],b={lo:[1e9,1e9,1e9],hi:[-1e9,-1e9,-1e9]});
+    for(let a=0;a<3;a++){const v=pos.getComponent(i,a);b.lo[a]=Math.min(b.lo[a],v);b.hi[a]=Math.max(b.hi[a],v);}
+  }
+  const [L,W]=SLAB,lay=new Map();
+  for(const [r,b] of box){
+    // Facing: the piece's thinnest extent (slabs, worktops; the island's round ends face x).
+    const size=b.hi.map((x,a)=>x-b.lo[a]),axis=size.indexOf(Math.min(...size)),[h,v]=[[2,1],[0,2],[0,1]][axis];
+    const lo=b.lo[h],hi=b.hi[h],w=hi-lo,t=b.hi[v]-b.lo[v],c=b.lo.map((x,a)=>(x+b.hi[a])/2);
+    // [standing, mirror at, widest side (m), may overflow the slab's height]
+    const cand=[[0,null,w,0],[1,null,w,0],
+      ...joints.filter(j=>j.facing===axis&&lo<j.at&&j.at<hi).sort((p,q)=>Math.abs(p.at-c[h])-Math.abs(q.at-c[h]))
+        .flatMap(j=>[1,0].map(st=>[st,j.at,Math.max(j.at-lo,hi-j.at),1])),
+      [1,c[h],w/2,0],[0,c[h],w/2,0]];
+    const [stand,mirror,side]=cand.find(([st,,e,tall])=>e<=(st?W:L)&&(tall||t<=(st?L:W)))||[1,c[h],w/2];
+    if(mirror!==null)c[h]=mirror;
+    // Extent of the piece in slab UV along its horizontal (uw) and vertical (ut) axes.
+    const uw=side/(stand?W:L),ut=t/(stand?L:W),r1=hash(r),r2=hash(r*7+3);
+    const ph=mirror!==null?r1*Math.max(0,1-uw):.5+(r1-.5)*Math.max(0,1-uw);
+    const pv=ut>1&&v===1?1-(Math.min(b.hi[v],CEILING)-c[v])/(stand?L:W):.5+(r2-.5)*Math.max(0,1-ut);
+    lay.set(r,{c,A:stand?[0,1/W,1/L,0]:[1/L,0,0,1/W],B:stand?[pv,ph,+(mirror!==null)]:[ph,pv,+(mirror!==null)]});
+  }
+  const c=new Float32Array(n*3),A=new Float32Array(n*4),B=new Float32Array(n*3);
+  for(let i=0;i<n;i++){const l=lay.get(root[i]);c.set(l.c,i*3);A.set(l.A,i*4);B.set(l.B,i*3);}
+  geo.setAttribute('slabCentre',new THREE.BufferAttribute(c,3));
+  geo.setAttribute('slabA',new THREE.BufferAttribute(A,4));
+  geo.setAttribute('slabB',new THREE.BufferAttribute(B,3));
+}
 
 export async function apply(ctx){
   const {THREE,mats}=ctx;
   const aniso=Math.min(8,ctx.renderer.capabilities.getMaxAnisotropy());
-  const [stoneMap,islandMap,oakDiff,oakNor,oakRough]=await Promise.all([
+  const [stoneMap,oakDiff,oakNor,oakRough]=await Promise.all([
     ctx.loadTexture(`./assets/rooms/cocina/stone.webp?v=${VERSION}`),
-    ctx.loadTexture(`./assets/rooms/cocina/stone_island.webp?v=${VERSION}`),
     ctx.loadTexture('./assets/polyhaven/oak_veneer_01/oak_veneer_01_diff_2k.webp'),
     ctx.loadTexture('./assets/polyhaven/oak_veneer_01/oak_veneer_01_nor_gl_2k.webp',{srgb:false}),
     ctx.loadTexture('./assets/polyhaven/oak_veneer_01/oak_veneer_01_rough_1k.webp',{srgb:false})]);
@@ -98,27 +140,34 @@ export async function apply(ctx){
   // --- Stone (back wall lining, worktops, island) -----------------------------------
   const [cx0]=ctx.plan(ISLAND.cheeks[0][1],0),[cx1]=ctx.plan(ISLAND.cheeks[1][0],0);
   const [,frontZ]=ctx.plan(0,ISLAND.front);
+  // Bronze joints of the back-wall lining (kitchen_geometry.py, plan x 640 and 735).
+  const joints=[640,735].map(x=>({facing:2,at:ctx.plan(x,0)[0]}));
+  // Mirrored repeat: a piece larger than the slab meets the slab's own edge, no seam.
+  stoneMap.wrapS=stoneMap.wrapT=THREE.MirroredRepeatWrapping;
   for(const piece of ctx.splitExported({material:'kitchenStone',region:'kitchen',box:ZONE})){
     const m=piece.material,prior=m.onBeforeCompile;
-    pieceSeeds(THREE,piece.geometry);
+    slabLayout(THREE,piece.geometry,pieceSeeds(THREE,piece.geometry),joints);
     const island=piece.userData.exported.layer==='island';
-    m.map=island?islandMap:stoneMap;
-    // The kitchen's warm baked light over-saturates the cream stone: a slightly cooler tint.
-    m.color.multiply(new THREE.Color().setRGB(...(island?[1.0,1.05,1.12]:[.97,1.0,1.06])));
+    m.map=stoneMap;
+    // The kitchen's warm baked light over-saturates the stone: a slightly cooler tint.
+    m.color.multiply(new THREE.Color().setRGB(.97,1.0,1.06));
     m.onBeforeCompile=(shader,r)=>{
       prior.call(m,shader,r);
       seedVertex(shader);
-      shader.fragmentShader=shader.fragmentShader.replace('void main() {',NOISE+'void main() {');
-      // Maps of scripts/cocina_textures.py: wall 352 render px over 1.82 m (1024 px),
-      // island 243 px over 0.85 m, the render's own scale; each slab its own cut. Flat.
-      const scale=island?'1.18':'.55';
+      shader.vertexShader='attribute vec3 slabCentre,slabB;\nattribute vec4 slabA;\nvarying vec3 vSlabCentre,vSlabB;\nvarying vec4 vSlabA;\n'
+        +shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvSlabCentre=slabCentre;vSlabA=slabA;vSlabB=slabB;');
+      shader.fragmentShader=shader.fragmentShader.replace('void main() {',`varying vec3 vSlabCentre,vSlabB;
+        varying vec4 vSlabA;
+        vec2 slabUv(vec2 p){return mat2(vSlabA.xy,vSlabA.zw)*vec2(mix(p.x,abs(p.x),vSlabB.z),p.y)+vSlabB.xy;}
+        void main() {`);
+      // Flat (honed): no relief.
       shader.fragmentShader=shader.fragmentShader.replace('#define CROSSCUT_RELIEF 1.0','#define CROSSCUT_RELIEF 0.0')
         .replace('vec2 ccX=houseWorld.zy*1.1,ccY=houseWorld.xz*1.1,ccZ=houseWorld.xy*1.1;',`
-          vec2 ccCut=vec2(vPieceSeed,fract(vPieceSeed*17.31))*1.7;
-          vec2 ccX=houseWorld.zy*${scale}+ccCut,ccY=houseWorld.xz*${scale}+ccCut.yx,ccZ=houseWorld.xy*${scale}+ccCut;`)
-        // The maps carry no large-scale tone: a slab tone and a 1-2 m banded cloud.
+          vec3 slabP=houseWorld-vSlabCentre;
+          vec2 ccX=slabUv(slabP.zy),ccY=slabUv(slabP.xz),ccZ=slabUv(slabP.xy);`)
+        // Slab tone: pieces of one lot differ a little.
         .replace('#include <normal_fragment_maps>',`
-        diffuseColor.rgb*=(1.0+.05*(fract(vPieceSeed*41.7)-.5))*(.9+.2*cocinaNoise(houseWorld.xy*vec2(.9,1.6)+houseWorld.zz*.9));
+        diffuseColor.rgb*=1.0+.04*(fract(vPieceSeed*41.7)-.5);
         {float vert=1.0-smoothstep(.5,.8,abs(houseNormal.y));
         ${island?`
         // Island in the shade of its worktop: the cheeks (x outside the recess) keep the
@@ -212,7 +261,7 @@ export async function apply(ctx){
       m.onBeforeCompile=(shader,r)=>{
         prior.call(m,shader,r);
         shader.fragmentShader=shader.fragmentShader.replace('#include <aomap_fragment>',
-          'reflectedLight.indirectSpecular+=iblIrradiance*RECIPROCAL_PI*vec3(.66,.58,.49)*.34;\n#include <aomap_fragment>');
+          'reflectedLight.indirectSpecular+=iblIrradiance*RECIPROCAL_PI*vec3(.60,.58,.57)*.34;\n#include <aomap_fragment>');
       };
       m.customProgramCacheKey=()=>'cocina-hob-'+VERSION;m.needsUpdate=true;
     }
