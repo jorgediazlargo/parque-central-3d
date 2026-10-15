@@ -304,7 +304,9 @@ function painting(T,ctx){
 // texture copy, plus two things the photo tile cannot give: a cloth mottle of a few
 // centimetres (yarn lots, nap direction) and slub streaks along the weft, both filtered
 // by their screen footprint so they never shimmer. Lower specular: cloth has no gloss.
-async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05,slub=.04,mottleF=[16,16],slubF=[9,170],specular=.25,sheen=.45,key,cloth='curly_teddy_natural'}){
+export const CHAIR_WEAVE={cloth:'poly_wool_herringbone',color:'#9b9da6',tile:.4,detail:1.7,normal:1.2,
+  mottle:.06,mottleF:[20,20],slub:.4,slubF:[25,250],specular:.25,sheen:.38};
+export async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05,slub=.04,mottleF=[16,16],slubF=[9,170],specular=.25,sheen=.45,key,cloth='curly_teddy_natural'}){
   const T=ctx.THREE,m=ctx.cloneMaterial(source),dir=`./assets/polyhaven/${cloth}/${cloth}_`;
   const [map,nor]=await Promise.all([ctx.loadTexture(dir+'detail_1k.webp',{srgb:false}),ctx.loadTexture(dir+'nor_gl_1k.webp',{srgb:false})]);
   for(const t of [map,nor])t.repeat.set(1/tile,1/tile);
@@ -421,9 +423,9 @@ export async function apply(ctx){
   // removed) at 40 cm with short slubs along the weft, not the pale shared bouclé. Under
   // the house's warm light a cool grey reads as the render's taupe (measured against
   // renders 1 and 2: same mean colour within 2–4 levels and the same weave contrast).
+  // The dining chairs (rooms/comedor.mjs) take the same fabric, as in renders 2 and 2a.
   const removedChairs=ctx.removeExported({material:'fabric',region:'salon',box:[[8.2,.2,-7.55],[9.2,1.0,-5.65]]});
-  const weave=await upholstery(ctx,ctx.mats.fabric,{cloth:'poly_wool_herringbone',color:'#9b9da6',tile:.4,detail:1.7,normal:1.2,
-    mottle:.06,mottleF:[20,20],slub:.4,slubF:[25,250],specular:.25,sheen:.38,key:'chairs'});
+  const weave=await upholstery(ctx,ctx.mats.fabric,{...CHAIR_WEAVE,key:'chairs'});
   const chairs=new Builder(T);
   const poly=name=>ctx.data.colliders.find(c=>c.name===name)?.poly;
   const smooth=(p,count)=>new T.CatmullRomCurve3(p.map(([x,z])=>new T.Vector3(x,0,z)),true,'centripetal').getSpacedPoints(count).slice(0,count).map(v=>[v.x,v.z]);

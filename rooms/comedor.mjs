@@ -25,6 +25,8 @@
 // - Contact: chairs darken where they tuck under the top and on their undersides
 //   (vertex occlusion); deeper shadow under the top and at the pedestals.
 
+import {upholstery,CHAIR_WEAVE} from './salon.mjs';
+
 // Seat centres of the six exported chairs (world metres, measured from house.bin) and
 // which side their back is on: west row backs to -x, east row to +x.
 const CHAIRS=[[11.352,-7.070,-1],[11.078,-6.440,-1],[11.352,-5.810,-1],[12.182,-7.070,1],[12.182,-6.440,1],[12.182,-5.810,1]];
@@ -51,11 +53,11 @@ export async function apply(ctx){
   const boxes=CHAIRS.map(([x,z,s])=>[[x-.32,-.1,z-.26],[x+.32,1.0,z+.26]]);
   ctx.removeExported({material:['fabric','dark'],box:boxes});
 
-  // Close woven upholstery of the render: the linen weave and its normals on a
-  // greige taupe, matte, with a soft sheen of the same hue (a light sheen read as plastic).
-  const fabric=ctx.cloneMaterial(ctx.mats.linen);
-  fabric.color.set('#a59a8e');fabric.roughness=.94;fabric.sheen=.3;fabric.sheenRoughness=.9;fabric.sheenColor.set('#b9ae9f');
-  fabric.normalScale.multiplyScalar(1.7);
+  // Same upholstery as the salon armchairs, as in renders 2 and 2a: the heathered taupe
+  // wool weave of rooms/salon.mjs (texture, scale and slubs). The table gets more neutral
+  // daylight than the armchairs, so the cool grey base read grey here: a touch warmer
+  // base gives the same taupe (R/G 1.15 -> 1.2 in the render 2 pose).
+  const fabric=await upholstery(ctx,ctx.mats.linen,{...CHAIR_WEAVE,color:'#a29da2',key:'dining'});
   const legs=ctx.cloneMaterial(ctx.mats.dark);legs.roughness=.38;
 
   const seatGeo=seat(THREE),backGeo=back(THREE),legGeo=new THREE.CylinderGeometry(.0105,.0075,1,7,1,true);
@@ -72,7 +74,7 @@ export async function apply(ctx){
       metal.push([legGeo,m.copy(chair).multiply(rod(THREE,[px-.035,0,pz*1.06],[px+.006,BACK.y,pz]))]);
     }
   }
-  const clothGeo=merge(THREE,cloth);occlude(THREE,clothGeo);fabric.vertexColors=true;
+  const clothGeo=merge(THREE,cloth);occlude(THREE,clothGeo);
   const chairs=new THREE.Group();chairs.name='comedor:sillas';
   chairs.add(new THREE.Mesh(clothGeo,fabric),new THREE.Mesh(merge(THREE,metal),legs));
   chairs.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;}});
