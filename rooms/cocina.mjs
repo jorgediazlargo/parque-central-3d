@@ -31,11 +31,17 @@
 // - Oak fronts: Oak Veneer 01 (Poly Haven, CC0, 2k, real 1.83 m scale); every front its
 //   own cut of the veneer and its own tone. Stone: every slab its own cut, the print
 //   contrast lowered and a large-scale cloud so the 1.82 m tile no longer repeats.
+// Stone from the render (owner: the stone was the biggest difference with render 9):
+// - The procedural strokes read as embossed wallpaper. Both maps are now synthesised
+//   from render 9's own stone (scripts/cocina_textures.py): small dense curls on the back
+//   wall, larger ochre swirls on a cleaner cream ground on the island. No relief.
+// - The island cheeks keep the bake's light (r7 darkened them to 0.66: measured on the
+//   render, the cheek in shade is as light as ours without it).
 
 import {mergeGeometries} from '../assets/jsm/utils/BufferGeometryUtils.js';
 
 const ZONE=[[7.3,-.2,-3.66],[13.4,3.2,-.2]];
-const VERSION='r7a';
+const VERSION='r8';
 // Render 9's ceiling: lighter and far less orange than our bake (measured on the
 // captures: R x1.67, G x2.15, B x3.0 linear); part of it as a paint gain.
 const CEILING_TINT=[1.14*1.75,1.27*2.08,1.4*2.55];
@@ -82,60 +88,50 @@ const NOISE=`float cocinaNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0
 export async function apply(ctx){
   const {THREE,mats}=ctx;
   const aniso=Math.min(8,ctx.renderer.capabilities.getMaxAnisotropy());
-  const [stoneMap,stoneNormal,oakDiff,oakNor,oakRough]=await Promise.all([
+  const [stoneMap,islandMap,oakDiff,oakNor,oakRough]=await Promise.all([
     ctx.loadTexture(`./assets/rooms/cocina/stone.webp?v=${VERSION}`),
-    ctx.loadTexture(`./assets/rooms/cocina/stone_nor.webp?v=${VERSION}`,{srgb:false}),
+    ctx.loadTexture(`./assets/rooms/cocina/stone_island.webp?v=${VERSION}`),
     ctx.loadTexture('./assets/polyhaven/oak_veneer_01/oak_veneer_01_diff_2k.webp'),
     ctx.loadTexture('./assets/polyhaven/oak_veneer_01/oak_veneer_01_nor_gl_2k.webp',{srgb:false}),
     ctx.loadTexture('./assets/polyhaven/oak_veneer_01/oak_veneer_01_rough_1k.webp',{srgb:false})]);
 
   // --- Stone (back wall lining, worktops, island) -----------------------------------
-  const stoneRelief={value:stoneNormal};
   const [cx0]=ctx.plan(ISLAND.cheeks[0][1],0),[cx1]=ctx.plan(ISLAND.cheeks[1][0],0);
   const [,frontZ]=ctx.plan(0,ISLAND.front);
   for(const piece of ctx.splitExported({material:'kitchenStone',region:'kitchen',box:ZONE})){
     const m=piece.material,prior=m.onBeforeCompile;
     pieceSeeds(THREE,piece.geometry);
-    m.map=stoneMap;
     const island=piece.userData.exported.layer==='island';
+    m.map=island?islandMap:stoneMap;
     // The kitchen's warm baked light over-saturates the cream stone: a slightly cooler tint.
     m.color.multiply(new THREE.Color().setRGB(...(island?[1.0,1.05,1.12]:[.97,1.0,1.06])));
     m.onBeforeCompile=(shader,r)=>{
       prior.call(m,shader,r);
       seedVertex(shader);
-      shader.uniforms.crosscutNormal=stoneRelief;
       shader.fragmentShader=shader.fragmentShader.replace('void main() {',NOISE+'void main() {');
-      // 2048 px map over a 1.82 m tile (scripts/cocina_textures.py); each slab its own cut.
-      shader.fragmentShader=shader.fragmentShader.replace('#define CROSSCUT_RELIEF 1.0','#define CROSSCUT_RELIEF 0.95')
+      // Maps of scripts/cocina_textures.py: wall 352 render px over 1.82 m (1024 px),
+      // island 243 px over 0.85 m, the render's own scale; each slab its own cut. Flat.
+      const scale=island?'1.18':'.55';
+      shader.fragmentShader=shader.fragmentShader.replace('#define CROSSCUT_RELIEF 1.0','#define CROSSCUT_RELIEF 0.0')
         .replace('vec2 ccX=houseWorld.zy*1.1,ccY=houseWorld.xz*1.1,ccZ=houseWorld.xy*1.1;',`
           vec2 ccCut=vec2(vPieceSeed,fract(vPieceSeed*17.31))*1.7;
-          vec2 ccX=houseWorld.zy*.55+ccCut,ccY=houseWorld.xz*.55+ccCut.yx,ccZ=houseWorld.xy*.55+ccCut;
-          vec3 ccBase=diffuseColor.rgb;`)
-        // The print read as wallpaper: 40 % less stroke contrast about the map's mean
-        // (linear .722/.603/.472), 30 % less, plus a slab tone and a 1-2 m cloud.
+          vec2 ccX=houseWorld.zy*${scale}+ccCut,ccY=houseWorld.xz*${scale}+ccCut.yx,ccZ=houseWorld.xy*${scale}+ccCut;`)
+        // The maps carry no large-scale tone: a slab tone and a 1-2 m banded cloud.
         .replace('#include <normal_fragment_maps>',`
-        diffuseColor.rgb=mix(ccBase*vec3(.722,.603,.472),diffuseColor.rgb,.7);
-        diffuseColor.rgb*=(1.0+.05*(fract(vPieceSeed*41.7)-.5))*(.95+.1*cocinaNoise(houseWorld.xy*vec2(.9,1.6)+houseWorld.zz*.9));
+        diffuseColor.rgb*=(1.0+.05*(fract(vPieceSeed*41.7)-.5))*(.9+.2*cocinaNoise(houseWorld.xy*vec2(.9,1.6)+houseWorld.zz*.9));
         {float vert=1.0-smoothstep(.5,.8,abs(houseNormal.y));
         ${island?`
-        // Island in the shade of its worktop: the cheeks (x outside the recess) lose the
-        // round-5 boost (render 9: darker than the wall); the recessed front keeps the
-        // bake's own shade under the 36 cm overhang (0.63 at 0.8 m, 1.2 at 0.3 m).
+        // Island in the shade of its worktop: the cheeks (x outside the recess) keep the
+        // bake's light; the recessed front keeps the bake's own shade under the 36 cm
+        // overhang (0.63 at 0.8 m, 1.2 at 0.3 m).
         float cheek=1.0-step(${cx0.toFixed(3)},houseWorld.x)*step(houseWorld.x,${cx1.toFixed(3)});
         float recess=(1.0-cheek)*step(${(frontZ-.03).toFixed(3)},houseWorld.z);
-        float body=mix(1.0,.66,cheek)*mix(1.0,1.1,recess)*mix(.8,1.0,smoothstep(.02,.22,houseWorld.y));
+        float body=mix(1.0,1.1,recess)*mix(.8,1.0,smoothstep(.02,.22,houseWorld.y));
         diffuseColor.rgb*=houseWorld.y>.875?1.9:mix(1.0,body,vert);`:`
         diffuseColor.rgb*=mix(1.5,${curve(WALL_GAIN,'houseWorld.y')},vert);
         // Warm golden band under the slot, a calmer cream below (render 9).
         diffuseColor.rgb*=mix(vec3(1.0),mix(vec3(1.0),vec3(1.05,.98,.86),smoothstep(1.8,2.1,houseWorld.y)),vert);`}}
-        #include <normal_fragment_maps>`)
-        // The slot and the downlights light the stone from above: relief facing up takes
-        // more of the baked light, facing down less (strongest in the grazing wash).
-        .replace('bakedE*=flatLum>1e-4?clamp(sqrt(bumpLum/flatLum),.75,1.35):1.0;}',`bakedE*=flatLum>1e-4?clamp(sqrt(bumpLum/flatLum),.75,1.35):1.0;}
-        {vec3 upV=normalize((viewMatrix*vec4(0.0,1.0,0.0,0.0)).xyz);
-        float rise=dot(normal,upV)-dot(nonPerturbedNormal,upV);
-        float k=${island?'2.0':'mix(2.3,5.0,smoothstep(1.5,2.12,houseWorld.y))'}*(1.0-smoothstep(.5,.8,abs(houseNormal.y)));
-        bakedE*=clamp(1.0+rise*k,.5,1.8);}`);
+        #include <normal_fragment_maps>`);
     };
     m.customProgramCacheKey=()=>'cocina-stone-'+VERSION+(island?'-island':'');
     m.needsUpdate=true;
