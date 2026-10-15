@@ -304,7 +304,7 @@ function painting(T,ctx){
 // texture copy, plus two things the photo tile cannot give: a cloth mottle of a few
 // centimetres (yarn lots, nap direction) and slub streaks along the weft, both filtered
 // by their screen footprint so they never shimmer. Lower specular: cloth has no gloss.
-async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05,slub=.04,specular=.25,sheen=.45,key,cloth='curly_teddy_natural'}){
+async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05,slub=.04,mottleF=[16,16],slubF=[9,170],specular=.25,sheen=.45,key,cloth='curly_teddy_natural'}){
   const T=ctx.THREE,m=ctx.cloneMaterial(source),dir=`./assets/polyhaven/${cloth}/${cloth}_`;
   const [map,nor]=await Promise.all([ctx.loadTexture(dir+'detail_1k.webp',{srgb:false}),ctx.loadTexture(dir+'nor_gl_1k.webp',{srgb:false})]);
   for(const t of [map,nor])t.repeat.set(1/tile,1/tile);
@@ -317,7 +317,7 @@ async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05,slub=.
     const hash='float hashHouse(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}';
     s.fragmentShader=s.fragmentShader.replace(hash,hash+'\nfloat salonVN(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hashHouse(i),hashHouse(i+vec2(1,0)),f.x),mix(hashHouse(i+vec2(0,1)),hashHouse(i+1.0),f.x),f.y);}')
       .replace('#include <color_fragment>',`#include <color_fragment>
-      {vec2 mo=vUv*vec2(16.0,16.0),sl=vUv*vec2(9.0,170.0);
+      {vec2 mo=vUv*vec2(${mottleF.map(v=>v.toFixed(1))}),sl=vUv*vec2(${slubF.map(v=>v.toFixed(1))});
       float fm=1.0-smoothstep(.35,1.2,max(fwidth(mo).x,fwidth(mo).y)),fs=1.0-smoothstep(.35,1.2,max(fwidth(sl).x,fwidth(sl).y));
       float mot=(salonVN(mo)+.5*salonVN(mo*2.3+7.1))/1.5-.5,sb=salonVN(sl)-.5;
       diffuseColor.rgb*=1.0+${mottle.toFixed(3)}*mot*fm+${slub.toFixed(3)}*sb*fs;}`);
@@ -417,8 +417,13 @@ export async function apply(ctx){
     m.customProgramCacheKey=()=>key()+'|salon-plinth';}
 
   // ---- Armchairs (B01): seat shell, box seat cushion and curved back roll. ----
+  // Fabric after render 1: a heathered wool weave (Poly Wool Herringbone, Poly Haven, specks
+  // removed) at 40 cm with short slubs along the weft, not the pale shared bouclé. Under
+  // the house's warm light a cool grey reads as the render's taupe (measured against
+  // renders 1 and 2: same mean colour within 2–4 levels and the same weave contrast).
   const removedChairs=ctx.removeExported({material:'fabric',region:'salon',box:[[8.2,.2,-7.55],[9.2,1.0,-5.65]]});
-  const boucle=ctx.cloneMaterial(ctx.mats.fabric);boucle.vertexColors=true;
+  const weave=await upholstery(ctx,ctx.mats.fabric,{cloth:'poly_wool_herringbone',color:'#9b9da6',tile:.4,detail:1.7,normal:1.2,
+    mottle:.06,mottleF:[20,20],slub:.4,slubF:[25,250],specular:.25,sheen:.38,key:'chairs'});
   const chairs=new Builder(T);
   const poly=name=>ctx.data.colliders.find(c=>c.name===name)?.poly;
   const smooth=(p,count)=>new T.CatmullRomCurve3(p.map(([x,z])=>new T.Vector3(x,0,z)),true,'centripetal').getSpacedPoints(count).slice(0,count).map(v=>[v.x,v.z]);
@@ -449,7 +454,7 @@ export async function apply(ctx){
     for(let k=1;k<6;k++){const e=[cxx+Rm*Math.cos(a0),czz+Rm*Math.sin(a0)];outline.push([e[0]+t/2*Math.cos(a0+Math.PI+Math.PI*k/6),e[1]+t/2*Math.sin(a0+Math.PI+Math.PI*k/6)]);}
     chairs.add(slab(T,{outline,y0:.645,y1:.885,r:.042,bulge:.01,wrinkle:.003,seed:52,flatCap:true,bottom:false,bottomSeam:true,contacts:[]}));
   }
-  const chairMesh=new T.Mesh(chairs.build(),boucle);chairMesh.castShadow=true;chairMesh.receiveShadow=true;
+  const chairMesh=new T.Mesh(chairs.build(),weave);chairMesh.castShadow=true;chairMesh.receiveShadow=true;
   const chairGroup=new T.Group();chairGroup.name='salon:butacas';chairGroup.add(chairMesh);group.add(chairGroup);
   ctx.lightRuntimeObject(sofaGroup);ctx.lightRuntimeObject(chairGroup);
 

@@ -119,6 +119,27 @@
     "derived": "converted for dist/rooms/cocina.mjs: colour, roughness, normal as WebP (roughness at 1k)"
   },
   {
+    "asset": "poly_wool_herringbone",
+    "name": "Poly Wool Herringbone",
+    "type": "texture",
+    "authors": [
+      "Rico Cilliers",
+      "colormass"
+    ],
+    "url": "https://polyhaven.com/a/poly_wool_herringbone",
+    "license": "CC0",
+    "resolution": "1k",
+    "files": [
+      "assets/polyhaven/poly_wool_herringbone/poly_wool_herringbone_detail_1k.webp",
+      "assets/polyhaven/poly_wool_herringbone/poly_wool_herringbone_nor_gl_1k.webp"
+    ],
+    "bytes": 982548,
+    "rooms": [
+      "salon"
+    ],
+    "derived": "scripts/derive_polyhaven.py: luminance detail, normal as WebP"
+  },
+  {
     "asset": "rough_linen",
     "name": "Rough Linen",
     "type": "texture",
