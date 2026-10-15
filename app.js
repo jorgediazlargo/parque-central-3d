@@ -3,7 +3,7 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=1aa5e4f212';
 import {Post} from './post.mjs?v=867b6592e7';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap} from './lightmap.mjs?v=e8aa99d08e';
+import {loadLightmap} from './lightmap.mjs?v=9920b47f62';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=b27dcfc10d';
 import {masterBedding,hideExportedBedding} from './bedding.mjs?v=37c7853956';
@@ -142,6 +142,9 @@ function material(color,kind,roughness=.7){
           // Long pale planks of natural oak, warm honey as in the renders.
           float oakValue=dot(diffuseColor.rgb,vec3(.2126,.7152,.0722));
           vec3 oakFloor=mix(vec3(oakValue),diffuseColor.rgb,.9)*vec3(1.14,1.0,.83)*1.30;
+          // Render 7: paler, less orange oak in the girls' room.
+          float girlsFloor=step(15.78,houseWorld.x)*step(houseWorld.z,-4.87);
+          oakFloor=mix(oakFloor,mix(vec3(oakValue*1.30),oakFloor,.55)*vec3(1.0,1.02,1.08),girlsFloor);
           // Porcelain module 0.90 m on the diagonal, band crossing on the H01 set-out point
           // at the entrance. Each piece is mirrored or turned at random to break repeats.
           vec2 porcelainAt=floorAt-vec2(14.086,-.218);
@@ -156,6 +159,8 @@ function material(color,kind,roughness=.7){
           }else if(porcelainF.x>porcelainBand&&porcelainB>.5)porcelainF.x=1.0+porcelainBand-porcelainF.x;
           else if(porcelainF.y>porcelainBand&&porcelainB>.5)porcelainF.y=1.0+porcelainBand-porcelainF.y;
           vec3 porcelainFloor=textureGrad(porcelainMap,porcelainF,dFdx(porcelainUv),dFdy(porcelainUv)).rgb*.96;
+          // Each piece a touch lighter or darker, as fired stone is (±3.5 %).
+          porcelainFloor*=1.0+.07*(porcelainB-.5);
           diffuseColor.rgb=mix(oakFloor,porcelainFloor,porcelainMask);
         `);
         // Honed porcelain, as in the reference: matte, no highlights. Its own pores
@@ -163,7 +168,9 @@ function material(color,kind,roughness=.7){
         shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.82,porcelainMask);')
           .replace('#include <normal_fragment_maps>',THREE.ShaderChunk.normal_fragment_maps.replace('mapN.xy *= normalScale;','mapN.xy *= normalScale*(1.0-porcelainMask);')+`
           if(porcelainMask>0.0){
-            float porcelainH=dot(porcelainFloor,vec3(.3333))*.0009;
+            // The darker band is a tone, not a step down: as relief it read as a wide joint.
+            float porcelainBandM=1.0-step(porcelainBand,porcelainF.x)*step(porcelainBand,porcelainF.y);
+            float porcelainH=(dot(porcelainFloor,vec3(.3333))+porcelainBandM*.17)*.0009;
             vec3 porcelainDx=dFdx(-vViewPosition),porcelainDy=dFdy(-vViewPosition);
             vec3 porcelainR1=cross(porcelainDy,normal),porcelainR2=cross(normal,porcelainDx);
             float porcelainDet=dot(porcelainDx,porcelainR1)*faceDirection;
@@ -541,7 +548,7 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=73b34e8834'),fetch('./assets/house.bin?v=efb551319c')]);
+    const [j,b]=await Promise.all([fetch('./assets/house.json?v=8de14c4fc4'),fetch('./assets/house.bin?v=9d7589033c')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
     data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
     lightmap.syncTextures();

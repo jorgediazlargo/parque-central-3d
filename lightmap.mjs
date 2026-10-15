@@ -9,7 +9,7 @@ import {loadProbes,patchLighting} from './lighting.mjs?v=1aa5e4f212';
 // irradiance probes (lighting.mjs) used by doors, bedding and room props.
 // `lighting.uniforms` (probes + reflections) must be filled before the first render.
 export async function loadLightmap(renderer,sourceHash,lighting){
-  const [j,b]=await Promise.all([fetch('./assets/house-light.json?v=85dcad6249',{cache:'no-cache'}),fetch('./assets/house-light.bin?v=0d2b2830d5',{cache:'no-cache'})]);
+  const [j,b]=await Promise.all([fetch('./assets/house-light.json?v=c61f8ed22f',{cache:'no-cache'}),fetch('./assets/house-light.bin?v=62edd41190',{cache:'no-cache'})]);
   if(!j.ok||!b.ok)throw Error('No se ha podido descargar la iluminación.');
   const data=await j.json(),buffer=await b.arrayBuffer();
   if(data.sourceSha256!==sourceHash)throw Error('La geometría y la iluminación no corresponden a la misma versión.');
