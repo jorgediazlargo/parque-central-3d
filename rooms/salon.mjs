@@ -15,6 +15,8 @@
 // gloss), flatter cushions, an oak plinth of its own set back under the upholstery
 // with a soft graded contact shadow (the exported plinth and the near-black core
 // read as a floating black slab) and the cove lines glowing amber instead of white.
+// Ronda 8: the sofa remade after render 1 as an armless modular sofa (back and seat
+// blocks, smooth ivory linen, thin rounded oak plinth); see apply().
 
 // Seeded value noise, smooth enough for fabric pulls.
 function noise2(seed){
@@ -69,8 +71,10 @@ class Builder{
 // small pulls along it, and creases where the top panel is drawn into the seam.
 // Vertex colours carry the contact occlusion the probes cannot resolve ({axis, at, k,
 // fall}), a low-side darkening (shade: [k, height]) and the dips of seams and creases.
-function slab(T,{outline,corners=[],y0,y1,r=.03,crown=0,bulge=0,lean=null,wrinkle=.0025,seed=1,contacts=[],
+function slab(T,{outline,corners=[],y0,y1,r=.03,rb=null,crown=0,bulge=0,lean=null,wrinkle=.0025,seed=1,contacts=[],
   bottom=false,flatCap=false,seam=true,bottomSeam=false,sag=0,shade=null}){
+  // rb: radius of the bottom edge (defaults to r); a tighter one sits the block on its base.
+  const R2=Math.min(r,rb??r);
   let pts=outline.map(p=>[...p]);
   let area=0;for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];area+=a[0]*b[1]-b[0]*a[1];}
   if(area<0)pts.reverse();
@@ -95,8 +99,8 @@ function slab(T,{outline,corners=[],y0,y1,r=.03,crown=0,bulge=0,lean=null,wrinkl
   const ring=(i,phi,inset=0)=>{
     const [px,pz]=pts[i],[nx,nzz]=nor[i],q=[px-nx*r,pz-nzz*r];let off,y;
     if(phi<=Math.PI/2){off=r*Math.sin(phi);y=y1-r+r*Math.cos(phi);}
-    else if(phi>=Math.PI/2+1){const a=phi-1;off=r*Math.sin(a);y=y0+r+r*Math.cos(a);}
-    else{const t=phi-Math.PI/2;off=r;y=y1-r-t*(y1-y0-2*r);}
+    else if(phi>=Math.PI/2+1){const a=phi-1;off=r-R2+R2*Math.sin(a);y=y0+R2+R2*Math.cos(a);}
+    else{const t=phi-Math.PI/2;off=r;y=y1-r-t*(y1-y0-r-R2);}
     off+=bulge*w[i]*Math.max(0,1-((y-ym)/hs)**2)*(1+.25*nz(L[i]*6,seed))-inset;
     const s=shear(y);return [q[0]+nx*off+s[0],y,q[1]+nzz*off+s[1]];
   };
@@ -300,8 +304,8 @@ function painting(T,ctx){
 // texture copy, plus two things the photo tile cannot give: a cloth mottle of a few
 // centimetres (yarn lots, nap direction) and slub streaks along the weft, both filtered
 // by their screen footprint so they never shimmer. Lower specular: cloth has no gloss.
-async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05,slub=.04,specular=.25,sheen=.45,key}){
-  const T=ctx.THREE,m=ctx.cloneMaterial(source),dir='./assets/polyhaven/curly_teddy_natural/curly_teddy_natural_';
+async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05,slub=.04,specular=.25,sheen=.45,key,cloth='curly_teddy_natural'}){
+  const T=ctx.THREE,m=ctx.cloneMaterial(source),dir=`./assets/polyhaven/${cloth}/${cloth}_`;
   const [map,nor]=await Promise.all([ctx.loadTexture(dir+'detail_1k.webp',{srgb:false}),ctx.loadTexture(dir+'nor_gl_1k.webp',{srgb:false})]);
   for(const t of [map,nor])t.repeat.set(1/tile,1/tile);
   m.map=map;m.normalMap=nor;m.normalScale.setScalar(normal);m.vertexColors=true;m.color.set(color);
@@ -327,21 +331,28 @@ async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05,slub=.
 // recess, vertex-darkened where the upholstery overhangs it and at its floor line.
 async function oakPlinth(ctx,boxes,{y0,y1}){
   const T=ctx.THREE,b=new Builder(T),dir='./assets/polyhaven/white_oak_veneer/white_oak_veneer_';
-  for(const [x0,z0,x1,z1] of boxes){
-    const g=new T.BoxGeometry(x1-x0,y1-y0,z1-z0).translate((x0+x1)/2,(y0+y1)/2,(z0+z1)/2).toNonIndexed();
+  for(const [x0,z0,x1,z1,rc=0] of boxes){
+    // Rounded in plan like the upholstery above it, so no square corner shows past it.
+    let g;
+    if(rc>0){
+      const sh=new T.Shape(),{outline}=rrect(x0,z0,x1,z1,rc,1,6);
+      outline.forEach(([x,z],i)=>i?sh.lineTo(x,-z):sh.moveTo(x,-z));
+      g=new T.ExtrudeGeometry(sh,{depth:y1-y0,bevelEnabled:false,curveSegments:1}).rotateX(-Math.PI/2).translate(0,y0,0);
+      g.deleteAttribute('uv');g.setAttribute('uv',new T.Float32BufferAttribute(new Float32Array(g.getAttribute('position').count*2),2));
+    }else g=new T.BoxGeometry(x1-x0,y1-y0,z1-z0).translate((x0+x1)/2,(y0+y1)/2,(z0+z1)/2).toNonIndexed();
     const p=g.getAttribute('position'),n=g.getAttribute('normal'),uv=g.getAttribute('uv'),col=[];
     for(let i=0;i<p.count;i++){
       // Grain runs along the long side of each face; metric UVs.
       const along=Math.abs(n.getX(i))>.5?p.getZ(i):p.getX(i);
       uv.setXY(i,along/1.2,Math.abs(n.getY(i))>.5?(Math.abs(n.getX(i))>.5?p.getX(i):p.getZ(i))/1.2:p.getY(i)/1.2);
       const t=(p.getY(i)-y0)/(y1-y0);
-      const ao=Math.abs(n.getY(i))>.5?(n.getY(i)>0?.5:.2):.55+.4*Math.max(0,Math.sin(Math.PI*(.15+.75*t)));
+      const ao=Math.abs(n.getY(i))>.5?(n.getY(i)>0?.5:.2):.72+.25*Math.max(0,Math.sin(Math.PI*(.15+.75*t)));
       col.push(ao,ao,ao);
     }
     g.setAttribute('color',new T.Float32BufferAttribute(col,3));b.add(g);
   }
   const [map,nor,rough]=await Promise.all(['diff_1k.webp','nor_gl_1k.webp','rough_1k.webp'].map((f,i)=>ctx.loadTexture(dir+f,{srgb:!i})));
-  const m=new T.MeshStandardMaterial({map,normalMap:nor,roughnessMap:rough,roughness:1,color:'#d4ad82',vertexColors:true});
+  const m=new T.MeshStandardMaterial({map,normalMap:nor,roughnessMap:rough,roughness:1,color:'#f4e2c6',vertexColors:true});
   m.normalScale.setScalar(.5);
   const mesh=new T.Mesh(b.build(),m);mesh.name='salon:peana';mesh.receiveShadow=true;
   return mesh;
@@ -350,69 +361,52 @@ async function oakPlinth(ctx,boxes,{y0,y1}){
 export async function apply(ctx){
   const T=ctx.THREE,{group}=ctx;
   // ---- L sofa (B01): main run against the west wall, chaise run along the south. ----
+  // Ronda 8, after render 1: an armless modular sofa. Each run is two upholstered blocks
+  // on a thin oak plinth: a deep back block from the plinth to 0.80 m (it also covers the baked
+  // shadow of the old back cushions on the wall) and one thick
+  // seat block (no separate base or loose cushions) with a large rounded edge and a
+  // welt just below it. The back ends flush with the seat at the south end and stops
+  // short of it at the north end, where the seat runs on with a rounded end. Smooth
+  // ivory cotton-linen instead of bouclé; only knife-edge throw pillows are loose.
   const removed=ctx.removeExported({material:'linen',region:'salon',box:[[5.2,0,-8.4],[8.4,1.2,-4.7]]});
-  const linen=await upholstery(ctx,ctx.mats.linen,{color:'#ebe5da',tile:.24,detail:.62,normal:1.05,mottle:.06,slub:.03,key:'sofa'});
+  const linen=await upholstery(ctx,ctx.mats.linen,{cloth:'rough_linen',color:'#f0eae0',tile:.11,detail:.32,normal:.45,mottle:.035,slub:.022,specular:.2,sheen:.35,key:'sofa'});
   const sofa=new Builder(T);
   const put=g=>sofa.add(g);
-  const BX=5.257,FX=6.140,NZ=-8.28,SZ=-4.75,CX=8.278,CZ=-5.627,PL=.085,BASE=.30,SEAT=.465;
-  const backX=5.475,backZ=-4.975,frameTop=.655;
-  // Frames: back of the main run, back of the chaise run, north arm, two seat bases.
-  // They darken toward the plinth (shade) so the sofa sits on it instead of floating.
-  const frameShade=[.16,.22],plinth={axis:'y',at:PL,k:.32,fall:.035};
-  put(slab(T,{...rrect(BX,NZ,backX,SZ,.06),y0:PL,y1:frameTop,r:.06,bulge:.008,wrinkle:.003,seed:2,shade:frameShade,
-    contacts:[plinth,{axis:'x',at:backX,k:.35,fall:.03}]}));
-  put(slab(T,{...rrect(backX+.004,backZ,CX,SZ,.06),y0:PL,y1:frameTop,r:.06,bulge:.008,wrinkle:.003,seed:3,shade:frameShade,
-    contacts:[plinth,{axis:'z',at:backZ,k:.35,fall:.03},{axis:'x',at:backX,k:.4,fall:.025}]}));
-  put(slab(T,{...rrect(backX+.004,NZ,FX,-8.07,.06),y0:PL,y1:.62,r:.06,crown:.008,bulge:.010,wrinkle:.003,seed:4,shade:frameShade,
-    contacts:[plinth,{axis:'z',at:-8.07,k:.45,fall:.035},{axis:'x',at:backX,k:.35,fall:.025}]}));
-  put(slab(T,{...rrect(backX+.004,-8.066,FX,backZ-.004,.04),y0:PL,y1:BASE,r:.035,bulge:.006,seed:5,shade:frameShade,
-    contacts:[plinth,{axis:'y',at:BASE,k:.5,fall:.025}]}));
-  put(slab(T,{...rrect(FX+.004,CZ,CX,backZ-.004,.04),y0:PL,y1:BASE,r:.035,bulge:.006,seed:6,shade:frameShade,
-    contacts:[plinth,{axis:'y',at:BASE,k:.5,fall:.025},{axis:'x',at:FX,k:.35,fall:.025}]}));
-  // Loose seat cushions: three on the main run, two on the chaise run. Thick round
-  // edges, bellied fronts, a shallow sit dip and creases drawn into the welt.
-  const gap=.008,mz0=-8.066,mz1=backZ-.004,mw=(mz1-mz0-2*gap)/3;
-  const cushion={y0:BASE+.002,y1:SEAT,r:.05,crown:.011,sag:.013,bulge:.009,wrinkle:.0075};
-  const seatsMain=[0,1,2].map(k=>[mz0+k*(mw+gap),mz0+k*(mw+gap)+mw]);
-  for(const [k,[z0,z1]] of seatsMain.entries())
-    put(slab(T,{...rrect(backX+.006,z0,FX+.006,z1,.07),...cushion,seed:10+k,
-      contacts:[{axis:'y',at:BASE,k:.55,fall:.03},{axis:'z',at:z0,k:k?.45:.3,fall:.025},{axis:'z',at:z1,k:k<2?.45:.3,fall:.025},{axis:'x',at:backX+.21,k:.4,fall:.05}]}));
-  const cx0=FX+.012,cw=(CX+.006-cx0-gap)/2;
-  for(const k of [0,1]){
-    const x0=cx0+k*(cw+gap),x1=x0+cw;
-    put(slab(T,{...rrect(x0,CZ-.006,x1,backZ-.004,.07),...cushion,seed:20+k,
-      contacts:[{axis:'y',at:BASE,k:.55,fall:.03},{axis:'x',at:x0,k:.45,fall:.025},{axis:'x',at:x1,k:k?.25:.45,fall:.025},{axis:'z',at:backZ-.21,k:.4,fall:.05}]}));
-  }
-  // Loose back cushions resting on the seats, leaning back 7°: plump, very round.
-  const lean=Math.tan(7*Math.PI/180),backTop=.865,backC={y0:SEAT-.01,y1:backTop,r:.064,crown:.009,bulge:.012,wrinkle:.0065};
-  for(const [k,[z0,z1]] of seatsMain.entries())
-    put(slab(T,{...rrect(backX+.004,z0+.004,backX+.214,z1-.004,.08),...backC,lean:[-lean,0],seed:30+k,
-      contacts:[{axis:'y',at:SEAT-.01,k:.5,fall:.04}]}));
-  const bx0=backX+.214+.004,bw=(CX-bx0-gap)/2;
-  for(const k of [0,1]){
-    const x0=bx0+k*(bw+gap);
-    put(slab(T,{...rrect(x0,backZ-.214,x0+bw,backZ-.004,.08),...backC,lean:[0,lean],seed:40+k,
-      contacts:[{axis:'y',at:SEAT-.01,k:.5,fall:.04}]}));
-  }
-  // Throw pillows: three on the main run, two on the chaise run near the corner, in
-  // the same mesh and material as the sofa (one draw call, one program).
+  const BX=5.257,FX=6.140,NZ=-8.28,SZ=-4.75,CX=8.278,CZ=-5.627,PL=.04,SEAT=.43,BACK=.80,DEPTH=.23;
+  const backX=BX+DEPTH,backZ=SZ-DEPTH,backN=NZ+.26;
+  // Blocks darken toward the plinth (shade) so the sofa sits on it instead of floating.
+  const shade=[.14,.2],plinth={axis:'y',at:PL,k:.3,fall:.03};
+  const block={r:.075,rb:.018,bulge:.005,wrinkle:.0018,shade};
+  // Back blocks: the main one wraps the corner; slightly crowned tops, rounder ends.
+  put(slab(T,{...rrect(BX,backN,backX,SZ,.09),y0:PL,y1:BACK,...block,r:.085,crown:.006,seed:2,
+    contacts:[plinth]}));
+  put(slab(T,{...rrect(backX+.003,backZ,CX,SZ,.09),y0:PL,y1:BACK,...block,r:.085,crown:.006,seed:3,
+    contacts:[plinth,{axis:'x',at:backX,k:.3,fall:.025}]}));
+  // Seat blocks: the main one covers the corner square and runs past the back to the
+  // north end; the south run butts against it. Soft sit dips, contact with the backs.
+  const seat={...block,y0:PL,y1:SEAT,crown:.008,sag:.004,wrinkle:.0028};
+  put(slab(T,{...rrect(backX+.003,NZ,FX,backZ-.003,.11),...seat,seed:10,
+    contacts:[plinth,{axis:'x',at:backX,k:.42,fall:.04},{axis:'z',at:backZ,k:.3,fall:.04}]}));
+  put(slab(T,{...rrect(FX+.004,CZ,CX,backZ-.003,.09),...seat,seed:11,
+    contacts:[plinth,{axis:'z',at:backZ,k:.42,fall:.04},{axis:'x',at:FX,k:.3,fall:.02}]}));
+  // Throw pillows as in render 1: a large one and a small one on the main run near the
+  // corner, a large one in the corner and another along the south run, all leaning
+  // back against the blocks, in the same mesh and material (one draw call).
   const pillowB=sofa,tmp=new T.Object3D();
   const addPillow=(W,H,Th,seed,x,y,z,ry,rx,rz)=>{
     tmp.rotation.order='YXZ';tmp.rotation.set(rx,ry,rz);tmp.position.set(x,y,z);tmp.updateMatrix();
     for(const g of pillow(T,W,H,Th,seed)){g.applyMatrix4(tmp.matrix);pillowB.add(g,1.02);}
   };
-  const front=backX+.214+.02;
-  addPillow(.50,.48,.15,3,front+.06,SEAT+.23,-6.95,Math.PI/2,-.30,.03);
-  addPillow(.46,.44,.14,4,front+.06,SEAT+.215,-6.30,Math.PI/2,-.32,-.05);
-  addPillow(.50,.48,.15,5,front+.06,SEAT+.23,-5.62,Math.PI/2,-.30,.06);
-  addPillow(.46,.44,.14,6,6.42,SEAT+.215,backZ-.214-.08,Math.PI,-.31,-.04);
-  addPillow(.50,.48,.15,7,7.05,SEAT+.23,backZ-.214-.08,Math.PI,-.29,.05);
+  addPillow(.55,.53,.16,5,backX+.09,SEAT+.245,-6.35,Math.PI/2,-.30,.05);
+  addPillow(.42,.40,.12,4,backX+.07,SEAT+.185,-5.72,Math.PI/2,-.34,-.06);
+  addPillow(.55,.53,.16,3,backX+.30,SEAT+.245,backZ-.10,Math.PI*.82,-.30,.04);
+  addPillow(.55,.53,.16,7,6.95,SEAT+.245,backZ-.09,Math.PI,-.31,-.05);
   const sofaMesh=new T.Mesh(sofa.build(),linen);sofaMesh.castShadow=true;sofaMesh.receiveShadow=true;
   const sofaGroup=new T.Group();sofaGroup.name='salon:sofa';sofaGroup.add(sofaMesh);
   group.add(sofaGroup);
-  // Oak plinth set back 4 cm from the upholstery (the exported one goes).
+  // Thin oak plinth set back 2.5 cm from the upholstery (the exported one goes).
   const removedPlinth=ctx.removeExported({material:'wood',region:'salon',box:[[5.24,-.01,-8.3],[8.3,.095,-4.74]]});
-  const PI=.04,plinthBoxes=[[BX+PI,NZ+PI,FX,SZ-PI],[FX,CZ+PI,CX-PI,SZ-PI]];
+  const PI=.025,plinthBoxes=[[BX+PI,NZ+PI,FX-PI,SZ-PI,.08],[FX-PI,CZ+PI,CX-PI,SZ-PI,.07]];
   const plinthMesh=await oakPlinth(ctx,plinthBoxes,{y0:0,y1:PL});
   const plinthGroup=new T.Group();plinthGroup.add(plinthMesh);group.add(plinthGroup);ctx.lightRuntimeObject(plinthGroup);
   // Under the sofa the nearest probes are inside the upholstery (no cover), so the
