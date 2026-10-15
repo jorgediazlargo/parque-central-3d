@@ -24,6 +24,11 @@
 //   undercut below, oak veneer running the length on the top and round the edge.
 // - Contact: chairs darken where they tuck under the top and on their undersides
 //   (vertex occlusion); deeper shadow under the top and at the pedestals.
+//
+// Table as in renders 2 and 2a (15 Oct): racetrack top (round ends, R 50 cm) on the
+// B01 footprint of 100 x 237 cm, honey oak less orange; the two dark B01 drum
+// pedestals become oak ones, slim under the top and flaring to the floor; and the
+// small stone cylinder in the middle becomes the wide, low taupe bowl of the render.
 
 import {upholstery,CHAIR_WEAVE} from './salon.mjs';
 
@@ -41,7 +46,16 @@ const SCONCE={z0:-7.661,z1:-5.488,y0:1.730,y1:1.756,depth:.025};
 // base: the bake lights this wall about 20 % above render 2 (daylight from the facade,
 // the render is an evening scene), which left the wall a flat bright plane.
 const WASH={y:1.735,tight:{d:.045,down:12.0,up:8.0},broad:{d:.3,down:.25,up:.08},base:.85,color:[1,.80,.60]};
-const TOP={y0:.715,y1:.76,r:.10,arris:.004,edge:.02,under:.03};
+const TOP={y0:.715,y1:.76,r:.50,arris:.004,edge:.02,under:.03};
+// Pedestal radii (m): under the top, slimmest, at the floor; the waist height.
+const PEDESTAL={top:.07,waist:.05,foot:.18,neck:.56};
+// Bowl at the B01 'Cuenco comedor' point: outer radius, height, wall, foot ring.
+const BOWL={x:11.768,z:-6.555,r:.23,h:.085,wall:.011,foot:.085};
+
+// Oak tint: cool, like the kitchen oak, because the coves and downlights over the table
+// are warm; the top then reads honey (R/G 1.34-1.45, G/B 1.4-1.55 on screen; renders 2
+// and 2a: 1.4 / 1.5), not orange. Stoneware bowl; share of the veneer figure kept.
+const OAK='#c4cad4',CLAY='#9c9084',FIGURE=.55;
 
 const SEAT={r:.215,squash:.95,top:.474,bottom:.392,edge:.042,foot:.012};
 const BACK={r:.218,half:62*Math.PI/180,cap:.075,thick:.025,height:.088,y:.716,lean:.14,n:3.2};
@@ -62,16 +76,16 @@ export async function apply(ctx){
 
   const seatGeo=seat(THREE),backGeo=back(THREE),legGeo=new THREE.CylinderGeometry(.0105,.0075,1,7,1,true);
   legGeo.translate(0,.5,0);
-  const cloth=[],metal=[],m=new THREE.Matrix4(),q=new THREE.Quaternion(),one=new THREE.Vector3(1,1,1);
+  const cloth=[],metal=[],q=new THREE.Quaternion(),one=new THREE.Vector3(1,1,1);
   for(const [x,z,side] of CHAIRS){
     const chair=new THREE.Matrix4().compose(new THREE.Vector3(x,0,z),q.setFromAxisAngle(new THREE.Vector3(0,1,0),side<0?0:Math.PI),one);
     cloth.push([seatGeo,chair],[backGeo,chair]);
     // Front legs splay slightly; rear legs run up behind the seat into the back band.
     const post=a=>[BACK.r*Math.cos(Math.PI+a),BACK.r*Math.sin(Math.PI+a)];
     for(const sz of [-1,1]){
-      metal.push([legGeo,m.copy(chair).multiply(rod(THREE,[.165,0,sz*.165],[.135,SEAT.bottom+.004,sz*.14]))]);
+      metal.push([legGeo,chair.clone().multiply(rod(THREE,[.165,0,sz*.165],[.135,SEAT.bottom+.004,sz*.14]))]);
       const [px,pz]=post(sz*48*Math.PI/180);
-      metal.push([legGeo,m.copy(chair).multiply(rod(THREE,[px-.035,0,pz*1.06],[px+.006,BACK.y,pz]))]);
+      metal.push([legGeo,chair.clone().multiply(rod(THREE,[px-.035,0,pz*1.06],[px+.006,BACK.y,pz]))]);
     }
   }
   const clothGeo=merge(THREE,cloth);occlude(THREE,clothGeo);
@@ -83,8 +97,8 @@ export async function apply(ctx){
   // Contact shadows: soft decals just above the floor, one mesh (opacity per decal in
   // the vertex alpha).
   const decals=[],plane=new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2);
-  const decal=(x,z,w,d,opacity)=>{
-    const g=plane.clone().scale(w,1,d).translate(x,.0015,z);
+  const decal=(x,z,w,d,opacity,y=.0015)=>{
+    const g=plane.clone().scale(w,1,d).translate(x,y,z);
     g.setAttribute('color',new THREE.Float32BufferAttribute(new Array(4).fill([1,1,1,opacity]).flat(),4));
     decals.push(g);
   };
@@ -97,25 +111,33 @@ export async function apply(ctx){
       decal(x+cos*(px-.035),z+cos*pz*1.06,.075,.075,.7);
     }
   }
-  for(const [x,z] of PEDESTALS){decal(x,z,.62,.62,.5);decal(x,z,.42,.42,.55);}
+  for(const [x,z] of PEDESTALS){decal(x,z,.62,.62,.5);decal(x,z,.44,.44,.55);}
+  decal(BOWL.x,BOWL.z,BOWL.foot*3.2,BOWL.foot*3.2,.5,TOP.y1+.0012);
   decal((TABLE.x0+TABLE.x1)/2,(TABLE.z0+TABLE.z1)/2,(TABLE.x1-TABLE.x0)*1.25,(TABLE.z1-TABLE.z0)*1.1,.34);
   const shadow=new THREE.Mesh(merge(THREE,decals.map(g=>[g,null]),['position','uv','color']),new THREE.MeshBasicMaterial({map:shadowTexture(THREE),color:'#1c140d',vertexColors:true,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,toneMapped:true}));
   shadow.renderOrder=-1;shadow.name='comedor:sombra';ctx.group.add(shadow);
 
-  tableTop(ctx);
+  table(ctx);
   wallLight(ctx);
 }
 
-// Table top: the exported slab goes; a new one with a crisp edge and veneer grain.
-function tableTop(ctx){
+// Table: the exported slab, drum pedestals and bowl go; a racetrack top with a crisp
+// edge and veneer grain, oak pedestals and a ceramic bowl replace them.
+function table(ctx){
   const {THREE}=ctx;
   ctx.removeExported({material:'wood',box:[[TABLE.x0-.05,TOP.y0-.02,TABLE.z0-.05],[TABLE.x1+.05,TOP.y1+.01,TABLE.z1+.05]]});
+  ctx.removeExported({material:'bronze',box:PEDESTALS.map(([x,z])=>[[x-.2,-.05,z-.2],[x+.2,TOP.y0+.01,z+.2]])});
+  ctx.removeExported({material:'stone',box:[[BOWL.x-.2,TOP.y1-.01,BOWL.z-.2],[BOWL.x+.2,TOP.y1+.1,BOWL.z+.2]]});
   const cx=(TABLE.x0+TABLE.x1)/2,cz=(TABLE.z0+TABLE.z1)/2,hx=(TABLE.x1-TABLE.x0)/2,hz=(TABLE.z1-TABLE.z0)/2,R=TOP.r;
-  // Rounded-rectangle outline inset by o: points, outward normals, arc length.
+  // Rounded-rectangle outline inset by o (R = half width: racetrack), points, outward
+  // normals, arc length; a corner meeting the next one in the middle is not repeated.
   const outline=o=>{
     const pts=[];
     for(const [sx,sz,a0] of [[1,1,0],[-1,1,Math.PI/2],[-1,-1,Math.PI],[1,-1,1.5*Math.PI]])
-      for(let k=0;k<=8;k++){const a=a0+k/8*Math.PI/2,c=Math.cos(a),s=Math.sin(a);pts.push([cx+sx*(hx-R)+(R-o)*c,cz+sz*(hz-R)+(R-o)*s,c,s]);}
+      for(let k=0;k<=16;k++){
+        const a=a0+k/16*Math.PI/2,c=Math.cos(a),s=Math.sin(a),p=[cx+sx*(hx-R)+(R-o)*c,cz+sz*(hz-R)+(R-o)*s,c,s];
+        const q=pts[pts.length-1];if(!q||Math.hypot(p[0]-q[0],p[1]-q[1])>1e-6)pts.push(p);
+      }
     pts.push(pts[0]);
     let s=0;return pts.map((p,i)=>{if(i)s+=Math.hypot(p[0]-pts[i-1][0],p[1]-pts[i-1][1]);return [...p,s];});
   };
@@ -145,10 +167,55 @@ function tableTop(ctx){
   g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
   g.setIndex(idx);g.computeBoundingSphere();
-  // Honey white oak of render 2, satin (catches the cove in a soft sheen).
-  const oak=ctx.cloneMaterial(ctx.mats.wood);oak.color.set('#e8d6c0');oak.roughness=.5;oak.normalScale.set(.6,.6);
-  const top=new THREE.Mesh(g,oak);top.name='comedor:mesa';top.castShadow=top.receiveShadow=false;
-  ctx.group.add(top);ctx.lightRuntimeObject(top);
+  const oak=oakMaterial(ctx),top=new THREE.Mesh(g,oak);top.name='comedor:mesa';
+
+  // Pedestals: slim oak columns under the top that flare into a wide foot, grain
+  // running up; darker high up, in the shadow of the top.
+  const smooth=t=>{t=Math.min(1,Math.max(0,t));return t*t*(3-2*t);};
+  const {top:rt,waist,foot,neck}=PEDESTAL,col=[];
+  for(let i=0;i<=24;i++){
+    const y=TOP.y0-.002-(TOP.y0-.012)*i/24;
+    col.push([y>neck?waist+(rt-waist)*smooth((y-neck)/(TOP.y0-neck)):waist+(foot-waist)*((neck-y)/neck)**2.6,y]);
+  }
+  const toe=col[col.length-1][0];
+  col.push([toe-.004,.0025],[toe-.012,0]);
+  const stem=lathe(THREE,profile(col),40,1,(p,a)=>[a*.06,p.y]);
+  const shade=g=>{
+    const p=g.getAttribute('position'),c=new Float32Array(p.count*3);
+    for(let i=0;i<p.count;i++)c[i*3]=c[i*3+1]=c[i*3+2]=.62+.38*smooth((TOP.y0-.05-p.getY(i))/.5);
+    g.setAttribute('color',new THREE.BufferAttribute(c,3));return g;
+  };
+  const stems=shade(merge(THREE,PEDESTALS.map(([x,z])=>[stem,new THREE.Matrix4().makeTranslation(x,0,z)])));
+  const legOak=ctx.cloneMaterial(oak);legOak.vertexColors=true;
+  const pedestals=new THREE.Mesh(stems,legOak);pedestals.name='comedor:pies mesa';
+
+  // Bowl: wide and low, matte taupe stoneware (inside, over the rim, outside, foot).
+  const {r,h,wall,foot:rf}=BOWL,bowl=[],ri=r-wall,yi=.016;
+  for(let i=0;i<=10;i++){const f=Math.PI/2*i/10;bowl.push([ri*Math.sin(f),yi+(h-yi)*(1-Math.cos(f))]);}
+  for(let i=1;i<6;i++){const t=Math.PI*(1-i/6);bowl.push([r-wall/2+wall/2*Math.cos(t),h+wall/2*Math.sin(t)]);}
+  const t0=Math.asin(rf/r),c0=Math.cos(t0);
+  for(let i=0;i<=10;i++){const t=Math.PI/2-(Math.PI/2-t0)*i/10;bowl.push([r*Math.sin(t),.006+(h-.006)*(c0-Math.cos(t))/c0]);}
+  bowl.push([rf-.003,0],[0,0]);
+  const clay=ctx.cloneMaterial(ctx.mats.clay);clay.color.set(CLAY);clay.roughness=.82;
+  const dish=new THREE.Mesh(lathe(THREE,profile(bowl),48),clay);dish.name='comedor:cuenco';
+  dish.position.set(BOWL.x,TOP.y1,BOWL.z);
+
+  for(const o of [top,pedestals,dish]){o.castShadow=o.receiveShadow=false;ctx.group.add(o);ctx.lightRuntimeObject(o);}
+}
+
+// Honey white oak of render 2, satin (catches the cove in a soft sheen). The shared
+// veneer map has a bold cathedral figure; the render's top shows fine straight grain,
+// so the figure is blended toward its local mean (a blurred mip of the same map).
+function oakMaterial(ctx){
+  const m=ctx.cloneMaterial(ctx.mats.wood);m.color.set(OAK);m.roughness=.5;m.normalScale.set(.6,.6);
+  const prev=m.onBeforeCompile,key=m.customProgramCacheKey();
+  m.onBeforeCompile=function(shader,renderer){
+    prev.call(this,shader,renderer);
+    shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
+      diffuseColor.rgb=mix(diffuse*texture2D(map,vMapUv,5.0).rgb,diffuseColor.rgb,${FIGURE.toFixed(2)});`);
+  };
+  m.customProgramCacheKey=()=>key+'-comedorOak';
+  return m;
 }
 
 // Linear wall light on the east wall and its wash on the plaster.
@@ -205,12 +272,19 @@ function occlude(THREE,g){
     if(y<.5){ao=ny<-.5?.5:.62+.38*s(SEAT.bottom+.01,SEAT.top-.01,y);}
     else ao=.8+.2*s(BACK.y-BACK.height*.8,BACK.y+BACK.height*.9,y);
     if(y<TOP.y0){
-      const inside=Math.min(x-TABLE.x0,TABLE.x1-x,z-TABLE.z0,TABLE.z1-z);
+      const inside=insideTop(x,z);
       ao*=1-.4*s(-.05,.12,inside);
     }
     col[i*3]=col[i*3+1]=col[i*3+2]=ao;
   }
   g.setAttribute('color',new THREE.BufferAttribute(col,3));
+}
+
+// Signed distance inside the table top outline (positive under the top).
+function insideTop(x,z){
+  const cx=(TABLE.x0+TABLE.x1)/2,cz=(TABLE.z0+TABLE.z1)/2,hx=(TABLE.x1-TABLE.x0)/2,hz=(TABLE.z1-TABLE.z0)/2,R=TOP.r;
+  const dx=Math.max(0,Math.abs(x-cx)-(hx-R)),dz=Math.max(0,Math.abs(z-cz)-(hz-R));
+  return R-Math.hypot(dx,dz);
 }
 
 // Concatenates [geometry, matrix|null] pairs (non-indexed or indexed) into one geometry.
@@ -258,7 +332,7 @@ function parametric(THREE,P,nu,nv,uvOf,fallback){
 }
 
 // Seat profile (radius, height): domed top, round edge, flat foot. Few rings on the
-// flat parts, more on the rounds (silhouette); normals come from the profile tangent.
+// flat parts, more on the rounds (silhouette).
 function seatProfile(){
   const {r,top,bottom,edge,foot}=SEAT,pts=[];
   const domeAt=x=>top-.006*(x/r)**2;
@@ -269,6 +343,11 @@ function seatProfile(){
   pts.push([r,ybot]);
   for(let i=1;i<=3;i++){const a=-Math.PI/2*i/3;pts.push([r-foot+foot*Math.cos(a),ybot+foot*Math.sin(a)]);}
   for(let i=1;i<=2;i++){const x=(r-foot)*(1-i/2);pts.push([x,bottom]);}
+  return profile(pts);
+}
+// [radius, height] points, traversed with the outside on the left (top first, then
+// down the side): arc length and normals from the profile tangent.
+function profile(pts){
   let s=0;return pts.map((p,i)=>{
     if(i)s+=Math.hypot(p[0]-pts[i-1][0],p[1]-pts[i-1][1]);
     const a=pts[Math.max(0,i-1)],b=pts[Math.min(pts.length-1,i+1)];
@@ -276,14 +355,15 @@ function seatProfile(){
     return {r:p[0],y:p[1],s,nr:-ty,ny:tr};
   });
 }
-function seat(THREE){
-  const prof=seatProfile(),sq=SEAT.squash,seg=36,pos=[],nor=[],uv=[],idx=[];
+// Surface of revolution of a profile, squashed in z; UVs default to a polar unroll
+// (planar on the top, continuing down the rim in metres, no seam).
+function lathe(THREE,prof,seg,sq=1,uvOf=(p,a)=>[p.s*Math.cos(a),p.s*Math.sin(a)]){
+  const pos=[],nor=[],uv=[],idx=[];
   for(const p of prof)for(let i=0;i<=seg;i++){
     const a=i/seg*Math.PI*2,c=Math.cos(a),s=Math.sin(a);
     pos.push(p.r*c,p.y,p.r*sq*s);
     const nx=p.nr*c,nz=p.nr*s/sq,l=Math.hypot(nx,p.ny,nz)||1;nor.push(nx/l,p.ny/l,nz/l);
-    // Polar unroll: planar on the top, continuing down the rim in metres (no seam).
-    uv.push(p.s*c,p.s*s);
+    uv.push(...uvOf(p,a));
   }
   for(let j=0;j<prof.length-1;j++)for(let i=0;i<seg;i++){
     const k=j*(seg+1)+i;idx.push(k,k+1,k+seg+1,k+1,k+seg+2,k+seg+1);
@@ -294,6 +374,7 @@ function seat(THREE){
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
   g.setIndex(idx);g.computeBoundingSphere();return g;
 }
+function seat(THREE){return lathe(THREE,seatProfile(),36,SEAT.squash);}
 // Curved band back: rounded-rectangle section swept along an arc behind the seat,
 // leaning back, closed by rounded ends.
 function back(THREE){
