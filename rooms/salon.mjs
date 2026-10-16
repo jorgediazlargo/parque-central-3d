@@ -264,10 +264,11 @@ function contactShadow(T,{x0,z0,x1,z1,y,draw,core=.72,halo=.28,ppm=200,layers=nu
 // concentric arcs rising from the lower right, ink on raw cream canvas.
 function artCanvas(T,W,H){
   const c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');
-  g.fillStyle='#ddd1bc';g.fillRect(0,0,W,H);
   const n=noise2(77);
-  // Canvas grain and a faint wash.
-  const img=g.getImageData(0,0,W,H);
+  // Canvas grain and a faint wash, on the cream ground #ddd1bc (written as pixels: a
+  // fillRect read back with getImageData waits for the GPU, ~0.5 s while shaders compile).
+  const img=new ImageData(W,H);
+  for(let i=0;i<img.data.length;i+=4){img.data[i]=0xdd;img.data[i+1]=0xd1;img.data[i+2]=0xbc;img.data[i+3]=255;}
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=(y*W+x)*4,v=6*n(x/40,y/40)+4*((x*7+y*13)%5-2)/2+3*Math.sin(y*.9);img.data[i]+=v;img.data[i+1]+=v;img.data[i+2]+=v*.9;}
   g.putImageData(img,0,0);
   g.strokeStyle='#1d1915';g.lineCap='round';
