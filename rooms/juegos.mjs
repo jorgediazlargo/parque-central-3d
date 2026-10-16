@@ -352,7 +352,10 @@ function bolsterGeometry(THREE,L,R){
 // 1.75 × 1.50 m centred on the blind at z −9.39, so the wash spreads as in the photo. Multiplying keeps the baked shadows (under the table, behind the
 // cushions) and adds the gradient; w is soft-capped so the cushions by the glass don't clip.
 const WASH_K=14.0;
+// Daylight share of the wash: 1 by day, 0 at night (ctx.onTimeOfDay), one uniform for all.
+const JG_DAY={value:1};
 const WASH_GLSL=`
+uniform float jgDay;
 vec3 jgEdge(vec3 a,vec3 b){
   float x=dot(a,b),y=abs(x);
   float u=.8543985+(.4965155+.0145206*y)*y,v=3.4175940+(4.1616724+y)*y,t=u/v;
@@ -376,7 +379,7 @@ float jgLift(vec3 p,vec3 n){
   // and its decay toward the door: the far end of the room a little dimmer.
   float far=.80+.20*exp(-d/2.0);
   // The floor sees the window at a grazing angle: a larger share for it.
-  return far*(1.0+b+${WASH_K.toFixed(3)}*(1.0+2.2*max(n.y,0.0)*step(p.y,.08))*w/(1.0+4.0*w));
+  return mix(1.0,far*(1.0+b+${WASH_K.toFixed(3)}*(1.0+2.2*max(n.y,0.0)*step(p.y,.08))*w/(1.0+4.0*w)),jgDay);
 }
 `;
 // Warm daylight through linen.
@@ -483,6 +486,7 @@ export async function apply(ctx){
     const m=piece.material,prior=m.onBeforeCompile,key=m.customProgramCacheKey();
     m.onBeforeCompile=(shader,r)=>{
       prior.call(m,shader,r);
+      shader.uniforms.jgDay=JG_DAY;
       let fs=shader.fragmentShader;
       if(!fs.includes(anchor))console.warn('[rooms/juegos] baked anchor missing');
       const lift=`{float jgL=jgLift(houseWorld,normalize(houseNormal));bakedE*=1.0+(jgL-1.0)*${WASH_TINT};}`;
@@ -518,20 +522,22 @@ export async function apply(ctx){
               bakedE*=ao;
             }
             ${lift}`);
-        shader.uniforms.jgBlur={value:lowPass.texture};
+        shader.uniforms.jgBlur=jgBlur;
         shader.fragmentShader=lowPass.defines+'uniform sampler2D jgBlur;\n'+WASH_GLSL+fs;
       }else shader.fragmentShader=WASH_GLSL+fs.replace(anchor,anchor+lift);
     };
     m.customProgramCacheKey=()=>key+'|juegos-'+(wall?'wall':'wash');
   };
   const wallPieces=ctx.splitExported({material:'wall',box:ZONE});
-  const lowPass=wallLowPass(THREE,ctx,wallPieces);
+  // The low-pass reads the lightmap pages in use: computed again (once) for the other bake.
+  const lowPasses={},lowPass=wallLowPass(THREE,ctx,wallPieces),jgBlur={value:lowPass.texture};
+  lowPasses[ctx.night?'night':'day']=lowPass;
   for(const piece of wallPieces)washBaked(piece,true);
   for(const piece of ctx.splitExported({material:['lacquer','wood'],box:ZONE}))washBaked(piece,false);
   // The floor slab spans several rooms (one triangle runs from the hall to the girls'
   // room), so it is not split: a multiplicative overlay over this room's floor applies
   // the same lift (dst × lift), under the rug and the furniture by depth.
-  {const fl=new THREE.ShaderMaterial({
+  {const fl=new THREE.ShaderMaterial({uniforms:{jgDay:JG_DAY},
       vertexShader:'varying vec3 wp;void main(){vec4 w=modelMatrix*vec4(position,1.0);wp=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}',
       fragmentShader:WASH_GLSL+`varying vec3 wp;void main(){gl_FragColor=vec4((jgLift(wp,vec3(0.0,1.0,0.0))-1.0)*${WASH_TINT},1.0);}`,
       blending:THREE.CustomBlending,blendEquation:THREE.AddEquation,blendSrc:THREE.DstColorFactor,blendDst:THREE.OneFactor,
@@ -574,6 +580,12 @@ export async function apply(ctx){
   lift.position.set(15.05,1.65,-9.705);group.add(lift);
   const haze=new THREE.Mesh(new THREE.PlaneGeometry(.94,1.40),new THREE.MeshBasicMaterial({color:new THREE.Color(2.3,2.24,2.12),transparent:true,opacity:.2,depthWrite:false,toneMapped:false}));
   haze.position.set(15.05,1.65,-9.69);group.add(haze);
+  // At night the window wash, the lifted backdrop and the haze go: the room keeps its
+  // night bake (globe sconce, downlight) and the night backdrop behind the blind.
+  ctx.onTimeOfDay(night=>{
+    JG_DAY.value=night?0:1;lift.visible=haze.visible=!night;
+    const key=night?'night':'day';lowPasses[key]??=wallLowPass(THREE,ctx,wallPieces);jgBlur.value=lowPasses[key].texture;
+  });
 
   // --- Bench ----------------------------------------------------------------------------
   // Exported cushions, the seat slab and its two arm blocks.
@@ -697,6 +709,7 @@ export async function apply(ctx){
       const m=ctx.cloneMaterial(src),prior=m.onBeforeCompile,key=src.customProgramCacheKey();
       m.onBeforeCompile=(shader,r)=>{
         prior.call(m,shader,r);
+        shader.uniforms.jgDay=JG_DAY;
         const fs=shader.fragmentShader,at=fs.lastIndexOf('#include <lights_fragment_end>');
         shader.fragmentShader=WASH_GLSL+fs.slice(0,at)+`{float jgL=jgLift(lpWorld,lpNormalW);iblIrradiance*=1.0+(jgL-1.0)*${WASH_TINT};}\n`+fs.slice(at);
       };

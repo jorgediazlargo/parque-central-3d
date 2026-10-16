@@ -1,6 +1,6 @@
 import * as THREE from './assets/three.module.js';
 import {GLTFLoader} from './assets/jsm/loaders/GLTFLoader.js';
-import {lightObject} from './lighting.mjs?v=1aa5e4f212';
+import {lightObject} from './lighting.mjs?v=c5cb69edbc';
 
 // Per-room modules (rooms/<id>.mjs), each exporting `async function apply(ctx)`.
 // They run after the house, textures and baked light are ready and before the tour
@@ -43,7 +43,7 @@ function partition(geo,boxes){
 // Drops triangles by index only: every attribute (position, uv, uv1 lightmap) stays aligned.
 function keepOnly(geo,keep){geo.setIndex(new THREE.BufferAttribute(new Uint32Array(keep),1));}
 
-export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,lighting}){
+export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,lighting,timeOfDay={night:false,listeners:new Set()}}){
   const group=new THREE.Group();group.name='room:'+id;scene.add(group);
   const gltf=new GLTFLoader();
   return {
@@ -99,7 +99,13 @@ export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap
     // cloned, never patched in place; strength scales the probe light. Returns the
     // object. Reflection probes are captured after every room module has run, so
     // new props also show up in reflections.
-    lightRuntimeObject(object,{strength=1}={}){return lightObject(object,lighting,strength);}
+    lightRuntimeObject(object,{strength=1}={}){return lightObject(object,lighting,strength);},
+    // Día / Noche. The lightmaps, probes and reflections switch on their own; a module
+    // registers here only what it adds for daylight (a window wash, a lit backdrop):
+    // fn(night) runs now with the current state and on every switch, before the
+    // reflections are captured again. It may return a promise.
+    get night(){return timeOfDay.night;},
+    onTimeOfDay(fn){timeOfDay.listeners.add(fn);return fn(timeOfDay.night);}
   };
 }
 

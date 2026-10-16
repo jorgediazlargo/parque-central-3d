@@ -16,11 +16,15 @@ import * as THREE from './assets/three.module.js';
 
 export const ROOM_HEIGHT=2.5;
 
-export async function loadProbes(info,version){
-  const res=await fetch('./assets/'+info.file+'?v='+version,{cache:'no-cache'});
+// Raw float16 probe grid (day: info.file; night: house-light.json night.probes).
+export async function fetchProbeData(file,version){
+  const res=await fetch('./assets/'+file+'?v='+version,{cache:'no-cache'});
   if(!res.ok)throw Error('No se han podido descargar las sondas de luz.');
+  return new Uint16Array(await res.arrayBuffer());
+}
+export async function loadProbes(info,version,file=info.file){
   const [nx,ny,nz]=info.dims;
-  const tex=new THREE.Data3DTexture(new Uint16Array(await res.arrayBuffer()),nx,nz,6*ny);
+  const tex=new THREE.Data3DTexture(await fetchProbeData(file,version),nx,nz,6*ny);
   tex.type=THREE.HalfFloatType;tex.format=THREE.RGBAFormat;tex.minFilter=tex.magFilter=THREE.LinearFilter;
   tex.wrapS=tex.wrapT=tex.wrapR=THREE.ClampToEdgeWrapping;tex.unpackAlignment=1;tex.generateMipmaps=false;tex.needsUpdate=true;
   return {texture:tex,uniforms:{

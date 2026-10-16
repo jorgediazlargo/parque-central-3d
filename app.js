@@ -1,29 +1,37 @@
 import * as THREE from './assets/three.module.js';
 import {Reflector} from './assets/Reflector.js';
-import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=1aa5e4f212';
+import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=c5cb69edbc';
 import {Post} from './post.mjs?v=657f448527';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap} from './lightmap.mjs?v=ed57fdd665';
+import {loadLightmap} from './lightmap.mjs?v=5ae355a5b7';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=b27dcfc10d';
 import {masterBedding,hideExportedBedding} from './bedding.mjs?v=37c7853956';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=d2ab8cd826';
-import {applyRooms} from './rooms.mjs?v=e78f927492';
+import {applyRooms} from './rooms.mjs?v=8f6d4a3dda';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,data,physics,player,doors=[],staticMeshes=[],target=null;
 let lightmap,roomStatus={},reflections;const runtimeObjects=[];
+// Día / Noche: the night bake (artificial light only, same UVs) swapped into the same
+// lightmap and probe textures, the outdoor lights and backdrop, and the room modules'
+// daylight effects (ctx.onTimeOfDay). Reflections are captured again after each switch.
+const timeOfDay={night:false,listeners:new Set()},outdoor={};
 // Probe and reflection uniforms shared by every lit material (filled in initScene).
 const lighting={uniforms:{}};
 let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last=0,walkPhase=0,bobAmount=0,stepDistance=0;
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,rayTime=0,roomTime=0;
 const mobile=matchMedia('(pointer:coarse)').matches,eye=1.69;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches};
-try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob'])if(key in saved)settings[key]=saved[key];}catch{}
-for(const key of ['sound','bob']) {
-  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false};
+try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night'])if(key in saved)settings[key]=saved[key];}catch{}
+// ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved.
+{const q=new URLSearchParams(location.search).get('noche');if(q!==null)settings.night=q!=='0';}
+const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
+for(const key of ['sound','bob','night']) {
+  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night')setNight(settings.night);};
 }
+$('night').disabled=true;  // until the house is lit (load)
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
 const porcelainMap={value:null},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null};
@@ -400,11 +408,11 @@ async function initScene(buffer){
   camera=new THREE.PerspectiveCamera(67,innerWidth/innerHeight,.035,180);camera.rotation.order='YXZ';
   // Sky and sun light only what is outdoors (terrace, facade): indoors every surface
   // takes the baked light or the probes baked with it (lighting.mjs).
-  scene.add(new THREE.HemisphereLight('#dfe9f2','#8a7a64',.9));
-  const sun=new THREE.DirectionalLight('#ffe2bd',2.1);sun.position.set(9,17,-25);sun.target.position.set(9,0,-3);
+  const sky=new THREE.HemisphereLight('#dfe9f2','#8a7a64',.9);scene.add(sky);
+  const sun=new THREE.DirectionalLight('#ffe2bd',2.1);Object.assign(outdoor,{sky,sun});sun.position.set(9,17,-25);sun.target.position.set(9,0,-3);
   sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-16,right:16,top:13,bottom:-13,near:1,far:65});sun.shadow.normalBias=.024;sun.shadow.bias=-.0001;scene.add(sun,sun.target);
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer)),v=>v.toString(16).padStart(2,'0')).join('');
-  lightmap=await loadLightmap(renderer,hash,lighting,{upCoves:(data.coves||[]).slice(0,2)});
+  lightmap=await loadLightmap(renderer,hash,lighting,{upCoves:(data.coves||[]).slice(0,2),mode:settings.night?'night':'day'});
   reflections=new ReflectionProbes(probeRooms(data));
   lighting.uniforms={...lightmap.probes.uniforms,...reflections.uniforms,...pocketUniforms(data)};
   mats.art=artwork();const sheer=curtainMaterial(mats.curtain);sheer.userData.translucency=.75;
@@ -444,26 +452,60 @@ async function initScene(buffer){
   // HDR scene, auto exposure, bloom, tone mapping and grain (post.mjs). Baked light
   // carries the contact shadows: no screen-space AO pass.
   composer=new Post(renderer,scene,camera);
+  // Night exposure: a lower key and floor so the auto exposure keeps it an evening (pools
+  // of lamplight, dark corners) instead of lifting it back to daylight brightness.
+  const {key,minExposure,contrast,vignette,white}=composer.settings;
+  outdoor.post=[{key,minExposure,contrast,vignette,white},{key:.11,minExposure:.2,contrast:.5,vignette:.38,white:[1.06,1,.9]}];
   const size=renderer.getDrawingBufferSize(new THREE.Vector2());composer.setSize(size.x,size.y);
 }
 async function exterior(){
   const loader=new THREE.TextureLoader();
-  const [park,city]=await Promise.all(['vista-parque.webp','vista-ciudad.webp'].map(n=>loader.loadAsync('./assets/'+n)));
-  for(const [tex,x,z,width,rot] of [[park,2,-49,48,0],[city,50,-47,48,-.08]]){
-    tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=Math.min(renderer.capabilities.getMaxAnisotropy(),4);
+  // Night: the same photographs graded for night, with lit windows (scripts/night_views.py).
+  const views=await Promise.all(['vista-parque','vista-ciudad'].map(n=>Promise.all([n,n+'-noche'].map(f=>loader.loadAsync(`./assets/${f}.webp`)))));
+  outdoor.views=[];
+  for(const [[tex,night],x,z,width,rot] of [[views[0],2,-49,48,0],[views[1],50,-47,48,-.08]]){
+    for(const t of [tex,night]){t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=Math.min(renderer.capabilities.getMaxAnisotropy(),4);}
     const h=width*tex.image.height/tex.image.width;
     const mesh=new THREE.Mesh(new THREE.PlaneGeometry(width,h),new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide,toneMapped:false}));
-    mesh.position.set(x,eye+(.41-.5)*h,z);mesh.rotation.y=rot;scene.add(mesh);
+    mesh.position.set(x,eye+(.41-.5)*h,z);mesh.rotation.y=rot;scene.add(mesh);outdoor.views.push([mesh.material,tex,night]);
   }
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(260,260),material('#73826a'));ground.rotation.x=-Math.PI/2;ground.position.set(8,-22,-20);scene.add(ground);
+  outdoor.ground=ground.material;
   // Sky behind the two photographs: where they end, views read the flat background as
   // an overexposed card. A vertical gradient (soft blue zenith, light warm horizon at
   // eye level, hazy ground) at display brightness like the photos.
-  {const c=document.createElement('canvas');c.width=4;c.height=512;const g=c.getContext('2d'),gr=g.createLinearGradient(0,0,0,512);
-    for(const [t,col] of [[0,'#7f9bb3'],[.30,'#a3b8c8'],[.47,'#c9d2d6'],[.5,'#d6d6cf'],[.515,'#b9b6a6'],[.6,'#8f927f'],[1,'#6e7663']])gr.addColorStop(t,col);
-    g.fillStyle=gr;g.fillRect(0,0,4,512);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;
-    const dome=new THREE.Mesh(new THREE.SphereGeometry(150,32,24),new THREE.MeshBasicMaterial({map:tex,side:THREE.BackSide,toneMapped:false,depthWrite:false}));
-    dome.position.set(8,eye,-6);dome.renderOrder=-1;scene.add(dome);}
+  // At night: deep blue zenith, the city's warm glow on the horizon, dark ground.
+  const gradient=stops=>{const c=document.createElement('canvas');c.width=4;c.height=512;const g=c.getContext('2d'),gr=g.createLinearGradient(0,0,0,512);
+    for(const [t,col] of stops)gr.addColorStop(t,col);
+    g.fillStyle=gr;g.fillRect(0,0,4,512);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;return tex;};
+  outdoor.skies=[gradient([[0,'#7f9bb3'],[.30,'#a3b8c8'],[.47,'#c9d2d6'],[.5,'#d6d6cf'],[.515,'#b9b6a6'],[.6,'#8f927f'],[1,'#6e7663']]),
+    gradient([[0,'#05070f'],[.30,'#0b0e1a'],[.45,'#1d1b22'],[.5,'#3a2c24'],[.515,'#15141a'],[.6,'#0c0c0f'],[1,'#08080a']])];
+  const dome=new THREE.Mesh(new THREE.SphereGeometry(150,32,24),new THREE.MeshBasicMaterial({map:outdoor.skies[0],side:THREE.BackSide,toneMapped:false,depthWrite:false}));
+  dome.position.set(8,eye,-6);dome.renderOrder=-1;scene.add(dome);outdoor.dome=dome.material;
+  outdoorLight(timeOfDay.night);
+}
+// Terrace and facade (not baked): sun and sky by day; by night a faint cool moonlight
+// and sky, the backdrop graded for night. Indoors everything takes the bake or probes.
+function outdoorLight(night){
+  const {sky,sun}=outdoor;
+  sky.color.set(night?'#3a4866':'#dfe9f2');sky.groundColor.set(night?'#1a1712':'#8a7a64');sky.intensity=night?.22:.9;
+  sun.color.set(night?'#a9bde0':'#ffe2bd');sun.intensity=night?.18:2.1;
+  scene.background.set(night?'#06080f':'#c4d7de');
+  Object.assign(composer.settings,outdoor.post[night?1:0]);
+  if(outdoor.dome){outdoor.dome.map=outdoor.skies[night?1:0];for(const [m,day,dark] of outdoor.views)m.map=night?dark:day;outdoor.ground.color.set(night?'#141712':'#73826a');}
+}
+let timeSwitch=Promise.resolve();
+function setNight(night){
+  timeSwitch=timeSwitch.then(async()=>{
+    if(!ready||night===timeOfDay.night)return;
+    notice(night?'Encendiendo las luces…':'Amaneciendo…');
+    await lightmap.setMode(night?'night':'day');
+    timeOfDay.night=night;outdoorLight(night);
+    await Promise.all([...timeOfDay.listeners].map(fn=>fn(night)));
+    reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;
+    notice(night?'Noche · todas las luces encendidas':'Día');
+  }).catch(e=>{console.error(e);notice('No se ha podido cambiar la luz.');settings.night=timeOfDay.night;$('night').checked=timeOfDay.night;savePreferences();});
+  return timeSwitch;
 }
 
 function pause(){
@@ -544,8 +586,9 @@ $('enter').onclick=enter;$('pause').onclick=pause;$('interaction').onclick=inter
 $('reset').onclick=()=>{player=[...data.spawn];velocity=[0,0];yaw=.05;pitch=0;camera.position.set(player[0],eye,player[1]);camera.rotation.set(0,yaw,0);notice('Has vuelto a la entrada.');};
 addEventListener('keydown',e=>{
   if(e.code==='Escape'){pause();return;}if(!playing)return;
-  if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyE'].includes(e.code))e.preventDefault();
+  if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyE','KeyN'].includes(e.code))e.preventDefault();
   keys.add(e.code);if(e.code==='KeyE'&&!e.repeat)interact();
+  if(e.code==='KeyN'&&!e.repeat){settings.night=!timeOfDay.night;$('night').checked=settings.night;savePreferences();setNight(settings.night);}
 });
 addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',pause);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
@@ -575,17 +618,17 @@ async function load(){
   try{
     const [j,b]=await Promise.all([fetch('./assets/house.json?v=8de14c4fc4'),fetch('./assets/house.bin?v=8cfc5aea39')]);
     if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
-    data=await j.json();await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
+    data=await j.json();timeOfDay.night=settings.night;await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
     lightmap.syncTextures();
     // Per-room refinements (rooms/<id>.mjs); a failing module is logged and skipped.
-    roomStatus=await applyRooms({scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,lighting});
+    roomStatus=await applyRooms({scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,lighting,timeOfDay});
     // Doors, the study screen, the master bedding and the mirror frame are not baked:
     // they take the probes. Then each room is captured for its reflections, props included.
     for(const o of runtimeObjects)lightObject(o,lighting);
     for(const o of staticMeshes)if(o.userData.exported&&!o.material.userData?.bakedLit)lightObject(o,lighting);
     reflections.capture(renderer,scene);
     renderer.compile(scene,camera);renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
-    ready=true;
+    ready=true;$('night').disabled=false;
     const params=new URLSearchParams(location.search);
     if(params.get('start')==='kitchen'){
       const start=[(738-106.5)/51.53901216893343,(389-619.85)/51.53901216893343];

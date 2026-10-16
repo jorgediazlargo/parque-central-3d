@@ -63,6 +63,7 @@ function screen(ctx,THREE){
     for(const o of g.children)if(o.isMesh&&o.material===frame&&o.geometry.type==='BoxGeometry'&&Math.abs(o.geometry.parameters.width-STILE)<1e-4)stileZ.push(o.getWorldPosition(new THREE.Vector3()).z);
   }
   const glass=studyGlass(THREE,stileZ);
+  ctx.onTimeOfDay(night=>{PANE_GLOW.value=night?.3:1;});
 
   // Rounded section: every member is its face outline extruded through the depth with
   // a rounded bevel inside the outline, so edges catch the light like turned timber.
@@ -194,6 +195,9 @@ function paneRect(THREE,geo,fixed){
 const GLINT_Z=12;
 // Bedroom window wall: the sheers run along x at this z (north wall of the suite).
 const WIN={z:-9.40,x0:.15,x1:3.05,k:.16};
+// Sheen, glints and the reflected window are painted light: at night (ctx.onTimeOfDay)
+// only the pocket-lit sheers and the lamps are there to reflect, so they drop.
+const PANE_GLOW={value:1};
 function studyGlass(THREE,stileZ){
   const zs=[...stileZ.slice(0,GLINT_Z)];while(zs.length<GLINT_Z)zs.push(-1e3);
   // Float glass: a faint warm body that dims the study behind it by ~9 %, room
@@ -205,10 +209,10 @@ function studyGlass(THREE,stileZ){
   // on the left panes that move with the viewer, as in render 4.
   const m=new THREE.MeshPhysicalMaterial({color:'#8f7d6a',transparent:true,premultipliedAlpha:true,opacity:.12,roughness:.02,metalness:0,depthWrite:false,side:THREE.DoubleSide,envMapIntensity:1});
   m.onBeforeCompile=shader=>{
-    shader.uniforms.paneStileZ={value:zs};
+    shader.uniforms.paneStileZ={value:zs};shader.uniforms.paneGlow=PANE_GLOW;
     shader.vertexShader='attribute vec4 paneRect;\nattribute float paneFixed;\nvarying vec4 vPaneRect;\nvarying float vPaneFixed;\nvarying vec2 vPaneLocal;\nvarying vec3 vPaneWorld;\n'+shader.vertexShader
       .replace('#include <begin_vertex>','#include <begin_vertex>\nvPaneRect=paneRect;vPaneFixed=paneFixed;vPaneLocal=position.xy;vPaneWorld=(modelMatrix*vec4(position,1.0)).xyz;');
-    shader.fragmentShader=`uniform float paneStileZ[${GLINT_Z}];\nvarying vec4 vPaneRect;\nvarying float vPaneFixed;\nvarying vec2 vPaneLocal;\nvarying vec3 vPaneWorld;\n`+shader.fragmentShader.replace('#include <premultiplied_alpha_fragment>',`
+    shader.fragmentShader=`uniform float paneStileZ[${GLINT_Z}];\nuniform float paneGlow;\nvarying vec4 vPaneRect;\nvarying float vPaneFixed;\nvarying vec2 vPaneLocal;\nvarying vec3 vPaneWorld;\n`+shader.fragmentShader.replace('#include <premultiplied_alpha_fragment>',`
       {float glassNV=saturate(abs(dot(normal,geometryViewDir)));
       float glassF=.07+.93*pow(1.0-glassNV,5.0);
       // Edge: distance to the pane outline (straight edges), a hairline and a soft halo.
@@ -231,7 +235,7 @@ function studyGlass(THREE,stileZ){
       vec3 shV=normalize(vPaneWorld-cameraPosition);
       float t=atan(shV.z,abs(shV.x))*6.5+vPaneWorld.y*.2;
       float sheen=(pow(max(0.0,sin(t)),4.0)*.75+pow(max(0.0,sin(t*2.9+1.3)),8.0)*.25)*smoothstep(.2,1.0,vPaneWorld.y)*(1.0-.4*smoothstep(1.6,2.4,vPaneWorld.y));
-      vec3 glow=vec3(1.0,.95,.88)*(glint*.18+sheen*.2)+vec3(1.0,.96,.90)*win*${WIN.k.toFixed(3)}*(.6+4.0*glassF);
+      vec3 glow=(vec3(1.0,.95,.88)*(glint*.18+sheen*.2)+vec3(1.0,.96,.90)*win*${WIN.k.toFixed(3)}*(.6+4.0*glassF))*paneGlow;
       gl_FragColor=vec4(totalDiffuse*diffuseColor.a+totalSpecular*2.0+glow,diffuseColor.a+(1.0-diffuseColor.a)*glassF*.85+glint*.05+win*.03);}`);
   };
   m.customProgramCacheKey=()=>'glass-estudio-7';

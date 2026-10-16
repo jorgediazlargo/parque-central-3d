@@ -46,6 +46,8 @@ const SCONCE={z0:-7.661,z1:-5.488,y0:1.730,y1:1.756,depth:.025};
 // base: the bake lights this wall about 20 % above render 2 (daylight from the facade,
 // the render is an evening scene), which left the wall a flat bright plane.
 const WASH={y:1.735,tight:{d:.045,down:12.0,up:8.0},broad:{d:.3,down:.25,up:.08},base:.85,color:[1,.80,.60]};
+// The base only offsets the facade daylight: 1 at night (ctx.onTimeOfDay).
+const WASH_BASE={value:WASH.base};
 const TOP={y0:.715,y1:.76,r:.50,arris:.004,edge:.02,under:.03};
 // Pedestal radii (m): under the top, slimmest, at the floor; the waist height.
 const PEDESTAL={top:.07,waist:.05,foot:.18,neck:.56};
@@ -62,6 +64,7 @@ const BACK={r:.218,half:62*Math.PI/180,cap:.075,thick:.025,height:.088,y:.716,le
 
 export async function apply(ctx){
   const {THREE}=ctx;
+  ctx.onTimeOfDay(night=>{WASH_BASE.value=night?1:WASH.base;});
   // The cove wash of the raised ceiling is now shared (lightmap.mjs upCoves).
   // Drop the exported chairs (cushions, backs, legs); the table stays.
   const boxes=CHAIRS.map(([x,z,s])=>[[x-.32,-.1,z-.26],[x+.32,1.0,z+.26]]);
@@ -244,7 +247,8 @@ function wallLight(ctx){
     const mat=piece.material,prev=mat.onBeforeCompile,key=mat.customProgramCacheKey();
     mat.onBeforeCompile=function(shader,renderer){
       prev.call(this,shader,renderer);
-      shader.fragmentShader=shader.fragmentShader.replace(/(vec3 bakedE=bakedSqrt\*bakedSqrt\*[\d.]+;)/,`$1
+      shader.uniforms.comedorWashBase=WASH_BASE;
+      shader.fragmentShader='uniform float comedorWashBase;\n'+shader.fragmentShader.replace(/(vec3 bakedE=bakedSqrt\*bakedSqrt\*[\d.]+;)/,`$1
         if(houseNormal.x<-.5){
           float dy=houseWorld.y-${WASH.y.toFixed(3)},tight=0.0,broad=0.0;
           ${term(WASH.tight,'tight')}
@@ -253,7 +257,7 @@ function wallLight(ctx){
           vec3 sconceL=normalize(vec3(-${WASH.tight.d.toFixed(3)},-dy,0.0));
           vec3 sconceN=inverseTransformDirection(normal,viewMatrix);
           float relief=clamp(max(dot(sconceN,sconceL),0.0)/max(dot(normalize(houseNormal),sconceL),.05),.55,1.8);
-          bakedE*=${WASH.base.toFixed(2)};
+          bakedE*=comedorWashBase;
           bakedE+=vec3(${cr.toFixed(2)},${cg.toFixed(2)},${cb.toFixed(2)})*dot(bakedE,vec3(.2126,.7152,.0722))*(tight*relief+broad);
         }`);
     };
