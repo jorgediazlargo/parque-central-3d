@@ -530,6 +530,8 @@ export async function apply(ctx){
   };
   const wallPieces=ctx.splitExported({material:'wall',box:ZONE});
   // The low-pass reads the lightmap pages in use: computed again (once) for the other bake.
+  // They are decoded while the house loads; wait for them here (lightmap.loaded).
+  await ctx.lightmap?.loaded;
   const lowPasses={},lowPass=wallLowPass(THREE,ctx,wallPieces),jgBlur={value:lowPass.texture};
   lowPasses[ctx.night?'night':'day']=lowPass;
   for(const piece of wallPieces)washBaked(piece,true);

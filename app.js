@@ -1,14 +1,15 @@
 import * as THREE from './assets/three.module.js';
 import {Reflector} from './assets/Reflector.js';
-import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=c5cb69edbc';
-import {Post} from './post.mjs?v=657f448527';
+import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=65f7ecdcd5';
+import {Post} from './post.mjs?v=5589b8238f';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap} from './lightmap.mjs?v=5ae355a5b7';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=a5c4d1bc9f';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
-import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=b27dcfc10d';
-import {masterBedding,hideExportedBedding} from './bedding.mjs?v=37c7853956';
+import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
+import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=d2ab8cd826';
-import {applyRooms} from './rooms.mjs?v=8f6d4a3dda';
+import {applyRooms,preloadRooms} from './rooms.mjs?v=1b7798a909';
+import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,data,physics,player,doors=[],staticMeshes=[],target=null;
@@ -251,39 +252,46 @@ mats.bronze.metalness=.65;
 mats.tile=mats.floor;
 mats.curtain.transparent=true;mats.curtain.opacity=.62;mats.curtain.depthWrite=false;mats.curtain.userData.translucency=.75;
 
-async function surfaceTextures(){
-  const loader=new THREE.TextureLoader();
-  for(const [asset,targets,scale,strength,colour='1k'] of [
-    ['laminate_floor_02',['floor'],.59,.28,'2k'],
-    ['marble_01',['blackstone'],.55,.12]]){
-    const maps=await Promise.all([['diff',colour],['nor_gl','1k'],['rough','1k']].map(([c,r])=>loader.loadAsync(`./assets/textures/${asset}_${c}_${r}.${r==='2k'?'webp':'jpg'}`)));
+// Every surface map is requested (and decoded off the main thread) when the page starts;
+// surfaceTextures assigns them once the renderer exists.
+function loadSurfaceMaps(){
+  const image=loadImageTexture;
+  const sets=[['laminate_floor_02',['floor'],.59,.28,'2k'],['marble_01',['blackstone'],.55,.12]].map(([asset,targets,scale,strength,colour='1k'])=>
+    Promise.all([['diff',colour],['nor_gl','1k'],['rough','1k']].map(([c,r])=>image(`./assets/textures/${asset}_${c}_${r}.${r==='2k'?'webp':'jpg'}`))).then(maps=>({maps,targets,scale,strength})));
+  return Promise.all([Promise.all(sets),
+    image('./assets/textures/porcelain.webp?v=46956a859b',{flipY:false}),
+    // rooms/dormitorio.mjs draws mats.wood.map's image into a canvas: an upright <img>.
+    Promise.all([new THREE.TextureLoader().loadAsync('./assets/polyhaven/white_oak_veneer/white_oak_veneer_diff_1k.webp?v=2fbb230119'),
+      ...['nor_gl','rough'].map(m=>image(`./assets/polyhaven/white_oak_veneer/white_oak_veneer_${m}_1k.webp`))]),
+    Promise.all(['diff','nor_gl','rough'].map(m=>image(`./assets/polyhaven/mocha_oak_veneer/mocha_oak_veneer_${m}_1k.webp`))),
+    image('./assets/textures/travertine.webp?v=2bc29d0cfa'),
+    Promise.all(['stone_crosscut','stone_crosscut_nor'].map(n=>image(`./assets/textures/${n}.webp`))),
+    Promise.all(['./assets/textures/limewash.webp?v=76a3d72611','./assets/textures/plaster.webp?v=c910d3af3d',
+      './assets/textures/plaster_nor.webp?v=70c8c6dff6','./assets/textures/white_plaster_02_rough_1k.jpg?v=4ff1fe957c'].map(n=>image(n)))]);
+}
+async function surfaceTextures(loading){
+  const [sets,porcelain,oak,kitchenOak,stone,[crosscut,crosscutNor],[lime,plaster,plasterNor,plasterRough]]=await loading;
+  for(const {maps,targets,scale,strength} of sets){
     maps.forEach((t,i)=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(scale,scale);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());if(i===0)t.colorSpace=THREE.SRGBColorSpace;});
     for(const key of targets){mats[key].map=maps[0];mats[key].normalMap=maps[1];mats[key].roughnessMap=maps[2];mats[key].normalScale.set(strength,strength);mats[key].needsUpdate=true;}
   }
-  const porcelain=await loader.loadAsync('./assets/textures/porcelain.webp?v=46956a859b');
-  porcelain.colorSpace=THREE.SRGBColorSpace;porcelain.flipY=false;porcelain.wrapS=porcelain.wrapT=THREE.RepeatWrapping;
+  porcelain.colorSpace=THREE.SRGBColorSpace;porcelain.wrapS=porcelain.wrapT=THREE.RepeatWrapping;
   porcelain.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());porcelainMap.value=porcelain;
   // Dedicated veneer: no flooring seams on cabinetry, doors, tables or slats.
   // Photographed CC0 white oak veneer (Poly Haven), 50 cm tile, vertical grain; its own
   // normal and roughness give the satin sheen and pores the renders show.
-  const oak=await Promise.all(['diff','nor_gl','rough'].map(m=>loader.loadAsync(`./assets/polyhaven/white_oak_veneer/white_oak_veneer_${m}_1k.webp`)));
   oak.forEach((t,i)=>{t.colorSpace=i?THREE.NoColorSpace:THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,2);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
   {const m=mats.wood;m.map=oak[0];m.normalMap=oak[1];m.roughnessMap=oak[2];m.normalScale.set(.45,.45);m.bumpMap=null;m.needsUpdate=true;}
   // Kitchen fronts of render 9: fine straight quarter-cut grain (Mocha Oak Veneer, CC0,
   // 1 m tile, grain contrast raised by derive_polyhaven.py), turned to run vertically.
-  const kitchenOak=await Promise.all(['diff','nor_gl','rough'].map(m=>loader.loadAsync(`./assets/polyhaven/mocha_oak_veneer/mocha_oak_veneer_${m}_1k.webp`)));
   kitchenOak.forEach((t,i)=>{t.colorSpace=i?THREE.NoColorSpace:THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.rotation=Math.PI/2;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
   {const m=mats.kitchenOak;m.map=kitchenOak[0];m.normalMap=kitchenOak[1];m.roughnessMap=kitchenOak[2];m.normalScale.set(.6,.6);m.bumpMap=null;m.needsUpdate=true;}
-  const stone=await loader.loadAsync('./assets/textures/travertine.webp?v=2bc29d0cfa');
   stone.colorSpace=THREE.SRGBColorSpace;stone.wrapS=stone.wrapT=THREE.RepeatWrapping;stone.anisotropy=8;
   for(const key of ['kitchenStone','stone']){mats[key].map=stone;mats[key].bumpMap=stone;mats[key].bumpScale=.0012;mats[key].needsUpdate=true;}
-  const [crosscut,crosscutNor]=await Promise.all(['stone_crosscut','stone_crosscut_nor'].map(n=>loader.loadAsync(`./assets/textures/${n}.webp`)));
   for(const t of [crosscut,crosscutNor]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
   crosscut.colorSpace=THREE.SRGBColorSpace;mats.kitchenCrosscut.map=crosscut;mats.kitchenCrosscut.needsUpdate=true;crosscutNormal.value=crosscutNor;
   // Walls: lime plaster colour and relief (shader uniforms), limewash clouds as the
   // map and the roughness of Poly Haven's White Plaster 02.
-  const [lime,plaster,plasterNor,plasterRough]=await Promise.all(['./assets/textures/limewash.webp?v=76a3d72611','./assets/textures/plaster.webp?v=c910d3af3d',
-    './assets/textures/plaster_nor.webp?v=70c8c6dff6','./assets/textures/white_plaster_02_rough_1k.jpg?v=4ff1fe957c'].map(n=>loader.loadAsync(n)));
   for(const t of [lime,plaster,plasterNor,plasterRough]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
   lime.repeat.set(.6,.6);plasterRough.repeat.set(.8,.8);plasterMap.value=plaster;plasterNormal.value=plasterNor;
   mats.wall.map=lime;mats.wall.roughnessMap=plasterRough;mats.wall.needsUpdate=true;
@@ -397,13 +405,27 @@ function setupDoors(){
   }
   g.traverse(o=>{if(o.isMesh)staticMeshes.push(o);});
 }
+// Every texture the scene draws with goes to the GPU now (while the GPU process compiles
+// the programs) rather than during the first capture. Same data: only the time changes.
+function uploadTextures(){
+  const seen=new Set(),visit=t=>{if(t?.isTexture&&!t.isRenderTargetTexture&&t.version>0&&!seen.has(t)){seen.add(t);renderer.initTexture(t);}};
+  scene.traverse(o=>{
+    for(const m of [o.material].flat()){
+      if(!m)continue;for(const v of Object.values(m))visit(v);
+      for(const u of Object.values(renderer.properties.get(m).uniforms||m.uniforms||{}))visit(u?.value);
+    }
+  });
+}
 function activeDoorPolys(){return doors.filter(d=>d.active!==false).flatMap(d=>d.polys);}
 function shown(o){for(let n=o;n;n=n.parent)if(!n.visible)return false;return true;}
-async function initScene(buffer){
+async function initScene(buffer,bake){
   renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);
   renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.AgXToneMapping;renderer.toneMappingExposure=1;
   renderer.info.autoReset=false;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  // Checked before its first draw, each program costs four synchronous round trips to the
+  // GPU process: reportShaderErrors does it once the tour is ready.
+  renderer.debug.checkShaderErrors=false;
   scene=new THREE.Scene();scene.background=new THREE.Color('#c4d7de');
   camera=new THREE.PerspectiveCamera(67,innerWidth/innerHeight,.035,180);camera.rotation.order='YXZ';
   // Sky and sun light only what is outdoors (terrace, facade): indoors every surface
@@ -411,8 +433,8 @@ async function initScene(buffer){
   const sky=new THREE.HemisphereLight('#dfe9f2','#8a7a64',.9);scene.add(sky);
   const sun=new THREE.DirectionalLight('#ffe2bd',2.1);Object.assign(outdoor,{sky,sun});sun.position.set(9,17,-25);sun.target.position.set(9,0,-3);
   sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-16,right:16,top:13,bottom:-13,near:1,far:65});sun.shadow.normalBias=.024;sun.shadow.bias=-.0001;scene.add(sun,sun.target);
-  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer)),v=>v.toString(16).padStart(2,'0')).join('');
-  lightmap=await loadLightmap(renderer,hash,lighting,{upCoves:(data.coves||[]).slice(0,2),mode:settings.night?'night':'day'});
+  const hash=crypto.subtle.digest('SHA-256',buffer).then(h=>Array.from(new Uint8Array(h),v=>v.toString(16).padStart(2,'0')).join(''));
+  lightmap=await loadLightmap(renderer,hash,lighting,{upCoves:(data.coves||[]).slice(0,2),prefetched:bake});
   reflections=new ReflectionProbes(probeRooms(data));
   lighting.uniforms={...lightmap.probes.uniforms,...reflections.uniforms,...pocketUniforms(data)};
   mats.art=artwork();const sheer=curtainMaterial(mats.curtain);sheer.userData.translucency=.75;
@@ -458,10 +480,10 @@ async function initScene(buffer){
   outdoor.post=[{key,minExposure,contrast,vignette,white},{key:.11,minExposure:.2,contrast:.5,vignette:.38,white:[1.06,1,.9]}];
   const size=renderer.getDrawingBufferSize(new THREE.Vector2());composer.setSize(size.x,size.y);
 }
-async function exterior(){
-  const loader=new THREE.TextureLoader();
-  // Night: the same photographs graded for night, with lit windows (scripts/night_views.py).
-  const views=await Promise.all(['vista-parque','vista-ciudad'].map(n=>Promise.all([n,n+'-noche'].map(f=>loader.loadAsync(`./assets/${f}.webp`)))));
+// Night: the same photographs graded for night, with lit windows (scripts/night_views.py).
+const loadViews=()=>Promise.all(['vista-parque','vista-ciudad'].map(n=>Promise.all([n,n+'-noche'].map(f=>loadImageTexture(`./assets/${f}.webp`)))));
+async function exterior(loading){
+  const views=await loading;
   outdoor.views=[];
   for(const [[tex,night],x,z,width,rot] of [[views[0],2,-49,48,0],[views[1],50,-47,48,-.08]]){
     for(const t of [tex,night]){t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=Math.min(renderer.capabilities.getMaxAnisotropy(),4);}
@@ -502,10 +524,24 @@ function setNight(night){
     await lightmap.setMode(night?'night':'day');
     timeOfDay.night=night;outdoorLight(night);
     await Promise.all([...timeOfDay.listeners].map(fn=>fn(night)));
-    reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;
+    reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;idle(reportShaderErrors);
     notice(night?'Noche · todas las luces encendidas':'Día');
   }).catch(e=>{console.error(e);notice('No se ha podido cambiar la luz.');settings.night=timeOfDay.night;$('night').checked=timeOfDay.night;savePreferences();});
   return timeSwitch;
+}
+
+// Link errors, reported as three would at first draw (renderer.debug.checkShaderErrors).
+const checkedPrograms=new Set();
+const idle=fn=>(window.requestIdleCallback||setTimeout)(fn);
+function reportShaderErrors(){
+  const gl=renderer.getContext();
+  for(const p of renderer.info.programs){
+    if(checkedPrograms.has(p))continue;checkedPrograms.add(p);
+    if(gl.getProgramParameter(p.program,gl.LINK_STATUS))continue;
+    const [vs,fs]=gl.getAttachedShaders(p.program),log=s=>gl.getShaderInfoLog(s)?.trim()||'';
+    console.error(`THREE.WebGLProgram: Shader Error ${gl.getError()} - VALIDATE_STATUS ${gl.getProgramParameter(p.program,gl.VALIDATE_STATUS)}\n\n`+
+      `Program: ${p.name}\n\nProgram Info Log: ${gl.getProgramInfoLog(p.program)?.trim()||''}\n${log(vs)}\n${log(fs)}`);
+  }
 }
 
 function pause(){
@@ -616,18 +652,38 @@ addEventListener('resize',()=>{if(!renderer)return;camera.aspect=innerWidth/inne
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();pause();$('error').hidden=false;$('error').textContent='Se ha interrumpido la vista 3D. Recarga la página para recuperarla.';$('enter').disabled=true;});
 async function load(){
   try{
-    const [j,b]=await Promise.all([fetch('./assets/house.json?v=8de14c4fc4'),fetch('./assets/house.bin?v=8cfc5aea39')]);
-    if(!j.ok||!b.ok)throw Error('No se ha podido descargar el modelo.');
-    data=await j.json();timeOfDay.night=settings.night;await initScene(await b.arrayBuffer());await Promise.all([exterior(),surfaceTextures()]);
+    // Downloads in the order the build needs them, all at once within each step: the
+    // geometry, the UVs of its bake, the surface maps and the backdrop first (with the
+    // room modules and the cloth maps' workers); then the bake's pages and probes, which
+    // only the last room module and the captures read. Shared bandwidth would otherwise
+    // deliver the geometry last.
+    const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
+    const house=Promise.all([get('./assets/house.json?v=8de14c4fc4',r=>r.json()),get('./assets/house.bin?v=8cfc5aea39',r=>r.arrayBuffer())]);
+    const surfaceMaps=loadSurfaceMaps(),views=loadViews();
+    for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
+    preloadRooms();prepareBedding();
+    for(const p of [surfaceMaps,views])p.catch(()=>{});  // reported where awaited
+    const bake=fetchLightmap(settings.night?'night':'day',{after:Promise.allSettled([house,surfaceMaps,views])});
+    const [json,buffer]=await house;
+    data=json;timeOfDay.night=settings.night;await initScene(buffer,bake);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);
     lightmap.syncTextures();
     // Per-room refinements (rooms/<id>.mjs); a failing module is logged and skipped.
-    roomStatus=await applyRooms({scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,lighting,timeOfDay});
+    const rooms=applyRooms({scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,lighting,timeOfDay});
+    // The house's programs compile in the GPU process while the room modules run; those
+    // the modules change or add are compiled after them. Issued once the modules' first
+    // synchronous part has run: their canvas read-backs would wait behind the compiles.
+    setTimeout(()=>reflections.compile(renderer,scene,camera,composer.sceneRT,{wait:false}));
+    roomStatus=await rooms;
     // Doors, the study screen, the master bedding and the mirror frame are not baked:
     // they take the probes. Then each room is captured for its reflections, props included.
     for(const o of runtimeObjects)lightObject(o,lighting);
     for(const o of staticMeshes)if(o.userData.exported&&!o.material.userData?.bakedLit)lightObject(o,lighting);
+    const compiled=reflections.compile(renderer,scene,camera,composer.sceneRT);composer.compile();
+    await Promise.all([beddingReady(),lightmap.loaded]);uploadTextures();await compiled;
+    // The sun's shadow map depends on the geometry and the doors only: drawn once (by the
+    // first capture) and again when a door moves, not for every face of every capture.
+    renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     reflections.capture(renderer,scene);
-    renderer.compile(scene,camera);renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     ready=true;$('night').disabled=false;
     const params=new URLSearchParams(location.search);
     if(params.get('start')==='kitchen'){
@@ -635,6 +691,7 @@ async function load(){
       if(!physics.blocked(start,activeDoorPolys())){player=start;yaw=Math.PI;pitch=0;camera.position.set(player[0],eye,player[1]);camera.rotation.set(0,yaw,0);}
     }
     $('enter').disabled=false;$('enter').textContent='Entrar en casa';requestAnimationFrame(frame);
+    idle(reportShaderErrors);
   }catch(e){
     console.error(e);$('error').hidden=false;$('error').textContent='No se ha podido iniciar el recorrido. Comprueba la conexión y que Chrome tenga la aceleración gráfica activada, y recarga la página.';
     $('enter').textContent='Recargar';$('enter').disabled=false;$('enter').onclick=()=>location.reload();

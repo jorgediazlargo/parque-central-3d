@@ -30,64 +30,6 @@ function noise2(seed){
   };
 }
 
-// Value noise whose lattice wraps every P cells (seamless when N/scale = P).
-function noiseT(seed,P){
-  const h=(x,y)=>{x=((x%P)+P)%P;y=((y%P)+P)%P;let n=Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(seed,2147483647)|0;n=Math.imul(n^(n>>>13),1274126177);return ((n^(n>>>16))>>>0)/4294967296;};
-  return (x,y)=>{
-    const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
-    const a=h(xi,yi),b=h(xi+1,yi),c=h(xi,yi+1),d=h(xi+1,yi+1);
-    return (a+(b-a)*u)*(1-v)+(c+(d-c)*u)*v-.5;
-  };
-}
-
-// Washed-linen colour + normal maps, tile 0.6 m (1024 px). What reads at 2-3 m is
-// what a photo of stonewashed linen shows: slub streaks a few millimetres thick
-// running with the weft, a blotchy dye mottle at 1-5 cm and soft creases; the
-// crinkle is kept sparse so the cloth does not read as crumpled paper.
-function linenMaps(THREE){
-  const N=1024,H=new Float32Array(N*N),C=new Float32Array(N*N);
-  let seed=389;
-  const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-  const at=(x,y)=>((y+N)%N)*N+((x+N)%N);
-  const along=noiseT(seed,16),mottle=noiseT(seed+3,16),grain=noiseT(seed+5,128),fleck=noiseT(seed+11,256);
-  // Slub bands 2-4 px (1.2-2.4 mm) thick, each with its own sign and strength.
-  const band=new Float32Array(N);
-  for(let y=0;y<N;){const w=2+Math.floor(random()*3),v=random()<.30?(random()-.42)*2:0;for(let k=0;k<w&&y<N;k++,y++)band[y]=v*(k===0||k===w-1?.55:1);}
-  // Heather: wider bands (4-9 mm) of slightly lighter or darker yarn, the streaks
-  // that still read on a duvet seen from across the room.
-  const heather=new Float32Array(N);
-  for(let y=0;y<N;){const w=6+Math.floor(random()*10),v=(random()-.5)*2;for(let k=0;k<w&&y<N;k++,y++)heather[y]=v*Math.sin(Math.PI*(k+.5)/w);}
-  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
-    const slub=band[y]*Math.max(0,along(x/64,y/16)*2.2),weave=.10*((x&1)^(y&1)?1:-1);
-    H[y*N+x]=slub*.45+weave;
-    C[y*N+x]=.085*mottle(x/64,y/64)+.045*grain(x/8,y/8)+.025*fleck(x/4,y/4)+.09*slub+.05*heather[y]*(.4+along(x/64+5,y/16+3)*1.6);
-  }
-  for(let k=0;k<110;k++){
-    const fine=random()<.4,cx=random()*N,cy=random()*N,len=fine?40+random()*90:120+random()*300,w=fine?2+random()*2:8+random()*18;
-    const ang=random()*Math.PI,dx=Math.cos(ang),dy=Math.sin(ang),amp=(random()<.5?-1:1)*(fine?.18+random()*.2:.4+random()*.9)*w/8;
-    const bend=(random()-.5)*.004,r=Math.ceil(len/2+w*3);
-    for(let oy=-r;oy<=r;oy++)for(let ox=-r;ox<=r;ox++){
-      const s=ox*dx+oy*dy,q=-ox*dy+oy*dx-bend*s*s;
-      if(Math.abs(s)>len/2||Math.abs(q)>w*3)continue;
-      const taper=Math.sin(Math.PI*(s/len+.5));
-      H[at(Math.round(cx+ox),Math.round(cy+oy))]+=amp*taper*taper*Math.exp(-(q*q)/(w*w));
-    }
-  }
-  const col=document.createElement('canvas'),nor=document.createElement('canvas');col.width=col.height=nor.width=nor.height=N;
-  const ci=col.getContext('2d').createImageData(N,N),ni=nor.getContext('2d').createImageData(N,N);
-  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
-    const i=y*N+x,gx=(H[at(x+1,y)]-H[at(x-1,y)])*.55,gy=(H[at(x,y+1)]-H[at(x,y-1)])*.55,l=Math.hypot(gx,gy,1);
-    ni.data.set([(-gx/l*.5+.5)*255,(gy/l*.5+.5)*255,(1/l*.5+.5)*255,255],i*4);
-    const v=Math.max(0,Math.min(255,236*(1+C[i]+H[i]*.012)));
-    ci.data.set([v,v*.995,v*.985,255],i*4);
-  }
-  col.getContext('2d').putImageData(ci,0,0);nor.getContext('2d').putImageData(ni,0,0);
-  const map=new THREE.CanvasTexture(col),normalMap=new THREE.CanvasTexture(nor);
-  map.colorSpace=THREE.SRGBColorSpace;
-  for(const t of [map,normalMap]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=8;}
-  return {map,normalMap};
-}
-
 // Cloth space: s along the bed from the headboard, t across from its centre (m).
 // The cloth lies on the top rectangle and rolls over its edges with radius r, then
 // hangs, with vertical folds in the hanging part (bedding.mjs drape, mirrored: the
@@ -483,7 +425,8 @@ export async function apply(ctx){
   ctx.removeExported({material:['linen','sage'],box:ZONE});
   ctx.removeExported({material:'fabric',box:[[17.70,.40,-9.1],[18.25,1.0,-6.5]]});
 
-  const {map,normalMap}=linenMaps(THREE);
+  // Washed-linen colour + normal maps, tile 0.6 m (cloth-maps.mjs, computed in a worker).
+  const {map,normalMap}=ctx.clothMaps('ninas-linen');
   const cloth=(color,{normal=.75,roughness=.92,sheen=.55,ao=false}={})=>new THREE.MeshPhysicalMaterial({color,map,normalMap,
     normalScale:new THREE.Vector2(normal,normal),roughness,sheen,sheenRoughness:.62,vertexColors:ao,
     sheenColor:new THREE.Color(color).lerp(new THREE.Color('#ffffff'),.30),side:THREE.DoubleSide});

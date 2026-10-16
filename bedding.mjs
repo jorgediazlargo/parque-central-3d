@@ -1,4 +1,5 @@
 import * as THREE from './assets/three.module.js';
+import {noise2,clothPixels,CLOTH_KINDS} from './cloth-maps.mjs?v=13691be8ab';
 
 // Master bed dressing after render 3: washed-linen duvet draped over the sides,
 // folded top sheet, two pairs of piped pillows and a taupe waffle throw at the
@@ -21,73 +22,40 @@ export function hideExportedBedding(geo){
   if(keep.length<pos.count)geo.setIndex(keep);
 }
 
-// Seeded value noise, smooth enough for folds.
-function noise2(seed){
-  const h=(x,y)=>{let n=Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(seed,2147483647)|0;n=Math.imul(n^(n>>>13),1274126177);return ((n^(n>>>16))>>>0)/4294967296;};
-  return (x,y)=>{
-    const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
-    const a=h(xi,yi),b=h(xi+1,yi),c=h(xi,yi+1),d=h(xi+1,yi+1);
-    return (a+(b-a)*u)*(1-v)+(c+(d-c)*u)*v-.5;
-  };
-}
-
 // Tileable cloth maps: colour + normal from a height field. `size` metres per tile.
+// The pixels are computed in workers as soon as the page starts (prepareBedding); the
+// textures exist at once and take them when they arrive, before anything is drawn.
+const pixels=new Map();
+function computePixels(kind){
+  if(!pixels.has(kind)){
+    let result;
+    try{
+      const worker=new Worker(new URL('./cloth-worker.mjs?v=97b3581079',import.meta.url),{type:'module'});
+      result=new Promise((resolve,reject)=>{worker.onmessage=e=>{worker.terminate();resolve(e.data);};worker.onerror=e=>{worker.terminate();reject(e);};});
+      worker.postMessage(kind);
+      result=result.catch(()=>clothPixels(kind));
+    }catch{result=Promise.resolve().then(()=>clothPixels(kind));}
+    pixels.set(kind,result);
+  }
+  return pixels.get(kind);
+}
+export function prepareBedding(){for(const kind of CLOTH_KINDS)computePixels(kind);}
 const mapCache=new Map();
-function clothMaps(kind){
+// Also for the rooms (ctx.clothMaps): cloth-maps.mjs CLOTH_KINDS.
+export function clothMaps(kind){
   if(mapCache.has(kind))return mapCache.get(kind);
-  const N=1024,H=new Float32Array(N*N),C=new Float32Array(N*N);
-  let seed=kind==='waffle'?911:kind==='sheet'?577:233;
-  const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-  const at=(x,y)=>((y+N)%N)*N+((x+N)%N);
-  if(kind==='waffle'){
-    // Waffle weave: 9 mm cells with raised ridges (tile 0.5 m → 2 px/mm).
-    const cell=18;
-    for(let y=0;y<N;y++)for(let x=0;x<N;x++){
-      const u=(x%cell)/cell-.5,v=(y%cell)/cell-.5,r=Math.max(Math.abs(u),Math.abs(v));
-      const pocket=Math.pow(Math.max(0,1-r*2.2),1.5),yarn=.18*Math.sin(x*1.6)*Math.sin(y*1.6);
-      H[y*N+x]=-.9*pocket+yarn;C[y*N+x]=-.10*pocket;
-    }
-  }else{
-    // Washed linen / percale: slub yarns along the weft and soft random creases.
-    const n1=noise2(seed),n2=noise2(seed+7);
-    const rowSlub=new Float32Array(N);for(let y=0;y<N;y++)rowSlub[y]=random()<.14?(random()-.3)*1.4:0;
-    for(let y=0;y<N;y++)for(let x=0;x<N;x++){
-      const slub=rowSlub[y]*Math.max(0,n1(x/37,y/3));
-      const weave=.10*((x&1)^(y&1)?1:-1);
-      H[y*N+x]=slub*.6+weave;
-      // Tonal mottling of stone-washed cloth, tileable by sampling a torus.
-      const a=x/N*Math.PI*2,b=y/N*Math.PI*2;
-      C[y*N+x]=.025*n2(3+Math.cos(a)*4,3+Math.sin(a)*4+b*.6)+.035*slub;
-    }
-    // Mostly broad, soft creases; a few fine crinkles of washed cloth.
-    const creases=kind==='sheet'?150:190;
-    for(let k=0;k<creases;k++){
-      const fine=random()<.2,cx=random()*N,cy=random()*N,len=fine?40+random()*90:90+random()*260,w=fine?2+random()*2:6+random()*18;
-      const ang=random()*Math.PI,dx=Math.cos(ang),dy=Math.sin(ang),amp=(random()<.5?-1:1)*(fine?.25+random()*.3:.5+random()*1.2)*w/8;
-      const bend=(random()-.5)*.004,r=Math.ceil(len/2+w*3);
-      for(let oy=-r;oy<=r;oy++)for(let ox=-r;ox<=r;ox++){
-        let s=ox*dx+oy*dy;const q=-ox*dy+oy*dx-bend*s*s;
-        if(Math.abs(s)>len/2||Math.abs(q)>w*3)continue;
-        const taper=Math.sin(Math.PI*(s/len+.5));
-        H[at(Math.round(cx+ox),Math.round(cy+oy))]+=amp*taper*taper*Math.exp(-(q*q)/(w*w));
-      }
-    }
-  }
-  const col=document.createElement('canvas'),nor=document.createElement('canvas');col.width=col.height=nor.width=nor.height=N;
-  const ci=col.getContext('2d').createImageData(N,N),ni=nor.getContext('2d').createImageData(N,N);
-  const strength=kind==='waffle'?1.4:.55;
-  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
-    const i=y*N+x,gx=(H[at(x+1,y)]-H[at(x-1,y)])*strength,gy=(H[at(x,y+1)]-H[at(x,y-1)])*strength,l=Math.hypot(gx,gy,1);
-    ni.data.set([(-gx/l*.5+.5)*255,(gy/l*.5+.5)*255,(1/l*.5+.5)*255,255],i*4);
-    const v=Math.max(0,Math.min(255,248*(1+C[i]+H[i]*.012)));
-    ci.data.set([v,v,v,255],i*4);
-  }
-  col.getContext('2d').putImageData(ci,0,0);nor.getContext('2d').putImageData(ni,0,0);
+  const N=1024,col=document.createElement('canvas'),nor=document.createElement('canvas');col.width=col.height=nor.width=nor.height=N;
   const map=new THREE.CanvasTexture(col),normalMap=new THREE.CanvasTexture(nor);
   map.colorSpace=THREE.SRGBColorSpace;
   for(const t of [map,normalMap]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=8;}
-  const maps={map,normalMap};mapCache.set(kind,maps);return maps;
+  const ready=computePixels(kind).then(({size,color,normal})=>{
+    col.getContext('2d').putImageData(new ImageData(color,size,size),0,0);nor.getContext('2d').putImageData(new ImageData(normal,size,size),0,0);
+    map.needsUpdate=normalMap.needsUpdate=true;
+  });
+  const maps={map,normalMap,ready};mapCache.set(kind,maps);return maps;
 }
+// Resolves when every cloth map has its pixels.
+export const beddingReady=()=>Promise.all([...mapCache.values()].map(m=>m.ready));
 
 function cloth(color,kind,{normal=.75,roughness=.92,sheen=.55}={}){
   const {map,normalMap}=clothMaps(kind);

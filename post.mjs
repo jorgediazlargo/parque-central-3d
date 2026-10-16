@@ -136,6 +136,15 @@ export class Post{
     for(const m of this.mips){m.setSize(mw,mh);mw=Math.max(1,mw>>1);mh=Math.max(1,mh>>1);}
     this.final.uniforms.resolution.value.set(w,h);
   }
+  // Starts compiling every pass's program (in the GPU process) before the first frame:
+  // into a linear target as the passes do, the composite to the screen.
+  compile(){
+    const r=this.renderer,prior=r.getRenderTarget();
+    for(const m of [this.aoMat,this.aoBlur,this.meter,this.adaptMat,this.prefilter,this.down,this.up,this.final]){
+      this.quad.material=m;r.setRenderTarget(m===this.final?null:this.aoRT[0]);r.compile(this.quadScene,this.quadCam);
+    }
+    r.setRenderTarget(prior);
+  }
   pass(material,target){
     this.quad.material=material;this.renderer.setRenderTarget(target);this.renderer.render(this.quadScene,this.quadCam);
   }

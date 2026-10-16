@@ -1,6 +1,8 @@
 import * as THREE from './assets/three.module.js';
 import {GLTFLoader} from './assets/jsm/loaders/GLTFLoader.js';
-import {lightObject} from './lighting.mjs?v=c5cb69edbc';
+import {lightObject} from './lighting.mjs?v=65f7ecdcd5';
+import {loadImageTexture} from './images.mjs?v=3b580fe40e';
+import {clothMaps} from './bedding.mjs?v=322afdf762';
 
 // Per-room modules (rooms/<id>.mjs), each exporting `async function apply(ctx)`.
 // They run after the house, textures and baked light are ready and before the tour
@@ -29,16 +31,28 @@ function exportedMeshes(staticMeshes,{material,region}={}){
   const okMaterial=want(material),okRegion=want(region);
   return staticMeshes.filter(m=>m.userData.exported&&okMaterial(m.userData.exported.material)&&okRegion(m.userData.exported.region));
 }
-// Triangles (as first-vertex indices into the index list) whose centroid is in a box.
+// Triangles (as first-vertex indices into the index list) whose centroid is in a box,
+// or null if none is. Read straight from the arrays; a mesh whose vertices all lie
+// outside every box has none, so its triangles are not walked.
 function partition(geo,boxes){
   const pos=geo.getAttribute('position'),index=geo.index,n=index?index.count:pos.count;
-  const keep=[],hit=[],c=new THREE.Vector3();
-  for(let i=0;i<n;i+=3){
-    const a=index?index.getX(i):i,b=index?index.getX(i+1):i+1,d=index?index.getX(i+2):i+2;
-    c.set((pos.getX(a)+pos.getX(b)+pos.getX(d))/3,(pos.getY(a)+pos.getY(b)+pos.getY(d))/3,(pos.getZ(a)+pos.getZ(b)+pos.getZ(d))/3);
-    (boxes.some(bx=>bx.containsPoint(c))?hit:keep).push(a,b,d);
+  const interleaved=pos.isInterleavedBufferAttribute,P=interleaved?pos.data.array:pos.array;
+  const stride=interleaved?pos.data.stride:pos.itemSize,offset=interleaved?pos.offset:0,I=index?.array;
+  if(pos.normalized)throw Error('partition: normalised positions');
+  let x0=Infinity,y0=Infinity,z0=Infinity,x1=-Infinity,y1=-Infinity,z1=-Infinity;
+  for(let v=0,o=offset;v<pos.count;v++,o+=stride){
+    const x=P[o],y=P[o+1],z=P[o+2];
+    if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;if(z<z0)z0=z;if(z>z1)z1=z;
   }
-  return {keep,hit};
+  const near=boxes.filter(b=>b.max.x>=x0&&b.min.x<=x1&&b.max.y>=y0&&b.min.y<=y1&&b.max.z>=z0&&b.min.z<=z1);
+  if(!near.length)return null;
+  const keep=[],hit=[];
+  for(let i=0;i<n;i+=3){
+    const a=I?I[i]:i,b=I?I[i+1]:i+1,d=I?I[i+2]:i+2,pa=a*stride+offset,pb=b*stride+offset,pd=d*stride+offset;
+    const cx=(P[pa]+P[pb]+P[pd])/3,cy=(P[pa+1]+P[pb+1]+P[pd+1])/3,cz=(P[pa+2]+P[pb+2]+P[pd+2])/3;
+    (near.some(bx=>cx>=bx.min.x&&cx<=bx.max.x&&cy>=bx.min.y&&cy<=bx.max.y&&cz>=bx.min.z&&cz<=bx.max.z)?hit:keep).push(a,b,d);
+  }
+  return hit.length?{keep,hit}:null;
 }
 // Drops triangles by index only: every attribute (position, uv, uv1 lightmap) stays aligned.
 function keepOnly(geo,keep){geo.setIndex(new THREE.BufferAttribute(new Uint32Array(keep),1));}
@@ -48,10 +62,12 @@ export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap
   const gltf=new GLTFLoader();
   return {
     id,THREE,scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,group,plan,cloneMaterial,
+    // Cloth colour + normal maps computed in workers (cloth-maps.mjs): {map, normalMap}.
+    clothMaps,
     // glTF/glb; resolves to the parsed gltf ({scene, ...}). URLs relative to index.html.
     loadModel:url=>gltf.loadAsync(url),
     loadTexture:async(url,{srgb=true,repeat=true}={})=>{
-      const t=await new THREE.TextureLoader().loadAsync(url);if(srgb)t.colorSpace=THREE.SRGBColorSpace;
+      const t=await loadImageTexture(url);if(srgb)t.colorSpace=THREE.SRGBColorSpace;
       if(repeat)t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());return t;
     },
     // Strip exported (house.bin) triangles whose centroid lies in a world box
@@ -61,8 +77,8 @@ export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap
     removeExported({material,region,box}){
       const boxes=toBoxes(box);let removed=0;
       for(const mesh of exportedMeshes(staticMeshes,{material,region})){
-        const {keep,hit}=partition(mesh.geometry,boxes);
-        if(hit.length){keepOnly(mesh.geometry,keep);removed+=hit.length/3;}
+        const parts=partition(mesh.geometry,boxes);
+        if(parts){keepOnly(mesh.geometry,parts.keep);removed+=parts.hit.length/3;}
       }
       return removed;
     },
@@ -74,7 +90,8 @@ export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap
     splitExported({material,region,box}){
       const boxes=toBoxes(box),out=[];
       for(const mesh of exportedMeshes(staticMeshes,{material,region})){
-        const geo=mesh.geometry,{keep,hit}=partition(geo,boxes);if(!hit.length)continue;
+        const geo=mesh.geometry,parts=partition(geo,boxes);if(!parts)continue;
+        const {keep,hit}=parts;
         const part=new THREE.BufferGeometry();
         for(const [name,attr] of Object.entries(geo.attributes)){
           // Raw values (no denormalisation): the lightmap UVs are normalised Uint16.
@@ -109,11 +126,16 @@ export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap
   };
 }
 
+// Fetches and evaluates the modules (definitions only) while the house loads.
+const modules=new Map();
+export function preloadRooms(ids=ROOM_IDS){
+  for(const id of ids)if(!modules.has(id)){const m=import(`./rooms/${id}.mjs`);m.catch(()=>{});modules.set(id,m);}  // reported by applyRooms
+}
 export async function applyRooms(base,ids=ROOM_IDS){
-  const status={};
+  const status={};preloadRooms(ids);
   await Promise.all(ids.map(async id=>{
     try{
-      const module=await import(`./rooms/${id}.mjs`);
+      const module=await modules.get(id);
       await module.apply(makeContext({...base,id}));
       status[id]='ok';
     }catch(e){

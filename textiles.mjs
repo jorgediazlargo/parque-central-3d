@@ -1,4 +1,5 @@
 import * as THREE from './assets/three.module.js';
+import {imageTexture} from './images.mjs?v=3b580fe40e';
 
 // Upholstery, linen and rug surfaces shared by real-time and baked rooms, from
 // photographed CC0 Poly Haven fabrics (scripts/derive_polyhaven.py):
@@ -13,11 +14,11 @@ const SOURCES={fabric:'curly_teddy_natural',linen:'rough_linen',rug:'hessian_230
 const TILE={fabric:.33,linen:.27,rug:.54};
 export const textileDetail={fabric:.85,linen:.55,rug:.9};
 export const textileNormalScale={fabric:.9,linen:.55,rug:1.1};
-const cache=new Map(),loader=new THREE.TextureLoader();
+const cache=new Map();
 function load(kind,map){
   const id=kind+map;if(cache.has(id))return cache.get(id);
   const asset=SOURCES[kind];
-  const t=loader.load(`./assets/polyhaven/${asset}/${asset}_${map}_1k.webp`);
+  const t=imageTexture(`./assets/polyhaven/${asset}/${asset}_${map}_1k.webp`);
   t.colorSpace=THREE.NoColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=8;
   const r=kind==='rug'?1/(TILE.rug*4):1/TILE[kind];t.repeat.set(r,r);
   cache.set(id,t);return t;

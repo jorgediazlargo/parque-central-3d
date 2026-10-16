@@ -22,11 +22,12 @@ export async function fetchProbeData(file,version){
   if(!res.ok)throw Error('No se han podido descargar las sondas de luz.');
   return new Uint16Array(await res.arrayBuffer());
 }
-export async function loadProbes(info,version,file=info.file){
+// The probe volume for the grid of `info`; its data (fetchProbeData) may come later.
+export function probeVolume(info,data=null){
   const [nx,ny,nz]=info.dims;
-  const tex=new THREE.Data3DTexture(await fetchProbeData(file,version),nx,nz,6*ny);
+  const tex=new THREE.Data3DTexture(data,nx,nz,6*ny);
   tex.type=THREE.HalfFloatType;tex.format=THREE.RGBAFormat;tex.minFilter=tex.magFilter=THREE.LinearFilter;
-  tex.wrapS=tex.wrapT=tex.wrapR=THREE.ClampToEdgeWrapping;tex.unpackAlignment=1;tex.generateMipmaps=false;tex.needsUpdate=true;
+  tex.wrapS=tex.wrapT=tex.wrapR=THREE.ClampToEdgeWrapping;tex.unpackAlignment=1;tex.generateMipmaps=false;if(data)tex.needsUpdate=true;
   return {texture:tex,uniforms:{
     probeVolume:{value:tex},
     probeOrigin:{value:new THREE.Vector3(...info.origin)},
@@ -60,7 +61,7 @@ export function pocketUniforms(data){
   };
 }
 
-const MAX_ROOMS=16;
+const MAX_ROOMS=16,CAPTURE_SIZE=128;
 export class ReflectionProbes{
   constructor(rooms){
     this.rooms=rooms.slice(0,MAX_ROOMS);
@@ -73,9 +74,27 @@ export class ReflectionProbes{
       reflEnabled:{value:0}
     };
     this.atlas=null;
+    // Black CubeUV environment as tall as the atlas (PMREM: 4 × the cube size, the only
+    // part of the atlas that enters a program). The captures see it, with reflEnabled 0:
+    // no reflection reaches them, as without an environment, but every material compiles
+    // to the very program the tour draws with.
+    const height=4*CAPTURE_SIZE;
+    this.blank=new THREE.DataTexture(new Uint16Array(4*height),1,height,THREE.RGBAFormat,THREE.HalfFloatType);
+    this.blank.mapping=THREE.CubeUVReflectionMapping;this.blank.needsUpdate=true;
+  }
+  // Compiles every program the captures and the tour draw with, in parallel where the
+  // browser can (KHR_parallel_shader_compile): into an HDR target, as the composer and
+  // the captures do, with a CubeUV environment.
+  // wait false: only starts them (no polling), for a compile that overlaps other work.
+  compile(renderer,scene,camera,target,{wait=true}={}){
+    const prior=renderer.getRenderTarget(),environment=scene.environment;
+    scene.environment=this.blank;renderer.setRenderTarget(target);
+    const ready=wait?renderer.compileAsync(scene,camera):renderer.compile(scene,camera);
+    renderer.setRenderTarget(prior);scene.environment=environment;
+    return ready;
   }
   // Captures every room (6 x size² HDR) and builds the atlas used as scene.environment.
-  capture(renderer,scene,size=128){
+  capture(renderer,scene,size=CAPTURE_SIZE){
     const cubeRT=new THREE.WebGLCubeRenderTarget(size,{type:THREE.HalfFloatType,generateMipmaps:false});
     const cam=new THREE.CubeCamera(.05,60,cubeRT);scene.add(cam);
     const pmrem=new THREE.PMREMGenerator(renderer);
@@ -87,7 +106,7 @@ export class ReflectionProbes{
       fragmentShader:'uniform sampler2D src;varying vec2 vUv;void main(){gl_FragColor=texture2D(src,vUv);}'
     }));
     const copyScene=new THREE.Scene();copyScene.add(copy);const copyCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
-    this.uniforms.reflEnabled.value=0;scene.environment=null;
+    this.uniforms.reflEnabled.value=0;scene.environment=this.blank;
     this.rooms.forEach((room,i)=>{
       cam.position.copy(room.center);cam.update(renderer,scene);
       const rt=pmrem.fromCubemap(cubeRT.texture);

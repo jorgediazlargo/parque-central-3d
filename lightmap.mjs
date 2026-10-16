@@ -1,6 +1,6 @@
 import * as THREE from './assets/three.module.js';
-import {textile,textileNormal,textileNormalScale} from './textiles.mjs?v=b27dcfc10d';
-import {loadProbes,fetchProbeData,patchLighting} from './lighting.mjs?v=c5cb69edbc';
+import {textile,textileNormal,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
+import {probeVolume,fetchProbeData,patchLighting} from './lighting.mjs?v=65f7ecdcd5';
 
 // Irradiance baked for the whole dwelling in one Cycles solution (scripts/bake_house.py).
 // Each house.bin vertex gets a lightmap UV: (page + u) / 2 and v, with 1,1 for surfaces
@@ -14,20 +14,38 @@ import {loadProbes,fetchProbeData,patchLighting} from './lighting.mjs?v=c5cb69ed
 // Night: the same bake with the daylight off (data.night, same UVs). setMode('night'|'day')
 // fetches the other pages and probes once and swaps them into the same textures, so no
 // material is recompiled.
-export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],mode='day'}={}){
-  const [j,b]=await Promise.all([fetch('./assets/house-light.json?v=8019f9593c',{cache:'no-cache'}),fetch('./assets/house-light.bin?v=a7338a7714',{cache:'no-cache'})]);
-  if(!j.ok||!b.ok)throw Error('No se ha podido descargar la iluminación.');
-  const data=await j.json(),buffer=await b.arrayBuffer();
-  if(data.sourceSha256!==sourceHash)throw Error('La geometría y la iluminación no corresponden a la misma versión.');
-  if(data.encoding!=='rgbm-sqrt-range-64')throw Error('Iluminación con un formato antiguo.');
-  const version=data.contextSha256.slice(0,10)+data.samples;
-  // RGBM needs the alpha untouched: decode without premultiplication or colour conversion.
-  const bitmaps=new THREE.ImageBitmapLoader().setOptions({imageOrientation:'flipY',premultiplyAlpha:'none',colorSpaceConversion:'none'});
-  const files=m=>m==='night'?{pages:data.night.lightmaps,probes:data.night.probes}:{pages:data.lightmaps,probes:data.probes.file};
-  const [pages,probes]=await Promise.all([
-    Promise.all(files(mode).pages.map(name=>bitmaps.loadAsync('./assets/'+name+'?v='+version).then(b=>new THREE.Texture(b)))),
-    loadProbes(data.probes,version,files(mode).probes)]);
-  const variants={[mode]:Promise.resolve({bitmaps:pages.map(t=>t.image),probes:probes.texture.image.data})};
+// RGBM needs the alpha untouched: decode without premultiplication or colour conversion.
+const bitmaps=new THREE.ImageBitmapLoader().setOptions({imageOrientation:'flipY',premultiplyAlpha:'none',colorSpaceConversion:'none'});
+const bakeVersion=data=>data.contextSha256.slice(0,10)+data.samples;
+const bakeFiles=(data,m)=>m==='night'?{pages:data.night.lightmaps,probes:data.night.probes}:{pages:data.lightmaps,probes:data.probes.file};
+// Requests the bake of `mode` now (its JSON and UVs) and its pages and probes once
+// `after` settles, so it downloads alongside the geometry; loadLightmap takes the result.
+// The JSON and the UVs are versioned by content (scripts/version.mjs); the pages and
+// probes by bake, so a re-denoise is revalidated (no-cache).
+export function fetchLightmap(mode='day',{after=null}={}){
+  const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar la iluminación.');return read(r);});
+  const json=get('./assets/house-light.json?v=8019f9593c',r=>r.json()),uvs=get('./assets/house-light.bin?v=a7338a7714',r=>r.arrayBuffer());
+  const files=Promise.all([json,uvs]);
+  const maps=Promise.all([json,after]).then(([data])=>{
+    if(data.encoding!=='rgbm-sqrt-range-64')throw Error('Iluminación con un formato antiguo.');
+    const version=bakeVersion(data),{pages,probes}=bakeFiles(data,mode);
+    return Promise.all([Promise.all(pages.map(name=>bitmaps.loadAsync('./assets/'+name+'?v='+version))),fetchProbeData(probes,version)]);
+  });
+  maps.catch(()=>{});  // reported by loadLightmap
+  return {mode,files,maps};
+}
+// Resolves with the UVs; the pages and probes fill their textures when decoded (`loaded`),
+// so the house is built (and its programs compiled) meanwhile.
+export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],prefetched=fetchLightmap()}={}){
+  const {mode}=prefetched,[data,buffer]=await prefetched.files;
+  if(data.sourceSha256!==await sourceHash)throw Error('La geometría y la iluminación no corresponden a la misma versión.');
+  const version=bakeVersion(data),files=m=>bakeFiles(data,m);
+  const pages=files(mode).pages.map(()=>new THREE.Texture()),probes=probeVolume(data.probes);
+  const variants={[mode]:prefetched.maps.then(([bitmaps,probes])=>({bitmaps,probes}))};
+  const loaded=variants[mode].then(v=>{
+    pages.forEach((t,i)=>{t.image=v.bitmaps[i];t.needsUpdate=true;});
+    probes.texture.image.data=v.probes;probes.texture.needsUpdate=true;
+  });
   let current=mode;
   async function setMode(next){
     if(next===current)return false;
@@ -38,7 +56,7 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],mode
     probes.texture.image.data=v.probes;probes.texture.needsUpdate=true;
     current=next;return true;
   }
-  for(const t of pages){t.channel=1;t.flipY=false;t.premultiplyAlpha=false;t.generateMipmaps=false;t.minFilter=THREE.LinearFilter;t.colorSpace=THREE.NoColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());t.needsUpdate=true;}
+  for(const t of pages){t.channel=1;t.flipY=false;t.premultiplyAlpha=false;t.generateMipmaps=false;t.minFilter=THREE.LinearFilter;t.colorSpace=THREE.NoColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
   lighting.probes=probes;
   const RANGE=data.range;
   const spans=new Map(data.meshes.map(m=>[m.sourceIndex,m]));
@@ -115,5 +133,5 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],mode
       m.needsUpdate=true;
     }
   }
-  return {bind,material,syncTextures,setMode,get mode(){return current;},pages,probes,data};
+  return {bind,material,syncTextures,setMode,get mode(){return current;},pages,probes,data,loaded};
 }
