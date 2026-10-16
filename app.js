@@ -3,7 +3,7 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=1aa5e4f212';
 import {Post} from './post.mjs?v=657f448527';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap} from './lightmap.mjs?v=89bead502f';
+import {loadLightmap} from './lightmap.mjs?v=ed57fdd665';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=b27dcfc10d';
 import {masterBedding,hideExportedBedding} from './bedding.mjs?v=37c7853956';
@@ -26,7 +26,8 @@ for(const key of ['sound','bob']) {
 }
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
-const porcelainMap={value:null},crosscutNormal={value:null};
+const porcelainMap={value:null},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null};
+const PLASTER_TILE=.75;  // metres per plaster.webp tile (style_textures.py)
 // Clear glass: a faint tinted body, reflections (box-projected room probes) at full
 // strength and the background let through by what neither takes (Schlick Fresnel),
 // in premultiplied alpha. A plain transparent material scaled its reflections by its
@@ -113,14 +114,35 @@ function material(color,kind,roughness=.7){
           normal=normalize((viewMatrix*vec4(ccN,0.0)).xyz);}`).replace('void main() {','#define CROSSCUT_RELIEF 1.0\n#define CROSSCUT_BIAS -0.8\nvoid main() {');
       }
       if(kind==='stone')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#ifdef USE_MAP\nvec2 stoneUv=vec2(.045,.25)+fract(vMapUv)*vec2(.26,.17);diffuseColor*=texture2D(map,stoneUv);\n#endif');
-      if(kind==='wall')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#ifdef USE_MAP
-        // Limewash of the renders: soft clouds and brushed patches, two
-        // unrelated scales to hide tiling. Ceilings keep a calmer finish.
-        float limeCeiling=smoothstep(-.45,-.85,houseNormal.y);
-        float lime=(texture2D(map,vMapUv).r-.5)*.5+(texture2D(map,vMapUv*.37+vec2(.31,.17)).r-.5)*.4;
-        diffuseColor.rgb*=1.0+lime*mix(.95,.42,limeCeiling)*vec3(.92,1.0,1.15);
-        diffuseColor.rgb*=mix(vec3(1.0),vec3(.94,.93,.92),limeCeiling);
-      #endif`);
+      if(kind==='wall'){
+        // Lime plaster of renders 1, 3 and 4 (style_textures.py plaster): sand grain,
+        // pores, calcite flecks and trowelled streaks, projected in world metres as the
+        // export lays its UVs. Two samples of the tile at unrelated scales and turns hide
+        // the repeat; the relief tilts the normal in the same frame. Over it the
+        // limewash clouds, now a faint breath (at ±13 % they read as stains). Ceilings
+        // are paint: a calmer finish.
+        shader.uniforms.plasterMap=plasterMap;shader.uniforms.plasterNormal=plasterNormal;
+        shader.fragmentShader='uniform sampler2D plasterMap,plasterNormal;\n'+shader.fragmentShader.replace('void main() {',`
+          #define PLASTER_TILE ${PLASTER_TILE.toFixed(2)}
+          #define PLASTER_RELIEF 1.6
+          const mat2 plasterTurn=mat2(.8387,.5446,-.5446,.8387),plasterBack=mat2(.8387,-.5446,.5446,.8387);
+          void main() {`).replace('#include <map_fragment>',`
+          float limeCeiling=smoothstep(-.45,-.85,houseNormal.y);
+          vec3 plasterAxis=abs(houseNormal),plasterT=vec3(1.0,0.0,0.0),plasterB=vec3(0.0,1.0,0.0);vec2 plasterAt=houseWorld.xy;
+          if(plasterAxis.y>max(plasterAxis.x,plasterAxis.z)){plasterAt=vec2(houseWorld.x,-houseWorld.z);plasterB=vec3(0.0,0.0,-1.0);}
+          else if(plasterAxis.x>plasterAxis.z){plasterAt=vec2(-houseWorld.z,houseWorld.y);plasterT=vec3(0.0,0.0,-1.0);}
+          vec2 plasterUvA=plasterAt/PLASTER_TILE,plasterUvB=plasterTurn*plasterAt/(PLASTER_TILE*1.29)+vec2(.37,.61);
+          float plasterAmount=mix(1.0,.3,limeCeiling);
+          diffuseColor.rgb*=1.0+((texture2D(plasterMap,plasterUvA).rgb*1.9922-1.0)+(texture2D(plasterMap,plasterUvB).rgb*1.9922-1.0)*.7)*plasterAmount;
+          #ifdef USE_MAP
+          float lime=(texture2D(map,vMapUv).r-.5)*.5+(texture2D(map,vMapUv*.37+vec2(.31,.17)).r-.5)*.4;
+          diffuseColor.rgb*=1.0+lime*mix(.30,.25,limeCeiling)*vec3(.92,1.0,1.15);
+          #endif
+          diffuseColor.rgb*=mix(vec3(1.0),vec3(.94,.93,.92),limeCeiling);`).replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+          {vec2 plasterTilt=((texture2D(plasterNormal,plasterUvA).xy*2.0-1.0)+plasterBack*(texture2D(plasterNormal,plasterUvB).xy*2.0-1.0)*.7)*PLASTER_RELIEF*plasterAmount;
+          vec3 plasterN=inverseTransformDirection(normal,viewMatrix);
+          normal=normalize((viewMatrix*vec4(normalize(plasterN+plasterT*plasterTilt.x+plasterB*plasterTilt.y),0.0)).xyz);}`);
+      }
       if(kind==='floor'){
         // H01 pavements: oak planks (no herringbone) in bedrooms, the play room, their
         // hall and the closet beside the kitchen; 90 cm porcelain at 45° elsewhere.
@@ -225,7 +247,7 @@ async function surfaceTextures(){
   const loader=new THREE.TextureLoader();
   for(const [asset,targets,scale,strength,colour='1k'] of [
     ['laminate_floor_02',['floor'],.59,.28,'2k'],
-    ['marble_01',['blackstone'],.55,.12],['white_plaster_02',['wall'],.8,.22]]){
+    ['marble_01',['blackstone'],.55,.12]]){
     const maps=await Promise.all([['diff',colour],['nor_gl','1k'],['rough','1k']].map(([c,r])=>loader.loadAsync(`./assets/textures/${asset}_${c}_${r}.${r==='2k'?'webp':'jpg'}`)));
     maps.forEach((t,i)=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(scale,scale);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());if(i===0)t.colorSpace=THREE.SRGBColorSpace;});
     for(const key of targets){mats[key].map=maps[0];mats[key].normalMap=maps[1];mats[key].roughnessMap=maps[2];mats[key].normalScale.set(strength,strength);mats[key].needsUpdate=true;}
@@ -250,10 +272,13 @@ async function surfaceTextures(){
   const [crosscut,crosscutNor]=await Promise.all(['stone_crosscut','stone_crosscut_nor'].map(n=>loader.loadAsync(`./assets/textures/${n}.webp`)));
   for(const t of [crosscut,crosscutNor]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
   crosscut.colorSpace=THREE.SRGBColorSpace;mats.kitchenCrosscut.map=crosscut;mats.kitchenCrosscut.needsUpdate=true;crosscutNormal.value=crosscutNor;
-  // Limewash detail replaces the plaster colour map; its normal and roughness stay.
-  const lime=await loader.loadAsync('./assets/textures/limewash.webp?v=76a3d72611');
-  lime.wrapS=lime.wrapT=THREE.RepeatWrapping;lime.repeat.set(.6,.6);lime.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
-  mats.wall.map=lime;mats.wall.needsUpdate=true;
+  // Walls: lime plaster colour and relief (shader uniforms), limewash clouds as the
+  // map and the roughness of Poly Haven's White Plaster 02.
+  const [lime,plaster,plasterNor,plasterRough]=await Promise.all(['./assets/textures/limewash.webp?v=76a3d72611','./assets/textures/plaster.webp?v=c910d3af3d',
+    './assets/textures/plaster_nor.webp?v=70c8c6dff6','./assets/textures/white_plaster_02_rough_1k.jpg?v=4ff1fe957c'].map(n=>loader.loadAsync(n)));
+  for(const t of [lime,plaster,plasterNor,plasterRough]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
+  lime.repeat.set(.6,.6);plasterRough.repeat.set(.8,.8);plasterMap.value=plaster;plasterNormal.value=plasterNor;
+  mats.wall.map=lime;mats.wall.roughnessMap=plasterRough;mats.wall.needsUpdate=true;
   // Bouclé, slub linen and knotted rug read as real textiles at walking distance.
   for(const [key,kind] of [['fabric','fabric'],['kitchenFabric','fabric'],['sage','fabric'],['clay','fabric'],['linen','linen'],['shirt','linen'],['rug','rug']]){
     const m=mats[key];m.map=textile(kind);m.normalMap=textileNormal(kind);m.normalScale.setScalar(textileNormalScale[kind]);m.bumpMap=null;m.needsUpdate=true;

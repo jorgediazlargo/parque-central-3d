@@ -96,7 +96,6 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[]}={})
       const [base,kind,region]=bases.get(id);
       for(const k of ['map','normalMap','roughnessMap','bumpMap','bumpScale'])m[k]=base[k];
       m.normalScale.copy(base.normalScale);
-      if(region==='salon'&&kind==='wall')m.normalScale.set(.12,.12);
       if(region==='salon'&&['linen','fabric','rug'].includes(kind)){m.map=textile(kind);m.normalMap=textileNormal(kind);m.normalScale.setScalar(textileNormalScale[kind]);m.bumpMap=null;}
       m.needsUpdate=true;
     }

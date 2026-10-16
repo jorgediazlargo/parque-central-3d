@@ -25,7 +25,7 @@
 //   props, and the floor through a multiplicative overlay) takes 1 + K·form factor of the
 //   window, clipped by the bench edge, plus a soft glow round it and a decay toward the door.
 // - Walls and ceiling: the bake's 10–30 cm stains low-passed once on load (wallLowPass),
-//   limewash clouds down to a breath, a fine plaster grain (albedo + relief), 60 % of the
+//   limewash clouds down to a breath (the plaster grain is the house's, app.js), 60 % of the
 //   orange bounce chroma, crisp occlusion creases at the wall/ceiling/corner junctions.
 // - Plaster pelmet over the blind; paler oak; slimmer kids' table and chairs; denser
 //   contact shadows.
@@ -382,27 +382,6 @@ float jgLift(vec3 p,vec3 n){
 // Warm daylight through linen.
 const WASH_TINT='vec3(1.0,.955,.885)';
 
-// Fine plaster grain (tileable, 1 px ≈ 0.9 mm): R = height, used for albedo and relief.
-function plasterGrain(THREE){
-  const N=512,r=rand(7),h=new Float32Array(N*N);
-  for(const [cell,amp] of [[128,.3],[64,.3],[32,.5],[16,.9],[8,1.0],[4,.7],[2,.4]]){
-    const g=N/cell,grid=Float32Array.from({length:g*g},()=>r()*2-1);
-    for(let y=0;y<N;y++){const fy=y/cell,iy=Math.floor(fy),ty=fy-iy,sy=ty*ty*(3-2*ty);
-      for(let x=0;x<N;x++){const fx=x/cell,ix=Math.floor(fx),tx=fx-ix,sx=tx*tx*(3-2*tx);
-        const at=(i,j)=>grid[((j%g)*g)+(i%g)];
-        h[y*N+x]+=amp*((at(ix,iy)*(1-sx)+at(ix+1,iy)*sx)*(1-sy)+(at(ix,iy+1)*(1-sx)+at(ix+1,iy+1)*sx)*sy);}}
-  }
-  // Pores: small sharp pits.
-  for(let i=0;i<5200;i++){const cx=r()*N,cy=r()*N,rad=.8+r()*1.6,d=.6+r()*.9;
-    for(let y=Math.floor(cy-rad-1);y<=cy+rad+1;y++)for(let x=Math.floor(cx-rad-1);x<=cx+rad+1;x++){
-      const q=Math.hypot(x-cx,y-cy)/rad;if(q<1)h[((y+N)%N)*N+(x+N)%N]-=d*(1-q*q);}}
-  let lo=1e9,hi=-1e9;for(const v of h){lo=Math.min(lo,v);hi=Math.max(hi,v);}
-  const c=document.createElement('canvas');c.width=c.height=N;const g=c.getContext('2d'),img=g.createImageData(N,N);
-  for(let i=0;i<N*N;i++){const v=Math.round((h[i]-lo)/(hi-lo)*255);img.data[i*4]=img.data[i*4+1]=img.data[i*4+2]=v;img.data[i*4+3]=255;}
-  g.putImageData(img,0,0);
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.NoColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=8;return t;
-}
-
 // Low-pass of the baked light on the room's main faces (north wall either side of the
 // window, east wall, west wall by the window, ceiling). The denoised bake leaves 10–30 cm
 // darker patches on these big plain faces (render 8: smooth light). Done once on load, in
@@ -498,33 +477,19 @@ export async function apply(ctx){
   // Walls and ceiling, lacquer (bench base, wardrobe) and the desk of this room become
   // their own meshes (same baked light) so only they take the wash and the new finish.
   const ZONE=[[13.02,-0.2,-9.8],[15.78,3.2,-4.75]];
-  const grain=plasterGrain(THREE);
   const RANGE_PI=(ctx.lightmap?.data?.range||64)*Math.PI;   // RGBM decode of the bake
   const anchor='baked*=smoothstep(.0004,.003,dot(bakedE,vec3(.2126,.7152,.0722)));';
   const washBaked=(piece,wall)=>{
     const m=piece.material,prior=m.onBeforeCompile,key=m.customProgramCacheKey();
-    // The plaster normal map undulates over ~1 m; through the relief term of the bake it
-    // printed 10–30 cm soft stains. The fine grain carries the relief instead.
-    if(wall)m.normalScale.set(.05,.05);
     m.onBeforeCompile=(shader,r)=>{
       prior.call(m,shader,r);
       let fs=shader.fragmentShader;
       if(!fs.includes(anchor))console.warn('[rooms/juegos] baked anchor missing');
       const lift=`{float jgL=jgLift(houseWorld,normalize(houseNormal));bakedE*=1.0+(jgL-1.0)*${WASH_TINT};}`;
       if(wall){
-        shader.uniforms.jgGrain={value:grain};
-        // Limewash clouds (±40 % on these walls, read as stains) down to a breath; a fine
-        // trowelled grain at true scale instead (tile 46 cm), as albedo and relief.
-        fs=fs.replace('lime*mix(.95,.42,limeCeiling)','lime*mix(.05,.05,limeCeiling)')
-          .replace('#include <color_fragment>',`#include <color_fragment>
-            {vec3 an=abs(houseNormal);vec2 gUv=(an.x>.5?houseWorld.zy:an.z>.5?houseWorld.xy:houseWorld.xz)/.46;
-            diffuseColor.rgb*=1.0+(texture2D(jgGrain,gUv).r-.5)*.16;}`)
-          .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
-            {vec3 an=abs(houseNormal);vec2 gUv=(an.x>.5?houseWorld.zy:an.z>.5?houseWorld.xy:houseWorld.xz)/.46;
-            float gH=texture2D(jgGrain,gUv).r*.00045;
-            vec3 gDx=dFdx(-vViewPosition),gDy=dFdy(-vViewPosition),gR1=cross(gDy,normal),gR2=cross(normal,gDx);
-            float gDet=dot(gDx,gR1)*faceDirection;
-            normal=normalize(abs(gDet)*normal-sign(gDet)*(dFdx(gH)*gR1+dFdy(gH)*gR2));}`)
+        // Limewash clouds down to a breath (render 8: smooth walls); the shared lime
+        // plaster (app.js) gives the grain.
+        fs=fs.replace('lime*mix(.30,.25,limeCeiling)','lime*mix(.05,.05,limeCeiling)')
           .replace(anchor,anchor+`
             // Denoiser blotches (10–30 cm darker patches): the baked luminance of the room's
             // main faces, low-passed once on load (wallLowPass) into a world-space map.
@@ -554,7 +519,7 @@ export async function apply(ctx){
             }
             ${lift}`);
         shader.uniforms.jgBlur={value:lowPass.texture};
-        shader.fragmentShader=lowPass.defines+'uniform sampler2D jgGrain,jgBlur;\n'+WASH_GLSL+fs;
+        shader.fragmentShader=lowPass.defines+'uniform sampler2D jgBlur;\n'+WASH_GLSL+fs;
       }else shader.fragmentShader=WASH_GLSL+fs.replace(anchor,anchor+lift);
     };
     m.customProgramCacheKey=()=>key+'|juegos-'+(wall?'wall':'wash');
