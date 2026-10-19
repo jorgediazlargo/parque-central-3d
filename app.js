@@ -3,16 +3,18 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=65f7ecdcd5';
 import {Post} from './post.mjs?v=5589b8238f';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=ffa6f928bc';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=28bbcb88bf';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=d2ab8cd826';
 import {applyRooms,preloadRooms} from './rooms.mjs?v=1bc441bbe7';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
+import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=b5c417cc21';
+import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=4bcf41157e';
 
 const $=id=>document.getElementById(id),canvas=$('world');
-let scene,camera,renderer,composer,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null;
+let scene,camera,renderer,composer,quality,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null;
 let lightmap,roomStatus={},reflections;const runtimeObjects=[];
 // Día / Noche: the night bake (artificial light only, same UVs) swapped into the same
 // lightmap and probe textures, the outdoor lights and backdrop, and the room modules'
@@ -122,6 +124,19 @@ function material(color,kind,roughness=.7){
           ccN=normalize(vec3(ccN.x,ccTX.y+ccN.y,ccTX.x+ccN.z)*ccW.x+vec3(ccTY.x+ccN.x,ccN.y,ccTY.y+ccN.z)*ccW.y+vec3(ccTZ.xy+ccN.xy,ccN.z)*ccW.z);
           normal=normalize((viewMatrix*vec4(ccN,0.0)).xyz);}`).replace('void main() {','#define CROSSCUT_RELIEF 1.0\n#define CROSSCUT_BIAS -0.8\nvoid main() {');
       }
+      if(kind==='terrace'){
+        // Terrace porcelain (photo): pale warm-grey 80 cm squares on the facade grid, fine joints,
+        // each piece a touch lighter or darker, with a soft mottle.
+        shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
+          vec2 terraceAt=(houseWorld.xz-vec2(4.39,-10.88))/.80;
+          vec2 terraceCell=floor(terraceAt),terraceF=fract(terraceAt);
+          float terraceEdge=min(min(terraceF.x,1.0-terraceF.x),min(terraceF.y,1.0-terraceF.y));
+          float terraceJoint=1.0-smoothstep(.0035,.0035+max(fwidth(terraceEdge),1e-4)*1.5,terraceEdge);
+          float terraceTone=hashHouse(terraceCell);
+          float terraceMottle=sin(houseWorld.x*5.3+sin(houseWorld.z*3.1)*2.0)*sin(houseWorld.z*4.7+sin(houseWorld.x*2.3)*1.7);
+          vec3 terraceColour=vec3(.74,.735,.715)*(1.0+.09*(terraceTone-.5))*(1.0+.025*terraceMottle);
+          diffuseColor.rgb=mix(terraceColour,terraceColour*.55,terraceJoint);`);
+      }
       if(kind==='stone')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#ifdef USE_MAP\nvec2 stoneUv=vec2(.045,.25)+fract(vMapUv)*vec2(.26,.17);diffuseColor*=texture2D(map,stoneUv);\n#endif');
       if(kind==='wall'){
         // Lime plaster of renders 1, 3 and 4 (style_textures.py plaster): sand grain,
@@ -221,14 +236,14 @@ function material(color,kind,roughness=.7){
           const [x0,z0,x1,z1,h]=r;
           glow+=`{vec2 q=houseWorld.xz;vec2 lo=vec2(${x0.toFixed(5)},${z0.toFixed(5)}),hi=vec2(${x1.toFixed(5)},${z1.toFixed(5)});vec2 outer=max(max(lo-q,q-hi),vec2(0.0));float edge=min(min(abs(q.x-lo.x),abs(q.x-hi.x)),min(abs(q.y-lo.y),abs(q.y-hi.y)));cove+=exp(-edge*7.0-length(outer)*13.0-abs(houseWorld.y-${(h+.07).toFixed(3)})*6.0)*.42;}`;
         }
-        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',glow+'\noutgoingLight+=vec3(1.0,.62,.32)*cove;\n#include <opaque_fragment>');
+        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',glow+'\noutgoingLight+=vec3(1.0,.62,.32)*cove;\n// Terrace soffit (photo): pale, lit by the sunlit floor and the sky, which the bake does not carry out there.\nfloat terraceSoffit=step(2.5,houseWorld.y)*step(houseWorld.z,-8.7)*step(4.3,houseWorld.x)*step(houseWorld.x,14.4);\noutgoingLight+=diffuseColor.rgb*vec3(1.0,.985,.95)*.85*terraceSoffit;\n#include <opaque_fragment>');
       }
     };m.customProgramCacheKey=()=>kind||'plain';
   if(['fabric','linen','rug'].includes(kind))m.defines={USE_UV:''};
   return m;
 }
 const mats={wall:material('#e0d3c8','wall',.92),stone:material('#ebe5dc','kitchenStone',.5),kitchenStone:material('#f2e7d7','stone',.38),floor:material('#ffffff','floor',.62),
-  wood:material('#ffffff','wood',.58),white:material('#ece8e0'),fabric:material('#aa9f98','fabric',.9),linen:material('#ece8e1','linen',.93),
+  wood:material('#ffffff','wood',.58),terrace:material('#d6d5d1','terrace',.78),white:material('#ece8e0'),fabric:material('#aa9f98','fabric',.9),linen:material('#ece8e1','linen',.93),
   bronze:material('#5e4733',null,.36),dark:material('#28251f','trim',.42),glass:glassMaterial(),
   led:new THREE.MeshStandardMaterial({color:'#ffe1a3',emissive:'#ffc98a',emissiveIntensity:9}),
   sage:material('#797e59','fabric'),lacquer:material('#d8ccba','lacquer',.58),rug:material('#b8aa95','rug',.96),
@@ -417,6 +432,8 @@ function uploadTextures(){
   });
 }
 function activeDoorPolys(){return doors.filter(d=>d.active!==false).flatMap(d=>d.polys);}
+// Glass doors (the shower's) do not hide the mirror.
+function opaqueDoorPolys(){return doors.filter(d=>d.active!==false&&!d.glass).flatMap(d=>d.polys);}
 function shown(o){for(let n=o;n;n=n.parent)if(!n.visible)return false;return true;}
 async function initScene(buffer,bake){
   renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
@@ -468,6 +485,9 @@ async function initScene(buffer,bake){
     const mirror=new Reflector(new THREE.PlaneGeometry(m.width,m.top-m.bottom),{color:0xc9c9c9,textureWidth:512,textureHeight:512,clipBias:.003,multisample:0});
     mirror.position.set(m.center[0],(m.top+m.bottom)/2,m.center[1]);mirror.rotation.y=Math.PI;
     scene.add(mirror);staticMeshes.push(mirror);
+    // The mirror draws the house a second time (rooms/bano.mjs): only while a line of sight reaches it.
+    const sight=mirrorSight(m,kitchenColliders(data).filter(c=>WALL_NAMES.test(c.name)).map(c=>c.poly));
+    mirror.userData.inSight=cam=>{const e=cam.matrixWorld.elements;return sight.visible([e[12],e[14]],opaqueDoorPolys());};
   }
   if(physics.blocked(player,activeDoorPolys()))throw Error('El punto de entrada no está libre.');
   camera.position.set(player[0],eye,player[1]);
@@ -478,6 +498,18 @@ async function initScene(buffer,bake){
   // of lamplight, dark corners) instead of lifting it back to daylight brightness.
   const {key,minExposure,contrast,vignette,white}=composer.settings;
   outdoor.post=[{key,minExposure,contrast,vignette,white},{key:.11,minExposure:.2,contrast:.5,vignette:.38,white:[1.06,1,.9]}];
+  const size=renderer.getDrawingBufferSize(new THREE.Vector2());composer.setSize(size.x,size.y);
+  // Resolution and multisampling follow the machine's speed (quality.mjs). ?calidad=N pins a level
+  // (0 = best); otherwise the last level this browser settled on is the starting point.
+  const levels=qualityLevels(renderer.getPixelRatio()),pinned=new URLSearchParams(location.search).get('calidad');
+  let saved=0;try{saved=+localStorage.getItem('parque-quality')||0;}catch{}
+  quality=new AdaptiveQuality(levels,{start:pinned!==null?+pinned:saved,fixed:pinned!==null,apply:applyQuality,
+    save:i=>{try{localStorage.setItem('parque-quality',i);}catch{}}});
+  applyQuality(quality.level);
+}
+function applyQuality({ratio,samples}){
+  if(renderer.getPixelRatio()!==ratio)renderer.setPixelRatio(ratio);
+  if(composer.sceneRT.samples!==samples){composer.sceneRT.samples=samples;composer.sceneRT.dispose();}
   const size=renderer.getDrawingBufferSize(new THREE.Vector2());composer.setSize(size.x,size.y);
 }
 // The terrace photograph and its estimated depth (scripts/terraza_view.py), plus the same
@@ -567,13 +599,13 @@ function reportShaderErrors(){
 }
 
 function pause(){
-  if(!ready)return;playing=false;keys.clear();velocity=[0,0];touchVector=[0,0];$('joystick').firstElementChild.style.transform='';
+  if(!ready)return;playing=false;quality.reset();keys.clear();velocity=[0,0];touchVector=[0,0];$('joystick').firstElementChild.style.transform='';
   $('menu').hidden=false;$('crosshair').hidden=true;$('interaction').hidden=true;$('touch').hidden=true;$('enter').textContent='Continuar recorrido';
   if(document.pointerLockElement)document.exitPointerLock();$('enter').focus();
 }
 async function enter(){
   if(!ready)return;
-  playing=true;$('menu').hidden=true;$('reset').hidden=false;$('crosshair').hidden=false;$('touch').hidden=!mobile;
+  playing=true;quality.reset();$('menu').hidden=true;$('reset').hidden=false;$('crosshair').hidden=false;$('touch').hidden=!mobile;
   if(settings.sound){try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();await audioCtx.resume();}catch{settings.sound=false;}}
   if(!mobile){try{await canvas.requestPointerLock();}catch{notice('Arrastra el ratón para mirar. W A S D para caminar.');}}
 }
@@ -602,9 +634,10 @@ function updateTarget(){
   $('touchDoor').disabled=!target;
 }
 function frame(time){
-  requestAnimationFrame(frame);const dt=Math.min((time-last)/1000||0,.045);last=time;
+  requestAnimationFrame(frame);const raw=(time-last)/1000,dt=Math.min(raw||0,.045);last=time;
   if(!ready)return;
   if(playing){
+    quality.frame(raw);
     let doorChanged=false;
     for(const d of doors){
       if(d.active===false||Math.abs(d.goal-d.t)<.00001)continue;
@@ -684,7 +717,7 @@ async function load(){
     // only the last room module and the captures read. Shared bandwidth would otherwise
     // deliver the geometry last.
     const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
-    const house=Promise.all([get('./assets/house.json?v=c20d6f2d8d',r=>r.json()),get('./assets/house.bin?v=7b4d60728f',r=>r.arrayBuffer())]);
+    const house=Promise.all([get('./assets/house.json?v=68355a489c',r=>r.json()),get('./assets/house.bin?v=1b563863fc',r=>r.arrayBuffer())]);
     const surfaceMaps=loadSurfaceMaps(),views=loadViews();
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();

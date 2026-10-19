@@ -301,6 +301,7 @@ export async function apply(ctx){
       }`).replace('blendOverlay( base.rgb, color )','base.rgb*mirrorTint()');
     o.material.needsUpdate=true;
     o.onBeforeRender=function(renderer,scene,camera){
+      if(o.userData.inSight&&!o.userData.inSight(camera))return;   // behind walls: keep the last reflection
       mirrorPos.setFromMatrixPosition(o.matrixWorld);camPos.setFromMatrixPosition(camera.matrixWorld);
       rot.extractRotation(o.matrixWorld);normal.set(0,0,1).applyMatrix4(rot);
       view.subVectors(mirrorPos,camPos);
@@ -352,12 +353,12 @@ export async function apply(ctx){
       e[2]=clip.x;e[6]=clip.y;e[10]=clip.z+1-clipBias;e[14]=clip.w;
       virtualCamera.projectionMatrixInverse.copy(virtualCamera.projectionMatrix).invert();
       o.visible=false;
-      const current=renderer.getRenderTarget(),xr=renderer.xr.enabled,shadowAuto=renderer.shadowMap.autoUpdate;
+      const current=renderer.getRenderTarget(),face=renderer.getActiveCubeFace(),mip=renderer.getActiveMipmapLevel(),xr=renderer.xr.enabled,shadowAuto=renderer.shadowMap.autoUpdate;
       renderer.xr.enabled=false;renderer.shadowMap.autoUpdate=false;
       renderer.setRenderTarget(target);renderer.state.buffers.depth.setMask(true);
       if(renderer.autoClear===false)renderer.clear();
       renderer.render(scene,virtualCamera);
-      renderer.xr.enabled=xr;renderer.shadowMap.autoUpdate=shadowAuto;renderer.setRenderTarget(current);
+      renderer.xr.enabled=xr;renderer.shadowMap.autoUpdate=shadowAuto;renderer.setRenderTarget(current,face,mip);   // a cube capture's face, not face 0
       if(camera.viewport!==undefined)renderer.state.viewport(camera.viewport);
       o.visible=true;
     };
