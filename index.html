@@ -1,8 +1,49 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#202923"><title>Parque Central · Recorrido</title><meta name="description" content="Recorrido de la vivienda en primera persona."><link rel="stylesheet" href="./style.css?v=1e710a0c20">
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#202923"><title>Parque Central · Recorrido</title><meta name="description" content="Recorrido de la vivienda en primera persona."><link rel="stylesheet" href="./style.css?v=b61c5e060f">
 <!-- The whole module graph and the house data start downloading with the page (app.js load). -->
-<link rel="modulepreload" href="./app.js?v=46e6529f24"><link rel="modulepreload" href="./assets/three.module.js"><link rel="modulepreload" href="./assets/three.core.js"><link rel="modulepreload" href="./assets/Reflector.js"><link rel="modulepreload" href="./lighting.mjs?v=65f7ecdcd5"><link rel="modulepreload" href="./post.mjs?v=5589b8238f"><link rel="modulepreload" href="./salon.mjs?v=a68cd3a486"><link rel="modulepreload" href="./lightmap.mjs?v=a5c4d1bc9f"><link rel="modulepreload" href="./kitchen.mjs?v=b9b650fbe8"><link rel="modulepreload" href="./textiles.mjs?v=2f3f9752c9"><link rel="modulepreload" href="./bedding.mjs?v=322afdf762"><link rel="modulepreload" href="./cloth-maps.mjs?v=13691be8ab"><link rel="modulepreload" href="./physics.mjs?v=d2ab8cd826"><link rel="modulepreload" href="./rooms.mjs?v=1b7798a909"><link rel="modulepreload" href="./images.mjs?v=3b580fe40e"><link rel="modulepreload" href="./assets/jsm/loaders/GLTFLoader.js"><link rel="modulepreload" href="./assets/jsm/utils/BufferGeometryUtils.js">
-<link rel="preload" href="./assets/house.json?v=8de14c4fc4" as="fetch" crossorigin fetchpriority="high"><link rel="preload" href="./assets/house.bin?v=8cfc5aea39" as="fetch" crossorigin fetchpriority="high"><link rel="preload" href="./assets/house-light.json?v=8019f9593c" as="fetch" crossorigin fetchpriority="high"><link rel="preload" href="./assets/house-light.bin?v=a7338a7714" as="fetch" crossorigin fetchpriority="high"></head>
+<link rel="modulepreload" href="./app.js?v=3b83fb1a17"><link rel="modulepreload" href="./assets/three.module.js"><link rel="modulepreload" href="./assets/three.core.js"><link rel="modulepreload" href="./assets/Reflector.js"><link rel="modulepreload" href="./lighting.mjs?v=65f7ecdcd5"><link rel="modulepreload" href="./post.mjs?v=5589b8238f"><link rel="modulepreload" href="./salon.mjs?v=a68cd3a486"><link rel="modulepreload" href="./lightmap.mjs?v=a5c4d1bc9f"><link rel="modulepreload" href="./kitchen.mjs?v=b9b650fbe8"><link rel="modulepreload" href="./textiles.mjs?v=2f3f9752c9"><link rel="modulepreload" href="./bedding.mjs?v=322afdf762"><link rel="modulepreload" href="./cloth-maps.mjs?v=13691be8ab"><link rel="modulepreload" href="./physics.mjs?v=d2ab8cd826"><link rel="modulepreload" href="./rooms.mjs?v=1b7798a909"><link rel="modulepreload" href="./images.mjs?v=3b580fe40e"><link rel="modulepreload" href="./assets/jsm/loaders/GLTFLoader.js"><link rel="modulepreload" href="./assets/jsm/utils/BufferGeometryUtils.js">
+<link rel="preload" href="./assets/house.json?v=8de14c4fc4" as="fetch" crossorigin fetchpriority="high"><link rel="preload" href="./assets/house.bin?v=8cfc5aea39" as="fetch" crossorigin fetchpriority="high"><link rel="preload" href="./assets/house-light.json?v=8019f9593c" as="fetch" crossorigin fetchpriority="high"><link rel="preload" href="./assets/house-light.bin?v=a7338a7714" as="fetch" crossorigin fetchpriority="high"><script>
+// Loading bar: counts the bytes of every fetch (house, bake, textures, room models: three's
+// loaders use fetch too) and takes build milestones from app.js (loadProgress.stage).
+// EXPECTED_BYTES is what a cold load downloads; measure it again after a re-bake or new
+// assets (it only shapes the bar, which never goes backwards nor reaches 100 % early).
+(()=>{
+const EXPECTED_BYTES=44.6e6,DOWNLOAD_SHARE=.7,MILESTONES=[.1,.35,.5,.7,.85,1];
+let loaded=0,known=0,stage=0,stageAt=performance.now(),shown=0,last=0,timer=0;
+const $=id=>document.getElementById(id);
+function paint(force){
+  const now=performance.now();if(!force&&now-last<80)return;last=now;
+  const download=Math.min(loaded/Math.max(EXPECTED_BYTES,known),1);
+  // Between milestones (shader compilation takes seconds) it creeps towards the next one.
+  const next=MILESTONES.find(m=>m>stage)??1,creep=stage>=1?0:(next-stage)*.9*(1-Math.exp(-(now-stageAt)/8000));
+  const value=Math.max(shown,Math.min(download*DOWNLOAD_SHARE+(stage+creep)*(1-DOWNLOAD_SHARE),stage>=1?1:.99));shown=value;
+  const pct=Math.floor(value*100),bar=$('loadbar');if(!bar)return;
+  bar.firstElementChild.style.transform='scaleX('+value+')';bar.setAttribute('aria-valuenow',pct);
+  $('loadtext').textContent=(stage>=.5||download>=1?'Preparando la casa… ':'Descargando… ')+pct+' %';
+  const enter=$('enter');if(enter&&enter.disabled&&!enter.dataset.failed)enter.textContent='Cargando vivienda… '+pct+' %';
+}
+const nativeFetch=window.fetch.bind(window);
+window.fetch=async(...args)=>{
+  const r=await nativeFetch(...args);
+  if(!r.ok||!r.body)return r;
+  const length=+r.headers.get('content-length')||0;
+  if(!r.headers.get('content-encoding'))known+=length;  // compressed lengths do not match the bytes read
+  const reader=r.body.getReader();
+  const body=new ReadableStream({
+    async pull(c){const {done,value}=await reader.read();if(done){c.close();return;}loaded+=value.length;paint();c.enqueue(value);},
+    cancel:e=>reader.cancel(e)});
+  return new Response(body,{status:r.status,statusText:r.statusText,headers:r.headers});
+};
+timer=setInterval(()=>paint(false),250);
+window.loadProgress={
+  stage(v){if(v>stage){stage=v;stageAt=performance.now();}paint(true);},  // 0..1 of the work after the download
+  done(){clearInterval(timer);stage=1;paint(true);const bar=$('loadbar');if(bar)bar.hidden=true;const t=$('loadtext');if(t)t.hidden=true;},
+  fail(){clearInterval(timer);const bar=$('loadbar');if(bar)bar.hidden=true;const t=$('loadtext');if(t)t.hidden=true;const e=$('enter');if(e)e.dataset.failed='1';},
+  get bytes(){return {loaded,known};}
+};
+})();
+</script>
+</head>
 <body>
 <canvas id="world" aria-label="Recorrido tridimensional de la vivienda"></canvas>
 <header><div class="brand">PARQUE CENTRAL <span>Tu vivienda</span></div><button id="pause" title="Pausar y ver controles" aria-label="Pausar y ver controles">Pausa <kbd>Esc</kbd></button></header>
@@ -15,11 +56,12 @@
  <div class="controls"><div><strong>W A S D / flechas</strong><span>Caminar</span></div><div><strong>Ratón</strong><span>Mirar alrededor</span></div><div><strong>E / clic</strong><span>Abrir o cerrar</span></div><div><strong>Esc</strong><span>Pausar</span></div></div>
  <div class="settings"><label><input id="sound" type="checkbox" checked> Sonido de pasos</label><label><input id="bob" type="checkbox" checked> Balanceo suave</label><label><input id="night" type="checkbox"> Noche <kbd>N</kbd></label></div>
  <div class="meta">Estatura 1,80 m · Ojos a 1,69 m</div>
+ <div id="loadbar" role="progressbar" aria-label="Carga de la vivienda" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div><div id="loadtext" aria-live="off">Descargando… 0 %</div>
  <button id="enter" disabled>Cargando vivienda…</button><button id="reset" class="secondary" hidden>Volver a la entrada</button>
  <p class="fine">Planta ajustada a B01. Alturas del mobiliario y exterior aproximados. En móvil: arrastra a la derecha para mirar y usa el control izquierdo para caminar.</p>
  <div id="error" role="alert" hidden></div>
  </div>
 </section>
 <div id="touch" hidden><div id="joystick" aria-label="Control de movimiento"><i></i></div><button id="touchDoor">Abrir / cerrar</button></div>
-<script type="module" src="./app.js?v=46e6529f24"></script>
+<script type="module" src="./app.js?v=3b83fb1a17"></script>
 </body></html>

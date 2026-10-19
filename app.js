@@ -665,7 +665,8 @@ async function load(){
     for(const p of [surfaceMaps,views])p.catch(()=>{});  // reported where awaited
     const bake=fetchLightmap(settings.night?'night':'day',{after:Promise.allSettled([house,surfaceMaps,views])});
     const [json,buffer]=await house;
-    data=json;timeOfDay.night=settings.night;await initScene(buffer,bake);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);
+    const progress=window.loadProgress;progress?.stage(.1);
+    data=json;timeOfDay.night=settings.night;await initScene(buffer,bake);progress?.stage(.35);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);progress?.stage(.5);
     lightmap.syncTextures();
     // Per-room refinements (rooms/<id>.mjs); a failing module is logged and skipped.
     const rooms=applyRooms({scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,lighting,timeOfDay});
@@ -673,18 +674,18 @@ async function load(){
     // the modules change or add are compiled after them. Issued once the modules' first
     // synchronous part has run: their canvas read-backs would wait behind the compiles.
     setTimeout(()=>reflections.compile(renderer,scene,camera,composer.sceneRT,{wait:false}));
-    roomStatus=await rooms;
+    roomStatus=await rooms;progress?.stage(.7);
     // Doors, the study screen, the master bedding and the mirror frame are not baked:
     // they take the probes. Then each room is captured for its reflections, props included.
     for(const o of runtimeObjects)lightObject(o,lighting);
     for(const o of staticMeshes)if(o.userData.exported&&!o.material.userData?.bakedLit)lightObject(o,lighting);
     const compiled=reflections.compile(renderer,scene,camera,composer.sceneRT);composer.compile();
-    await Promise.all([beddingReady(),lightmap.loaded]);uploadTextures();await compiled;
+    await Promise.all([beddingReady(),lightmap.loaded]);progress?.stage(.85);uploadTextures();await compiled;
     // The sun's shadow map depends on the geometry and the doors only: drawn once (by the
     // first capture) and again when a door moves, not for every face of every capture.
     renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     reflections.capture(renderer,scene);
-    ready=true;$('night').disabled=false;
+    ready=true;progress?.done();$('night').disabled=false;
     const params=new URLSearchParams(location.search);
     if(params.get('start')==='kitchen'){
       const start=[(738-106.5)/51.53901216893343,(389-619.85)/51.53901216893343];
@@ -693,7 +694,7 @@ async function load(){
     $('enter').disabled=false;$('enter').textContent='Entrar en casa';requestAnimationFrame(frame);
     idle(reportShaderErrors);
   }catch(e){
-    console.error(e);$('error').hidden=false;$('error').textContent='No se ha podido iniciar el recorrido. Comprueba la conexión y que Chrome tenga la aceleración gráfica activada, y recarga la página.';
+    console.error(e);window.loadProgress?.fail();$('error').hidden=false;$('error').textContent='No se ha podido iniciar el recorrido. Comprueba la conexión y que Chrome tenga la aceleración gráfica activada, y recarga la página.';
     $('enter').textContent='Recargar';$('enter').disabled=false;$('enter').onclick=()=>location.reload();
   }
 }
