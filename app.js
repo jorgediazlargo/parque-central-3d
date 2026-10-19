@@ -480,30 +480,52 @@ async function initScene(buffer,bake){
   outdoor.post=[{key,minExposure,contrast,vignette,white},{key:.11,minExposure:.2,contrast:.5,vignette:.38,white:[1.06,1,.9]}];
   const size=renderer.getDrawingBufferSize(new THREE.Vector2());composer.setSize(size.x,size.y);
 }
-// Night: the same photographs graded for night, with lit windows (scripts/night_views.py).
-const loadViews=()=>Promise.all(['vista-parque','vista-ciudad'].map(n=>Promise.all([n,n+'-noche'].map(f=>loadImageTexture(`./assets/${f}.webp`)))));
-async function exterior(loading){
-  const views=await loading;
-  outdoor.views=[];
-  for(const [[tex,night],x,z,width,rot] of [[views[0],2,-49,48,0],[views[1],50,-47,48,-.08]]){
-    for(const t of [tex,night]){t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=Math.min(renderer.capabilities.getMaxAnisotropy(),4);}
-    const h=width*tex.image.height/tex.image.width;
-    const mesh=new THREE.Mesh(new THREE.PlaneGeometry(width,h),new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide,toneMapped:false}));
-    mesh.position.set(x,eye+(.41-.5)*h,z);mesh.rotation.y=rot;scene.add(mesh);outdoor.views.push([mesh.material,tex,night]);
+// The terrace photograph and its estimated depth (scripts/terraza_view.py), plus the same
+// photograph graded for night, with lit windows (scripts/night_views.py).
+const loadViews=()=>Promise.all([loadImageTexture('./assets/vista-terraza.webp?v=4caf839e65'),loadImageTexture('./assets/vista-terraza-noche.webp?v=3392a2d48d'),
+  fetch('./assets/vista-terraza.bin?v=0b2ae12633').then(r=>{if(!r.ok)throw Error(`HTTP ${r.status}: vista-terraza.bin`);return r.arrayBuffer();})]);
+// The photograph was taken from the terrace edge: a grid of vertices on the camera rays at the
+// estimated depth, so walking indoors shifts the near things (pool, trees, the side wing) against
+// the far city. Beyond TERRACE_RANGE the surface is pulled radially onto a sphere (the sky is at
+// 5000 m in the data, past the far plane): the view from the origin does not change.
+// The photo looks ~6.4° down: TERRACE_PITCH levels it so the far horizon sits at eye height.
+const TERRACE_ORIGIN=[9.4,eye,-10.7],TERRACE_YAW=-.03,TERRACE_PITCH=-.112,TERRACE_RANGE=145;
+function terraceGeometry(buffer){
+  const head=new DataView(buffer),[tanHalf,aspect,minDepth,maxDepth]=[0,4,8,12].map(o=>head.getFloat32(o,true)),cols=head.getUint16(16,true),rows=head.getUint16(18,true);
+  const depth=new Uint16Array(buffer,20,cols*rows),lo=Math.log(minDepth),span=Math.log(maxDepth)-lo;
+  const position=new Float32Array(cols*rows*3),uv=new Float32Array(cols*rows*2),color=new Float32Array(cols*rows*4),index=new Uint16Array((cols-1)*(rows-1)*6);
+  // The photo ends in a hard edge: its border fades into the sky dome (vertex alpha).
+  const edge=(t,w)=>{const a=Math.min(t,1-t)/w;return a>=1?1:a*a*(3-2*a);};
+  for(let r=0,i=0,k=0;r<rows;r++)for(let c=0;c<cols;c++,i++){
+    const u=c/(cols-1),v=r/(rows-1),d=Math.exp(lo+depth[i]/65535*span),x=(2*u-1)*tanHalf*d,y=(1-2*v)*tanHalf/aspect*d;
+    const pull=Math.min(1,TERRACE_RANGE/Math.hypot(x,y,d));
+    position.set([x*pull,y*pull,-d*pull],i*3);uv[i*2]=u;uv[i*2+1]=1-v;
+    color.set([1,1,1,edge(u,.04)*edge(v,.06)],i*4);
+    if(c<cols-1&&r<rows-1){index.set([i,i+cols,i+1,i+1,i+cols,i+cols+1],k);k+=6;}
   }
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(260,260),material('#73826a'));ground.rotation.x=-Math.PI/2;ground.position.set(8,-22,-20);scene.add(ground);
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.BufferAttribute(position,3));geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));geometry.setAttribute('color',new THREE.BufferAttribute(color,4));geometry.setIndex(new THREE.BufferAttribute(index,1));
+  return geometry;
+}
+async function exterior(loading){
+  const [tex,night,buffer]=await loading;
+  for(const t of [tex,night]){t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=Math.min(renderer.capabilities.getMaxAnisotropy(),4);}
+  const view=new THREE.Mesh(terraceGeometry(buffer),new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide,toneMapped:false,vertexColors:true,transparent:true}));
+  view.position.set(...TERRACE_ORIGIN);view.rotation.order='YXZ';view.rotation.set(TERRACE_PITCH,TERRACE_YAW,0);view.frustumCulled=false;view.renderOrder=-1;scene.add(view);  // transparent (edge fade): drawn before the glass, which is transparent too
+  outdoor.views=[[view.material,tex,night]];
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(260,260),material('#73826a'));ground.rotation.x=-Math.PI/2;ground.position.set(8,-58,-20);scene.add(ground);
   outdoor.ground=ground.material;
-  // Sky behind the two photographs: where they end, views read the flat background as
-  // an overexposed card. A vertical gradient (soft blue zenith, light warm horizon at
-  // eye level, hazy ground) at display brightness like the photos.
+  // Sky around the photograph: where it ends, views read the flat background as an
+  // overexposed card. A vertical gradient (blue zenith, hazy horizon at eye level, hazy
+  // ground) at display brightness like the photo; its colours continue the photo's edges.
   // At night: deep blue zenith, the city's warm glow on the horizon, dark ground.
   const gradient=stops=>{const c=document.createElement('canvas');c.width=4;c.height=512;const g=c.getContext('2d'),gr=g.createLinearGradient(0,0,0,512);
     for(const [t,col] of stops)gr.addColorStop(t,col);
     g.fillStyle=gr;g.fillRect(0,0,4,512);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;return tex;};
-  outdoor.skies=[gradient([[0,'#7f9bb3'],[.30,'#a3b8c8'],[.47,'#c9d2d6'],[.5,'#d6d6cf'],[.515,'#b9b6a6'],[.6,'#8f927f'],[1,'#6e7663']]),
-    gradient([[0,'#05070f'],[.30,'#0b0e1a'],[.45,'#1d1b22'],[.5,'#3a2c24'],[.515,'#15141a'],[.6,'#0c0c0f'],[1,'#08080a']])];
+  outdoor.skies=[gradient([[0,'#3469bd'],[.33,'#477dc6'],[.42,'#74a6db'],[.47,'#99bad5'],[.5,'#a7b4bf'],[.515,'#8d9588'],[.6,'#7e8873'],[1,'#6e7663']]),
+    gradient([[0,'#05070f'],[.33,'#0f1423'],[.42,'#1d1f2c'],[.47,'#40353a'],[.5,'#57443a'],[.515,'#15141a'],[.6,'#0c0c0f'],[1,'#08080a']])];
   const dome=new THREE.Mesh(new THREE.SphereGeometry(150,32,24),new THREE.MeshBasicMaterial({map:outdoor.skies[0],side:THREE.BackSide,toneMapped:false,depthWrite:false}));
-  dome.position.set(8,eye,-6);dome.renderOrder=-1;scene.add(dome);outdoor.dome=dome.material;
+  dome.position.set(...TERRACE_ORIGIN);dome.renderOrder=-1;scene.add(dome);outdoor.dome=dome.material;
   outdoorLight(timeOfDay.night);
 }
 // Terrace and facade (not baked): sun and sky by day; by night a faint cool moonlight
