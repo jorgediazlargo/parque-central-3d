@@ -52,45 +52,6 @@ function voileTexture(THREE){
   t.anisotropy=8;t.premultiplyAlpha=false;return t;
 }
 
-// Ripple-fold voile along x (x0..x1) at depth z, from y0 to y1. Round, uneven folds
-// (~10.5 cm, a second harmonic makes them lopsided), pinned at the track and drifting a
-// little and swinging fuller toward the hem; 12 segments per fold and smooth normals,
-// so the folds shade as soft rolls, not facets. Metric UVs (u = x, v = y). Vertex colour
-// darkens the back of each fold (the probes carry no occlusion at that scale).
-function sheerGeometry(THREE,{x0,x1,z,y0,y1,pitch=.095,depth=.027}){
-  const r=rand(7),n=noise1(19),cols=Math.round((x1-x0)/pitch*12);
-  const rows=[0,.012,.05,.088,.095,.16,.3,.5,.75,1.0,1.3,1.6,1.9,2.15,2.35,2.47].map(v=>y0+v).filter(y=>y<y1-.03);rows.push(y1);
-  const cx=[],phase=[];let ph=0;
-  for(let i=0;i<=cols;i++){
-    const x=x0+(x1-x0)*i/cols,lam=pitch*(1+.30*n(x*4.1)+.14*n(x*13+3));
-    if(i)ph+=2*Math.PI*(x1-x0)/cols/lam;
-    cx.push(x);phase.push(ph);
-  }
-  const pos=[],uv=[],col=[],idx=[];
-  for(const y of rows){
-    const h=(y-y0)/(y1-y0),swing=1-h;
-    for(let i=0;i<=cols;i++){
-      const x=cx[i],f=phase[i]+1.3*swing*n(x*2.3+7)+.6*swing*n(x*7.7+1)+.35*n(x*3.1+y*.9);
-      // Tighter under the track (fine wave at the top, as in render 3), full lower down.
-      const amp=depth*(.85+.35*n(x*5.3+11)+.12*n(x*9+y*1.7))*(1+.28*swing*swing)*(1-.45*Math.max(0,1-(y1-y)/.35)**2);
-      const s1=Math.sin(f),dz=amp*(s1+.2*Math.sin(2*f+1.3+x*3));
-      pos.push(x,y===y0?y0+.004*(1-Math.cos(f)):y,z+dz);uv.push(x,y);
-      const ao=.88+.12*(s1*.5+.5);col.push(ao,ao,ao);
-    }
-  }
-  const W=cols+1;
-  for(let j=0;j<rows.length-1;j++)for(let i=0;i<W-1;i++){const a=j*W+i,b=a+1,c=a+W,d=c+1;idx.push(a,b,d,a,d,c);}
-  const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));geo.setIndex(idx);geo.computeVertexNormals();return geo;
-}
-
-// Smooth 1-D value noise in [-1, 1].
-function noise1(seed){
-  const h=i=>{let k=Math.imul(i,374761393)+Math.imul(seed,668265263)|0;k=Math.imul(k^(k>>>13),1274126177);return ((k^(k>>>16))>>>0)/2147483648-1;};
-  return x=>{const i=Math.floor(x),f=x-i,u=f*f*(3-2*f);return h(i)*(1-u)+h(i+1)*u;};
-}
 // Smooth 2-D value noise in [-1, 1].
 function noise2(seed){
   const h=(x,y)=>{let k=Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(seed,2147483647)|0;k=Math.imul(k^(k>>>13),1274126177);return ((k^(k>>>16))>>>0)/2147483648-1;};
@@ -303,9 +264,10 @@ export async function apply(ctx){
       .replace('#include <lights_fragment_end>','reflectedLight.directSpecular=vec3(0.0);\n#include <lights_fragment_end>');
   };
   sheerMat.customProgramCacheKey=()=>'dormitorio-voile';
-  const sheer=new THREE.Mesh(sheerGeometry(THREE,{x0:.60,x1:3.085,z:-9.40,y0:.012,y1:2.55}),sheerMat);
-  sheer.name='Visillo dormitorio principal';
-  ctx.group.add(sheer);ctx.lightRuntimeObject(sheer);
+  // Two halves of the same voile, drawn by default (the render); E gathers each one at its end.
+  const half=(3.085-.60)/2;
+  ctx.addCurtain({name:'Cortinas dormitorio',material:sheerMat,z:-9.40,y0:.012,y1:2.55,pitch:.095,depth:.027,seed:19,t:0,
+    panels:[{anchor:.60,dir:1,open:.26,closed:half},{anchor:3.085,dir:-1,open:.26,closed:half}]});
 
   // 6. Nightstand props of render 3 (tops at y 0.49): left, a stoneware bud vase with a
   // branch and two books; right, a low ceramic bowl. Lathes and boxes, a few hundred

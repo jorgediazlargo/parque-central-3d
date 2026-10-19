@@ -3,16 +3,16 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=65f7ecdcd5';
 import {Post} from './post.mjs?v=5589b8238f';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=a5c4d1bc9f';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=ffa6f928bc';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=d2ab8cd826';
-import {applyRooms,preloadRooms} from './rooms.mjs?v=1b7798a909';
+import {applyRooms,preloadRooms} from './rooms.mjs?v=1bc441bbe7';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 
 const $=id=>document.getElementById(id),canvas=$('world');
-let scene,camera,renderer,composer,data,physics,player,doors=[],staticMeshes=[],target=null;
+let scene,camera,renderer,composer,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null;
 let lightmap,roomStatus={},reflections;const runtimeObjects=[];
 // Día / Noche: the night bake (artificial light only, same UVs) swapped into the same
 // lightmap and probe textures, the outdoor lights and backdrop, and the room modules'
@@ -559,7 +559,7 @@ function interact(){
   if(!playing||!target)return;target.goal=target.goal>.5?0:1;
   notice((target.goal?'Abriendo · ':'Cerrando · ')+label(target.name));rayTime=1;
 }
-function label(s){return ({'Terraza salon':'Terraza · salón','Terraza comedor':'Terraza · comedor','Terraza izquierda':'Terraza','Bano secundario':'Baño','WC suite':'WC suite','Ducha suite':'Ducha suite','Suite izquierda':'Suite · vestidor','Suite derecha':'Suite · baño','Suite principal':'Dormitorio principal','Distribuidor dormitorios':'Distribuidor','Paso despensa bano':'Paso al baño','Dormitorio secundario':'Dormitorio niñas'})[s]||s;}
+function label(s){return ({'Terraza salon':'Terraza · salón','Terraza comedor':'Terraza · comedor','Terraza izquierda':'Terraza','Bano secundario':'Baño','WC suite':'WC suite','Ducha suite':'Ducha suite','Suite izquierda':'Suite · vestidor','Suite derecha':'Suite · baño','Suite principal':'Dormitorio principal','Distribuidor dormitorios':'Distribuidor','Paso despensa bano':'Paso al baño','Dormitorio secundario':'Dormitorio niñas','Cortinas salón':'Cortinas · salón','Cortinas dormitorio':'Cortinas · dormitorio'})[s]||s;}
 function step(){
   if(!settings.sound||!audioCtx||audioCtx.state!=='running')return;
   const now=audioCtx.currentTime,duration=.115,buffer=audioCtx.createBuffer(1,Math.floor(audioCtx.sampleRate*duration),audioCtx.sampleRate);
@@ -573,8 +573,8 @@ function step(){
 function updateTarget(){
   scene.updateMatrixWorld(true);camera.updateMatrixWorld(true);raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
   const hits=raycaster.intersectObjects([...staticMeshes.filter(shown),...doors.filter(d=>d.active!==false).flatMap(d=>d.groups)],true);
-  // The closest surface must be an actual door, preventing interaction through walls.
-  target=hits[0]?.object.userData.door||null;
+  // The closest surface must be an actual door or curtain, preventing interaction through walls.
+  target=hits[0]?.object.userData.door||hits[0]?.object.userData.curtain||null;
   $('interaction').hidden=!target||!playing;
   if(target)$('interaction').querySelector('span').textContent=(target.goal>.5?'Cerrar · ':'Abrir · ')+label(target.name);
   $('touchDoor').disabled=!target;
@@ -606,6 +606,10 @@ function frame(time){
     bobAmount+=(Math.min(1,dist/(dt*1.1||1))*(settings.bob?1:0)-bobAmount)*(1-Math.exp(-dt*10));
     camera.position.set(player[0],eye+Math.sin(walkPhase*2)*.012*bobAmount,player[1]);
     camera.rotation.set(pitch,yaw,Math.sin(walkPhase)*.002*bobAmount,'YXZ');
+    for(const c of curtains){
+      if(Math.abs(c.goal-c.t)<.00001)continue;
+      c.set(c.t+Math.sign(c.goal-c.t)*Math.min(dt*.5,Math.abs(c.goal-c.t)));
+    }
     if(doorChanged)renderer.shadowMap.needsUpdate=true;
     rayTime+=dt;roomTime+=dt;if(rayTime>.12){updateTarget();rayTime=0;}
     if(roomTime>.4){
@@ -658,7 +662,7 @@ async function load(){
     // only the last room module and the captures read. Shared bandwidth would otherwise
     // deliver the geometry last.
     const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
-    const house=Promise.all([get('./assets/house.json?v=8de14c4fc4',r=>r.json()),get('./assets/house.bin?v=8cfc5aea39',r=>r.arrayBuffer())]);
+    const house=Promise.all([get('./assets/house.json?v=c20d6f2d8d',r=>r.json()),get('./assets/house.bin?v=7b4d60728f',r=>r.arrayBuffer())]);
     const surfaceMaps=loadSurfaceMaps(),views=loadViews();
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();
@@ -669,7 +673,7 @@ async function load(){
     data=json;timeOfDay.night=settings.night;await initScene(buffer,bake);progress?.stage(.35);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);progress?.stage(.5);
     lightmap.syncTextures();
     // Per-room refinements (rooms/<id>.mjs); a failing module is logged and skipped.
-    const rooms=applyRooms({scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,lighting,timeOfDay});
+    const rooms=applyRooms({scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,curtains,lighting,timeOfDay});
     // The house's programs compile in the GPU process while the room modules run; those
     // the modules change or add are compiled after them. Issued once the modules' first
     // synchronous part has run: their canvas read-backs would wait behind the compiles.

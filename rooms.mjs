@@ -3,6 +3,7 @@ import {GLTFLoader} from './assets/jsm/loaders/GLTFLoader.js';
 import {lightObject} from './lighting.mjs?v=65f7ecdcd5';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {clothMaps} from './bedding.mjs?v=322afdf762';
+import {createCurtain} from './curtains.mjs?v=e78b87cc13';
 
 // Per-room modules (rooms/<id>.mjs), each exporting `async function apply(ctx)`.
 // They run after the house, textures and baked light are ready and before the tour
@@ -57,11 +58,11 @@ function partition(geo,boxes){
 // Drops triangles by index only: every attribute (position, uv, uv1 lightmap) stays aligned.
 function keepOnly(geo,keep){geo.setIndex(new THREE.BufferAttribute(new Uint32Array(keep),1));}
 
-export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,lighting,timeOfDay={night:false,listeners:new Set()}}){
+export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,curtains=[],lighting,timeOfDay={night:false,listeners:new Set()}}){
   const group=new THREE.Group();group.name='room:'+id;scene.add(group);
   const gltf=new GLTFLoader();
   return {
-    id,THREE,scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,group,plan,cloneMaterial,
+    id,THREE,scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,curtains,group,plan,cloneMaterial,
     // Cloth colour + normal maps computed in workers (cloth-maps.mjs): {map, normalMap}.
     clothMaps,
     // glTF/glb; resolves to the parsed gltf ({scene, ...}). URLs relative to index.html.
@@ -108,6 +109,15 @@ export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap
         group.add(piece);staticMeshes.push(piece);out.push(piece);
       }
       return out;
+    },
+    // Curtain that the visitor opens and closes with E (curtains.mjs: panels
+    // {anchor,dir,open,closed} in world x, hung at depth z from y0 to y1; t = 1 gathered,
+    // 0 drawn). The meshes are lit like lightRuntimeObject, take `material` as given
+    // (translucency in its userData) and join the ray that finds doors. Returns the curtain.
+    addCurtain(options){
+      const curtain=createCurtain(THREE,options);
+      for(const mesh of curtain.meshes){lightObject(mesh,lighting);group.add(mesh);staticMeshes.push(mesh);}
+      curtains.push(curtain);return curtain;
     },
     // Lights runtime meshes like the baked rooms: diffuse light from the irradiance
     // probes baked by Cycles with the lightmaps (an ambient cube every 30 cm, so a

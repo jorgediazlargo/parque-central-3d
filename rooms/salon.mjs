@@ -478,6 +478,16 @@ export async function apply(ctx){
   // touch denser and greyer, so the pleats read instead of a white block.
   const sheers=ctx.splitExported({material:'curtain',region:'salon',box:[[5.15,-.2,-8.75],[10.1,3.2,-3.66]]});
   for(const m of sheers){m.material.userData.translucency=.2;m.material.opacity=.86;m.material.color.multiplyScalar(.74);}
+  // The exported pair (gathered at both ends of the window wall, leaving the terrace
+  // route clear) is replaced by curtains the visitor can draw: same cloth material,
+  // same gathered stacks (plan x 421-445 and 591-624) and, drawn, they meet in the middle.
+  if(sheers.length){
+    const cloth=sheers[0].material;
+    for(const m of sheers){ctx.group.remove(m);const k=ctx.staticMeshes.indexOf(m);if(k>=0)ctx.staticMeshes.splice(k,1);m.geometry.dispose();}
+    const [x0,x1]=[421,624].map(v=>(v-106.5)/51.53901216893343);
+    ctx.addCurtain({name:'Cortinas salón',material:cloth,z:(186-619.85)/51.53901216893343,y0:.035,y1:2.44,pitch:.13,depth:.03,seed:23,t:1,
+      panels:[{anchor:x0,dir:1,open:(445-421)/51.53901216893343,closed:(x1-x0)/2},{anchor:x1,dir:-1,open:(624-591)/51.53901216893343,closed:(x1-x0)/2}]});
+  }
   // ---- Cove lines (ronda 7): the shared LED material (emissive ×9) clips to a white
   // wire along the coves; in render 1 the strip is hidden and only its warm wash shows.
   // This room's lines glow amber, a few times the ceiling, not a burnt line.
@@ -487,7 +497,7 @@ export async function apply(ctx){
   const removedArt=ctx.removeExported({material:'art',region:'salon',box:[[5.15,.6,-7.7],[5.3,2.1,-6.7]]})
     +ctx.removeExported({material:'wood',region:'salon',box:[[5.201,.7,-7.6],[5.24,2.0,-6.78]]});
   group.add(painting(T,ctx));
-  console.info(`[rooms/salon] painting replaced (${removedArt}), sheers ${sheers.length}`);
+  console.info(`[rooms/salon] painting replaced (${removedArt}), sheers ${sheers.length} (curtains)`);
   console.info(`[rooms/salon] plinth ${removedPlinth}, leds ${leds.length}`);
   console.info(`[rooms/salon] sofa rebuilt (${removed} exported triangles), armchairs rebuilt (${removedChairs})`);
 }
