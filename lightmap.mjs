@@ -18,21 +18,27 @@ import {probeVolume,fetchProbeData,patchLighting} from './lighting.mjs?v=65f7ecd
 const bitmaps=new THREE.ImageBitmapLoader().setOptions({imageOrientation:'flipY',premultiplyAlpha:'none',colorSpaceConversion:'none'});
 const bakeVersion=data=>data.contextSha256.slice(0,10)+data.samples;
 const bakeFiles=(data,m)=>m==='night'?{pages:data.night.lightmaps,probes:data.night.probes}:{pages:data.lightmaps,probes:data.probes.file};
+// Progressive loading: the first mode shows the reduced pages (data.lowres, 1/4 of the size,
+// scripts/lightmap_lowres.py) and swaps in the full ones when they arrive.
+const lowPages=(data,m)=>data.lowres?.[m==='night'?'night':'lightmaps'];
+const loadPages=(names,version)=>Promise.all(names.map(name=>bitmaps.loadAsync('./assets/'+name+'?v='+version)));
 // Requests the bake of `mode` now (its JSON and UVs) and its pages and probes once
 // `after` settles, so it downloads alongside the geometry; loadLightmap takes the result.
 // The JSON and the UVs are versioned by content (scripts/version.mjs); the pages and
 // probes by bake, so a re-denoise is revalidated (no-cache).
 export function fetchLightmap(mode='day',{after=null}={}){
   const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar la iluminación.');return read(r);});
-  const json=get('./assets/house-light.json?v=1f5371a28c',r=>r.json()),uvs=get('./assets/house-light.bin?v=4ff5024e34',r=>r.arrayBuffer());
+  const json=get('./assets/house-light.json?v=d29bfe670c',r=>r.json()),uvs=get('./assets/house-light.bin?v=4ff5024e34',r=>r.arrayBuffer());
   const files=Promise.all([json,uvs]);
   const maps=Promise.all([json,after]).then(([data])=>{
     if(data.encoding!=='rgbm-sqrt-range-64')throw Error('Iluminación con un formato antiguo.');
     const version=bakeVersion(data),{pages,probes}=bakeFiles(data,mode);
-    return Promise.all([Promise.all(pages.map(name=>bitmaps.loadAsync('./assets/'+name+'?v='+version))),fetchProbeData(probes,version)]);
+    return Promise.all([loadPages(lowPages(data,mode)||pages,version),fetchProbeData(probes,version)]);
   });
-  maps.catch(()=>{});  // reported by loadLightmap
-  return {mode,files,maps};
+  // The full pages start once the reduced ones are in (they would share the bandwidth).
+  const full=Promise.all([json,maps]).then(([data])=>lowPages(data,mode)?loadPages(bakeFiles(data,mode).pages,bakeVersion(data)):null);
+  maps.catch(()=>{});full.catch(()=>{});  // reported by loadLightmap
+  return {mode,files,maps,full};
 }
 // Resolves with the UVs; the pages and probes fill their textures when decoded (`loaded`),
 // so the house is built (and its programs compiled) meanwhile.
@@ -42,17 +48,26 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
   const version=bakeVersion(data),files=m=>bakeFiles(data,m);
   const pages=files(mode).pages.map(()=>new THREE.Texture()),probes=probeVolume(data.probes);
   const variants={[mode]:prefetched.maps.then(([bitmaps,probes])=>({bitmaps,probes}))};
+  // A new image of another size needs a new GPU texture (storage is allocated once).
+  const show=bitmaps=>pages.forEach((t,i)=>{if(t.image&&t.image.width!==bitmaps[i].width)t.dispose();t.image=bitmaps[i];t.needsUpdate=true;});
   const loaded=variants[mode].then(v=>{
-    pages.forEach((t,i)=>{t.image=v.bitmaps[i];t.needsUpdate=true;});
+    show(v.bitmaps);
     probes.texture.image.data=v.probes;probes.texture.needsUpdate=true;
   });
   let current=mode;
+  // The full pages replace the reduced ones, unless the mode changed meanwhile (setMode
+  // loads the other mode's full pages directly).
+  const sharp=Promise.all([loaded,prefetched.full]).then(([,full])=>{
+    if(!full)return;
+    variants[mode]=variants[mode].then(v=>({...v,bitmaps:full}));
+    if(current===mode)show(full);
+  }).catch(e=>console.warn('Iluminación en alta resolución no disponible:',e));
   async function setMode(next){
     if(next===current)return false;
-    variants[next]??=Promise.all([Promise.all(files(next).pages.map(name=>bitmaps.loadAsync('./assets/'+name+'?v='+version))),fetchProbeData(files(next).probes,version)])
+    variants[next]??=Promise.all([loadPages(files(next).pages,version),fetchProbeData(files(next).probes,version)])
       .then(([b,p])=>({bitmaps:b,probes:p})).catch(e=>{delete variants[next];throw e;});
     const v=await variants[next];
-    pages.forEach((t,i)=>{t.image=v.bitmaps[i];t.needsUpdate=true;});
+    show(v.bitmaps);
     probes.texture.image.data=v.probes;probes.texture.needsUpdate=true;
     current=next;return true;
   }
@@ -133,5 +148,5 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
       m.needsUpdate=true;
     }
   }
-  return {bind,material,syncTextures,setMode,get mode(){return current;},pages,probes,data,loaded};
+  return {bind,material,syncTextures,setMode,get mode(){return current;},pages,probes,data,loaded,sharp};
 }

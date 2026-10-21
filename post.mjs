@@ -15,7 +15,7 @@ import * as THREE from './assets/three.module.js';
 const quadVertex='varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}';
 
 export class Post{
-  constructor(renderer,scene,camera,{bloom=.12,threshold=1.1,knee=.7,key=.26,adapt=.45,minExposure=.55,maxExposure=2.6,base=.5,grain=.018,vignette=.30,
+  constructor(renderer,scene,camera,{bloom=.15,threshold=.95,knee=.7,key=.25,adapt=.35,minExposure=.55,maxExposure=2.6,base=.5,grain=.018,vignette=.30,
     white=[1.05,1,.92],saturation=1.12,contrast=.42,ao=1,aoRadius=.30,aoBias=.03,aoIntensity=3.2}={}){
     Object.assign(this,{renderer,scene,camera});
     this.settings={bloom,threshold,knee,key,adapt,minExposure,maxExposure,base,grain,vignette,white,saturation,contrast,ao,aoRadius,aoBias,aoIntensity};
@@ -127,6 +127,8 @@ export class Post{
           if(showAO>.5)gl_FragColor=vec4(vec3(texture2D(aoTex,vUv).r),1.0);
         }`
     });
+    // Stands in for the occlusion when the quality level turns the pass off (settings.ao 0).
+    this.noAO=new THREE.DataTexture(new Uint8Array([255,255,255,255]),1,1);this.noAO.needsUpdate=true;
     this.first=true;this.frame=0;this.time=0;
   }
   setSize(w,h){
@@ -152,14 +154,17 @@ export class Post{
     const r=this.renderer,s=this.settings;
     r.setRenderTarget(this.sceneRT);r.render(this.scene,this.camera);
     const src=this.sceneRT.texture;
-    // Contact occlusion (half resolution).
-    const [aoA,aoB]=this.aoRT,ao=this.aoMat.uniforms,P=this.camera.projectionMatrix.elements;
-    ao.depthTex.value=this.sceneRT.depthTexture;ao.projInv.value.copy(this.camera.projectionMatrixInverse);
-    ao.texel.value.set(1/aoA.width,1/aoA.height);ao.projScale.value.set(P[0]*.5,P[5]*.5);ao.radius.value=s.aoRadius;ao.bias.value=s.aoBias;ao.intensity.value=s.aoIntensity;
-    this.pass(this.aoMat,aoA);
-    const b=this.aoBlur.uniforms;
-    b.src.value=aoA.texture;b.dir.value.set(1/aoA.width,0);this.pass(this.aoBlur,aoB);
-    b.src.value=aoB.texture;b.dir.value.set(0,1/aoA.height);this.pass(this.aoBlur,aoA);
+    // Contact occlusion (half resolution), unless the quality level turned it off.
+    const [aoA,aoB]=this.aoRT;
+    if(s.ao>0){
+      const ao=this.aoMat.uniforms,P=this.camera.projectionMatrix.elements;
+      ao.depthTex.value=this.sceneRT.depthTexture;ao.projInv.value.copy(this.camera.projectionMatrixInverse);
+      ao.texel.value.set(1/aoA.width,1/aoA.height);ao.projScale.value.set(P[0]*.5,P[5]*.5);ao.radius.value=s.aoRadius;ao.bias.value=s.aoBias;ao.intensity.value=s.aoIntensity;
+      this.pass(this.aoMat,aoA);
+      const b=this.aoBlur.uniforms;
+      b.src.value=aoA.texture;b.dir.value.set(1/aoA.width,0);this.pass(this.aoBlur,aoB);
+      b.src.value=aoB.texture;b.dir.value.set(0,1/aoA.height);this.pass(this.aoBlur,aoA);
+    }
     // Metering every frame is cheap (64²); adaptation eases over ~1.5 s.
     this.meter.uniforms.src.value=src;this.pass(this.meter,this.lumRT);
     const [prev,next]=this.frame%2?[this.expRT[1],this.expRT[0]]:[this.expRT[0],this.expRT[1]];this.frame++;
@@ -176,7 +181,7 @@ export class Post{
       const u=this.up.uniforms;u.src.value=this.mips[i].texture;u.texel.value.set(1/this.mips[i].width,1/this.mips[i].height);this.pass(this.up,this.mips[i-1]);
     }
     this.time+=dt;
-    const f=this.final.uniforms;f.src.value=src;f.bloomTex.value=this.mips[0].texture;f.aoTex.value=aoA.texture;f.exposure.value=next.texture;
+    const f=this.final.uniforms;f.src.value=src;f.bloomTex.value=this.mips[0].texture;f.aoTex.value=s.ao>0?aoA.texture:this.noAO;f.exposure.value=next.texture;
     f.bloom.value=s.bloom/this.mips.length;f.base.value=s.base;f.grain.value=s.grain;f.vignette.value=s.vignette;f.time.value=this.time;
     f.white.value.set(...s.white);f.saturation.value=s.saturation;f.contrast.value=s.contrast;f.aoStrength.value=s.ao;f.showAO.value=s.showAO?1:0;
     this.pass(this.final,null);

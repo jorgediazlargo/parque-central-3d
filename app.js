@@ -1,16 +1,16 @@
 import * as THREE from './assets/three.module.js';
 import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=65f7ecdcd5';
-import {Post} from './post.mjs?v=5589b8238f';
+import {Post} from './post.mjs?v=8fc2bec064';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=28bbcb88bf';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=08118117d7';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=d2ab8cd826';
 import {applyRooms,preloadRooms} from './rooms.mjs?v=1bc441bbe7';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
-import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=b5c417cc21';
+import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=4bcf41157e';
 
 const $=id=>document.getElementById(id),canvas=$('world');
@@ -24,7 +24,7 @@ const timeOfDay={night:false,listeners:new Set()},outdoor={};
 const lighting={uniforms:{}};
 let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last=0,walkPhase=0,bobAmount=0,stepDistance=0;
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,rayTime=0,roomTime=0;
-const mobile=matchMedia('(pointer:coarse)').matches,eye=1.69;
+const mobile=matchMedia('(pointer:coarse)').matches,eye=1.6;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
 const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false};
 try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night'])if(key in saved)settings[key]=saved[key];}catch{}
@@ -352,6 +352,8 @@ function leaf(width,height,glass,door){
     if(door?.name==='Cocina')box(group,.016,height,.024,width*.72,height/2,0,mats.kitchenBronze);
     if(door){
       for(const side of [-1,1]){
+        // Suite leaves park inside the 10 cm wall skin: a flush pull stays within it instead of poking through the plaster.
+        if(door.type==='slide'){box(group,.014,.29,.012,Math.max(.06,width-.075),1.02,side*.022,mats.bronze);continue;}
         box(group,.014,.29,.018,Math.max(.06,width-.075),1.02,side*.06,mats.bronze);
         for(const y of [.90,1.14])box(group,.014,.014,.055,Math.max(.06,width-.075),y,side*.036,mats.bronze);
       }
@@ -444,7 +446,7 @@ async function initScene(buffer,bake){
   // GPU process: reportShaderErrors does it once the tour is ready.
   renderer.debug.checkShaderErrors=false;
   scene=new THREE.Scene();scene.background=new THREE.Color('#c4d7de');
-  camera=new THREE.PerspectiveCamera(67,innerWidth/innerHeight,.035,180);camera.rotation.order='YXZ';
+  camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.035,180);camera.rotation.order='YXZ';
   // Sky and sun light only what is outdoors (terrace, facade): indoors every surface
   // takes the baked light or the probes baked with it (lighting.mjs).
   const sky=new THREE.HemisphereLight('#dfe9f2','#8a7a64',.9);scene.add(sky);
@@ -491,8 +493,7 @@ async function initScene(buffer,bake){
   }
   if(physics.blocked(player,activeDoorPolys()))throw Error('El punto de entrada no está libre.');
   camera.position.set(player[0],eye,player[1]);
-  // HDR scene, auto exposure, bloom, tone mapping and grain (post.mjs). Baked light
-  // carries the contact shadows: no screen-space AO pass.
+  // HDR scene, contact occlusion, auto exposure, bloom, tone mapping and grain (post.mjs).
   composer=new Post(renderer,scene,camera);
   // Night exposure: a lower key and floor so the auto exposure keeps it an evening (pools
   // of lamplight, dark corners) instead of lifting it back to daylight brightness.
@@ -507,7 +508,8 @@ async function initScene(buffer,bake){
     save:i=>{try{localStorage.setItem('parque-quality',i);}catch{}}});
   applyQuality(quality.level);
 }
-function applyQuality({ratio,samples}){
+function applyQuality({ratio,samples,ao}){
+  composer.settings.ao=ao?1:0;
   if(renderer.getPixelRatio()!==ratio)renderer.setPixelRatio(ratio);
   if(composer.sceneRT.samples!==samples){composer.sceneRT.samples=samples;composer.sceneRT.dispose();}
   const size=renderer.getDrawingBufferSize(new THREE.Vector2());composer.setSize(size.x,size.y);
@@ -745,6 +747,8 @@ async function load(){
     renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     reflections.capture(renderer,scene);
     ready=true;progress?.done();$('night').disabled=false;
+    // The tour starts on the reduced lightmaps: reflections again once the full pages are in.
+    lightmap.sharp.then(()=>{timeSwitch=timeSwitch.then(()=>reflections.capture(renderer,scene));});
     const params=new URLSearchParams(location.search);
     if(params.get('start')==='kitchen'){
       const start=[(738-106.5)/51.53901216893343,(389-619.85)/51.53901216893343];

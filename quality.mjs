@@ -4,9 +4,11 @@
 
 // Levels from best to worst for a base pixel ratio (min(devicePixelRatio, 1.5)).
 // Two samples instead of four changes under 0.6 % of the image (frame-time.mjs --compare).
+// The two lowest levels also drop the contact occlusion pass (≈ 2–3 ms on the M1 at ×1,5):
+// the bake already carries the room-scale shading.
 export function qualityLevels(base){
-  const raw=[[1,4],[1,2],[.83,2],[.67,2],[.5,2]].map(([k,samples])=>({ratio:Math.max(.6,Math.round(base*k*100)/100),samples}));
-  return raw.filter((l,i)=>i===0||l.ratio!==raw[i-1].ratio||l.samples!==raw[i-1].samples);
+  const raw=[[1,4,1],[1,2,1],[.83,2,1],[.67,2,0],[.5,2,0]].map(([k,samples,ao])=>({ratio:Math.max(.6,Math.round(base*k*100)/100),samples,ao:!!ao}));
+  return raw.filter((l,i)=>i===0||l.ratio!==raw[i-1].ratio||l.samples!==raw[i-1].samples||l.ao!==raw[i-1].ao);
 }
 
 const WINDOW=45;          // frames averaged before judging
