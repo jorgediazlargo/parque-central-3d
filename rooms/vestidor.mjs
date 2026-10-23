@@ -18,25 +18,12 @@
 // - Frames, rails and handles in satin champagne bronze.
 // - Contact shadow on the floor along the wardrobe bases.
 
-const ROD_Y=1.762;   // centre of the 14 mm bronze rails (house.bin)
-const STRIP_Y=1.835, TOP_STRIP_Y=2.125;   // LED strips under the shelf and the top
-// Rails per bay: fixed coordinate, [from, to] along the rail, outward normal of the
-// wardrobe front, rail direction towards the main view, turn on the hook, garments.
-const BAYS=[
-  ...[[-5.626,-5.044],[-4.984,-4.402]].map(s=>({axis:'z',at:.570,span:s,out:[1,0],dir:[0,1],turn:58,n:3,narrow:true})),
-  ...[[-4.342,-3.756],[-3.696,-3.109],[-3.049,-2.463],[-2.403,-1.816]].map(s=>({axis:'z',at:.417,span:s,out:[1,0],dir:[0,1],turn:40,n:5})),
-  ...[[1.657,2.250],[2.310,2.904],[2.964,3.558]].map(s=>({axis:'x',at:-5.366,span:s,out:[0,1],dir:[1,0],turn:40,n:5})),
-  ...[[-2.696,-2.286,4.563],[-2.226,-1.816,4.563],[-1.656,-1.246,4.548],[-1.186,-.776,4.548]].map(s=>({axis:'z',at:s[2],span:[s[0],s[1]],out:[-1,0],dir:[0,-1],turn:40,n:4})),
-];
-// Upper shelves (top at 1.864): footprint of the exported stacks per bay
-// [along-front from, to], [depth from, to] (world), outward normal.
-const SHELVES=[
-  ...[[-4.265,-3.833],[-3.618,-3.187],[-2.972,-2.540],[-2.325,-1.894]].map(s=>({axis:'z',along:s,depth:[.201,.609],out:[1,0]})),
-  ...[[-5.549,-5.121],[-4.907,-4.479]].map(s=>({axis:'z',along:s,depth:[.462,.666],out:[1,0]})),
-  ...[[1.735,2.172],[2.389,2.825],[3.043,3.479]].map(s=>({axis:'x',along:s,depth:[-5.582,-5.174],out:[0,1]})),
-  ...[[-2.646,-2.336],[-2.176,-1.866],[-1.606,-1.296],[-1.136,-.826]].map(s=>({axis:'z',along:s,depth:[4.416,4.712],out:[-1,0]})),
-];
-const SHELF_Y=1.864;
+// Proyecto de ejecución (scripts/proyecto.py): every wardrobe's rails and clothes
+// shelves come from house.json (wardrobes.rails, wardrobes.stacks); garments hang in all
+// of them, also behind the oak doors of the other rooms (seen when a front opens).
+const STRIP_Y=1.89, TOP_STRIP_Y=2.18;   // LED strip under the top shelf of the glazed modules
+// Shelves and rails of the glazed modules (A1-A3, proyecto.py glass_module).
+const SHELF_Y=1.897,HANG_Y=.89;
 // Render 6 palette (sRGB).
 const COLORS={white:'#eeeae3',ivory:'#ddd4c4',ecru:'#c3ae90',sand:'#a28a6c',greige:'#86776a',taupe:'#66553f',olive:'#59543f',brown:'#45362a',umber:'#2c241d'};
 // Per bay, in hanging order: [type, colour].
@@ -47,20 +34,19 @@ const SETS=[
   [['coat','taupe'],['shirt','white'],['jacket','olive'],['shirt','ivory'],['knit','brown']],
 ];
 const STACK_COLORS=['white','ivory','ecru','white','greige','ivory','sand','white'];
-// Wardrobe interiors (behind the glass) and their fronts.
-const INTERIORS=[[[.10,.05,-5.67],[.715,2.17,-1.78]],[[1.60,.05,-5.70],[3.61,2.17,-5.068]],[[4.345,.05,-2.74],[4.85,2.17,-.74]]];
 const ZONE=[[[0,-.2,-5.9],[4.4,3.2,-4.15]],[[0,-.2,-4.15],[.75,3.2,-1.79]],[[4.3,-.2,-4.15],[4.85,3.2,-.2]],[[4.4,-.2,-4.75],[4.85,3.2,-4.15]]];
 // Floor contact strips: centre line on the wardrobe base, [from, to], outward normal.
-const BASES=[{axis:'z',at:.727,span:[-5.65,-1.79],out:[1,0]},{axis:'x',at:-5.056,span:[1.62,3.60],out:[0,1]},{axis:'z',at:4.329,span:[-2.73,-.75],out:[-1,0]}];
+const BASES=[{axis:'z',at:.727,span:[-5.66,-1.995],out:[1,0]},{axis:'x',at:-5.056,span:[1.62,3.59],out:[0,1]},
+  {axis:'z',at:4.329,span:[-2.73,-1.99],out:[-1,0]},{axis:'z',at:4.479,span:[-5.48,-4.82],out:[-1,0]}];
 
 export async function apply(ctx){
   const {THREE,group}=ctx;
 
-  // --- Remove the exported shirts, their stick hangers and the shelf "pillows" -------
-  const band=(y0,y1)=>ZONE.map(([a,b])=>[[a[0],y0,a[2]],[b[0],y1,b[2]]]);
-  ctx.removeExported({material:['linen','fabric','sage'],region:'shared',box:band(.7,1.75)});
-  ctx.removeExported({material:'wood',region:'shared',box:band(1.684,1.706)});
-  ctx.removeExported({material:'linen',region:'shared',box:band(1.87,2.03)});
+  const W=ctx.data.wardrobes||{rails:[],stacks:[],glass:[]};
+  // Rails: fixed coordinate, [from, to] along the rail, outward normal, height, garments.
+  const BAYS=W.rails.map(r=>({...r,dir:r.axis==='z'?[0,1]:[1,0],narrow:r.span[1]-r.span[0]<.45}));
+  const SHELVES=W.stacks;
+  const INTERIORS=W.glass.map(g=>g.box);
 
   let seed=20261015;
   const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647;};
@@ -286,7 +272,7 @@ export async function apply(ctx){
     const spacing=Math.min(.098,(len-.20-(bay.narrow?.12:0))/Math.max(1,bay.n-1));
     set.forEach(([type,color],k)=>{
       const along=mid+(k-(bay.n-1)/2)*spacing*(bay.dir[0]+bay.dir[1])+(rnd()-.5)*.012;
-      const c=bay.axis==='z'?V(bay.at,ROD_Y,along):V(along,ROD_Y,bay.at);
+      const c=bay.axis==='z'?V(bay.at,bay.y,along):V(along,bay.y,bay.at);
       const turn=THREE.MathUtils.degToRad(bay.turn+(rnd()-.5)*8);
       const front=dir.clone().multiplyScalar(Math.cos(turn)).addScaledVector(out,Math.sin(turn)).normalize();
       const X=new THREE.Vector3().crossVectors(up,front).normalize();
@@ -340,10 +326,10 @@ export async function apply(ctx){
     const dc=(s.depth[0]+s.depth[1])/2,sd=Math.min(.30,dw-.01);
     for(let k=0;k<nStacks;k++){
       const ac=s.along[0]+.01+sw/2+k*(sw+gap)+(rnd()-.5)*.01;
-      const centre=s.axis==='z'?V(dc,SHELF_Y,ac):V(ac,SHELF_Y,dc);
+      const centre=s.axis==='z'?V(dc,s.y,ac):V(ac,s.y,dc);
       centre.addScaledVector(out,(dw-sd)/2-.004);
       const Z=out.clone(),X=new THREE.Vector3().crossVectors(up,Z);
-      let y=SHELF_Y;const items=3+(rnd()<.5?1:0);
+      let y=s.y;const items=3+(rnd()<.5?1:0);
       for(let it=0;it<items;it++){
         const h=.030+rnd()*.010,w=sw*(.94+rnd()*.05),d=sd*(.93+rnd()*.06);
         const g=folded(w,d,h,.002+rnd()*.002);
@@ -354,7 +340,7 @@ export async function apply(ctx){
         paint(g,STACK_COLORS[ci++%STACK_COLORS.length],{centre,out,stripY:TOP_STRIP_Y,across:X});
         cloth.linen.geos.push(g);y+=h;
       }
-      quad(shadowQuads.shelf,centre.clone().setY(SHELF_Y+.0012),X.clone().multiplyScalar(sw/2+.03),Z.clone().multiplyScalar(sd/2+.03));
+      quad(shadowQuads.shelf,centre.clone().setY(s.y+.0012),X.clone().multiplyScalar(sw/2+.03),Z.clone().multiplyScalar(sd/2+.03));
     }
   }
   for(const b of BASES){
@@ -416,24 +402,24 @@ export async function apply(ctx){
   add('Vestidor sombra zocalo',quadsGeo(shadowQuads.floor),floorShadow,false);
 
   // --- Wardrobe interiors: the strips light them from above -------------------------
-  for(const piece of ctx.splitExported({material:'wood',region:'shared',box:INTERIORS})){
+  for(const piece of INTERIORS.length?ctx.splitExported({material:'wood',region:'shared',box:INTERIORS}):[]){
     const m=piece.material,prior=m.onBeforeCompile,key=m.customProgramCacheKey.call(m);
     m.onBeforeCompile=(shader,r)=>{
       prior.call(m,shader,r);
       shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`
         {vec3 vp=houseWorld,vn=normalize(houseNormal);
-        float upper=step(1.852,vp.y),hang=smoothstep(.505,.53,vp.y)*(1.0-upper),inside=max(hang,upper);
+        float upper=step(${(SHELF_Y-.01).toFixed(3)},vp.y),hang=smoothstep(${(HANG_Y-.02).toFixed(3)},${HANG_Y.toFixed(3)},vp.y)*(1.0-upper),inside=max(hang,upper);
         float L=upper>.5?exp(-max(0.0,${TOP_STRIP_Y.toFixed(3)}-vp.y)/.20):exp(-max(0.0,${STRIP_Y.toFixed(3)}-vp.y)/.40);
         float f=mix(.94,mix(.70,1.55,L),inside);
         f*=vn.y<-.5?.70:1.0;
         float vert=1.0-abs(vn.y);
-        f*=1.0-vert*(.34*exp(-max(0.0,vp.y-.514)/.035)*hang+.28*exp(-max(0.0,vp.y-1.864)/.03)*upper);
+        f*=1.0-vert*(.34*exp(-max(0.0,vp.y-${HANG_Y.toFixed(3)})/.035)*hang+.28*exp(-max(0.0,vp.y-${SHELF_Y.toFixed(3)})/.03)*upper);
         // The hanging clothes shade the back panel below their shoulders.
         vec3 vo=vp.x<1.0?vec3(1.0,0.0,0.0):(vp.x>4.0?vec3(-1.0,0.0,0.0):vec3(0.0,0.0,1.0));
         float backP=step(.8,dot(vn,vo))*hang*step(vp.y,1.80);
         f*=1.0-backP*.45*smoothstep(.80,.98,vp.y)*(1.0-smoothstep(1.58,1.71,vp.y));
         // ... and the top of the drawer unit below their hems.
-        f*=1.0-.28*step(.5,vn.y)*hang*(1.0-smoothstep(.56,.66,vp.y));
+        f*=1.0-.28*step(.5,vn.y)*hang*(1.0-smoothstep(${(HANG_Y+.03).toFixed(3)},${(HANG_Y+.13).toFixed(3)},vp.y));
         outgoingLight*=f*mix(vec3(1.0),vec3(1.06,.95,.80),L*inside);}
         #include <opaque_fragment>`);
     };
@@ -453,24 +439,24 @@ export async function apply(ctx){
   const glassFns=`varying vec3 vestGlassW;varying vec3 vestGlassN;
     // A glazed front seen in reflection: along = coordinate along the front.
     float vestFront(float y,float along,float a0,float a1,float dw){
-      if(along<a0||along>a1||y<.077||y>2.145)return 0.0;
-      float L=y>1.864?exp(-max(0.0,${f3(TOP_STRIP_Y)}-y)/.20):(y>.53?exp(-max(0.0,${f3(STRIP_Y)}-y)/.40):0.0);
+      if(along<a0||along>a1||y<.103||y>2.194)return 0.0;
+      float L=y>${f3(SHELF_Y)}?exp(-max(0.0,${f3(TOP_STRIP_Y)}-y)/.20):(y>${f3(HANG_Y)}?exp(-max(0.0,${f3(STRIP_Y)}-y)/.40):0.0);
       float g=.16+1.5*L;
       // Hanging clothes: darker, uneven vertical stripes.
-      float cl=smoothstep(.86,.92,y)*(1.0-smoothstep(1.64,1.70,y));
+      float cl=smoothstep(${f3(HANG_Y+.02)},${f3(HANG_Y+.08)},y)*(1.0-smoothstep(1.76,1.82,y));
       g*=1.0-cl*(.35+.25*sin(along*61.0)*sin(along*23.0+1.3));
       // LED lines under the shelf and the top.
       float led=smoothstep(.022,.004,abs(y-${f3(STRIP_Y-.008)}))+smoothstep(.022,.004,abs(y-${f3(TOP_STRIP_Y-.008)}));
       // Door frames (dark bronze) at every door edge, top and bottom.
-      float u=mod(along-a0,dw),fr=min(min(u,dw-u),min(y-.077,2.145-y));
+      float u=mod(along-a0,dw),fr=min(min(u,dw-u),min(y-.103,2.194-y));
       float frame=smoothstep(.014,.024,fr);
       return (g*frame+.22*(1.0-frame))+9.0*led*frame;
     }
     vec3 vestReflect(vec3 P,vec3 R){
       float best=1e3,val=0.0,t;vec3 H;
-      t=(${f3(.723)}-P.x)/R.x;if(R.x<-.01&&t>.05&&t<best){H=P+R*t;float v=vestFront(H.y,H.z,-5.650,-1.792,.643);if(v>0.0){best=t;val=v;}}
-      t=(${f3(-5.060)}-P.z)/R.z;if(R.z<-.01&&t>.05&&t<best){H=P+R*t;float v=vestFront(H.y,H.x,1.633,3.582,.6497);if(v>0.0){best=t;val=v;}}
-      t=(${f3(4.333)}-P.x)/R.x;if(R.x>.01&&t>.05&&t<best){H=P+R*t;float v=vestFront(H.y,H.z,-2.720,-.752,.492);if(v>0.0){best=t;val=v;}}
+      t=(${f3(.723)}-P.x)/R.x;if(R.x<-.01&&t>.05&&t<best){H=P+R*t;float v=vestFront(H.y,H.z,-4.871,-2.471,.40);if(v>0.0){best=t;val=v;}}
+      t=(${f3(-5.060)}-P.z)/R.z;if(R.z<-.01&&t>.05&&t<best){H=P+R*t;float v=vestFront(H.y,H.x,1.623,3.584,.4902);if(v>0.0){best=t;val=v;}}
+      t=(${f3(4.334)}-P.x)/R.x;if(R.x>.01&&t>.05&&t<best){H=P+R*t;float v=vestFront(H.y,H.z,-2.730,-1.990,.37);if(v>0.0){best=t;val=v;}}
       // Nothing glazed in that direction: the room's plaster, lit like the glass itself.
       return best<1e3?vec3(1.0,.80,.58)*val:vec3(.50,.46,.41);
     }

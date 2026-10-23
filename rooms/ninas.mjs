@@ -10,8 +10,7 @@ import {mergeGeometries} from '../assets/jsm/utils/BufferGeometryUtils.js';
 // and two rectangular linen cushions with pinched corners (sage behind, sand lumbar
 // in front). The exported soft mattress cloth, pillow and round cushions are
 // dropped; the exported base and headboards stay with their baked light. Also:
-// floor-to-ceiling shaker doors in matte sage lacquer with oak bar handles, greige
-// linen bedside drums on the B01 centres, a brass sconce and the glazed, framed
+// greige linen bedside drums on the B01 centres, a brass sconce and the glazed, framed
 // watercolour print of the render.
 
 const ZONE=[[15.78,-.2,-9.8],[18.7,3.2,-4.87]];
@@ -195,83 +194,12 @@ function bed(THREE,{cz,seed},m){
   return group;
 }
 
-// Wardrobe B01 'Armario 08' on the south wall: carcass front face at z -5.510, from
-// x 16.822 to the east wall; the room ceiling is at 2.55.
-const WX0=16.822,WX1=18.432,FZ=-5.5103,CEIL=2.55,DOORS=3;
-// Pale grey sage of render 7: under the room's warm light it lands on the photo's
-// wardrobe-to-wall balance. SAGE_TINT is its ratio to the app.js lacquer tint #bcc2b0.
-const SAGE='#cfd0bf',SAGE_TINT='1.24,1.17,1.20';
 // B01 bedside drums [x, z, radius] (plan 1040,218 r 10 and 1040,295 r 12): same
 // centres, but the volume of render 7's drum (34-36 cm across, 45 cm high, its top
 // below the mattress) instead of the 39/47 cm footprint circles.
 const NIGHTSTANDS=[[18.1125,-7.797,.17],[18.1125,-6.303,.18]],DRUM_H=.45;
 
-// Plane facing -z with vertex-colour occlusion towards its edges (the shadow the
-// shaker frame casts into the recessed panel); denser rows near the edges only.
-function aoPanel(THREE,x0,x1,y0,y1,z,ao,fall){
-  const steps=[0,.003,.008,.016,.03,.05];
-  const axis=(a,b)=>{const m=(a+b)/2,l=new Set();for(const d of steps){if(a+d<m)l.add(+(a+d).toFixed(5));if(b-d>m)l.add(+(b-d).toFixed(5));}return [...l].sort((p,q)=>p-q);};
-  const xs=axis(x0,x1),ys=axis(y0,y1),pos=[],nor=[],uv=[],col=[];
-  const occ=(x,y)=>{const d=Math.min(x-x0,x1-x,y-y0),dt=y1-y;return 1-Math.max(ao*Math.exp(-d/fall),ao*1.35*Math.exp(-dt/(fall*1.3)));};
-  const put=(x,y)=>{pos.push(x,y,z);nor.push(0,0,-1);uv.push(x,y);const c=occ(x,y);col.push(c,c,c);};
-  for(let i=0;i<xs.length-1;i++)for(let j=0;j<ys.length-1;j++){
-    const [a,b,c,d]=[[xs[i],ys[j]],[xs[i+1],ys[j]],[xs[i],ys[j+1]],[xs[i+1],ys[j+1]]];
-    for(const p of [a,c,b,b,c,d])put(...p);
-  }
-  const g=new THREE.BufferGeometry();
-  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
-  g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
-  return g;
-}
-// Non-indexed copy with a colour attribute: `shade(normal)` gives the occlusion.
-function tinted(THREE,geo,shade=()=>1){
-  const g=geo.index?geo.toNonIndexed():geo,n=g.getAttribute('normal'),col=[];
-  for(let i=0;i<n.count;i++){const c=shade(n.getX(i),n.getY(i),n.getZ(i));col.push(c,c,c);}
-  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));return g;
-}
 
-function wardrobe(ctx){
-  const {THREE}=ctx,group=new THREE.Group();group.name='ninas:armario';
-  const parts=[],gap=.0027,w=(WX1-WX0)/DOORS-2*gap,y0=.085,y1=CEIL-.005,h=y1-y0,cy=(y0+y1)/2;
-  const S=.052,T=.06,B=.07,RAIL=[.905,.955],bev=.0015;
-  const doorX=[];
-  for(let i=0;i<DOORS;i++){
-    const x0=WX0+i*(WX1-WX0)/DOORS+gap,x1=x0+w,cx=(x0+x1)/2;doorX.push([x0,x1]);
-    // 19 mm door leaf; its edges darken in the joints.
-    const slab=tinted(THREE,new THREE.BoxGeometry(w,h,.012),(nx,ny,nz)=>Math.abs(nz)>.5?1:ny>.5?.8:.5);
-    slab.translate(cx,cy,FZ-.0017-.006);parts.push(slab);
-    // Recessed panels above and below the mid rail.
-    parts.push(aoPanel(THREE,x0+S,x1-S,RAIL[1],y1-T,FZ-.0140,.36,.010));
-    parts.push(aoPanel(THREE,x0+S,x1-S,y0+B,RAIL[0],FZ-.0140,.36,.010));
-    // Shaker frame: stiles, rails and mid rail, 4.4 mm proud with eased edges.
-    const hw=w/2-bev,hh=h/2-bev,shape=new THREE.Shape();
-    shape.moveTo(-hw,-hh);shape.lineTo(hw,-hh);shape.lineTo(hw,hh);shape.lineTo(-hw,hh);shape.lineTo(-hw,-hh);
-    for(const [b,t] of [[RAIL[1]-cy,h/2-T],[-h/2+B,RAIL[0]-cy]]){
-      const px=w/2-S+bev,hole=new THREE.Path();
-      hole.moveTo(-px,b-bev);hole.lineTo(-px,t+bev);hole.lineTo(px,t+bev);hole.lineTo(px,b-bev);hole.lineTo(-px,b-bev);
-      shape.holes.push(hole);
-    }
-    const frame=new THREE.ExtrudeGeometry(shape,{depth:.004,bevelEnabled:true,bevelThickness:bev,bevelSize:bev,bevelSegments:2,curveSegments:1});
-    frame.rotateY(Math.PI);frame.translate(cx,cy,FZ-.0129);
-    parts.push(tinted(THREE,frame,(nx,ny)=>ny<-.5?.75:1));
-  }
-  // Lacquered filler from the carcass top (2.15) to the ceiling, behind the doors.
-  const filler=tinted(THREE,new THREE.BoxGeometry(WX1-WX0,CEIL-2.15,-4.92-FZ));
-  filler.translate((WX0+WX1)/2,(2.15+CEIL)/2,(FZ-4.92)/2);parts.push(filler);
-  const sage=new THREE.MeshStandardMaterial({color:SAGE,roughness:.74,metalness:0,envMapIntensity:.45,vertexColors:true});
-  group.add(new THREE.Mesh(mergeGeometries(parts),sage));
-  // Dark carcass seen through the door joints.
-  const back=new THREE.Mesh(new THREE.PlaneGeometry(WX1-WX0,CEIL-.075),new THREE.MeshStandardMaterial({color:'#3b352d',roughness:.9}));
-  back.rotation.y=Math.PI;back.position.set((WX0+WX1)/2,(.075+CEIL)/2,FZ-.0008);group.add(back);
-  // Slim oak bar handles on posts, beside the middle door as in render 7.
-  const oak=ctx.cloneMaterial(ctx.mats.wood),bars=[],front=FZ-.0184;
-  for(const x of [doorX[0][1]-.03,doorX[2][0]+.03]){
-    const bar=new THREE.BoxGeometry(.016,.37,.018);bar.translate(x,1.16,front-.025);bars.push(bar);
-    for(const y of [1.0,1.32]){const post=new THREE.BoxGeometry(.010,.014,.020);post.translate(x,y,front-.008);bars.push(post);}
-  }
-  group.add(new THREE.Mesh(mergeGeometries(bars),oak));
-  return group;
-}
 
 // Upholstered drum: flush on the floor, eased top edge and a lid seam 5 cm down.
 function drum(THREE,x,z,r,mat){
@@ -447,22 +375,6 @@ export async function apply(ctx){
   const bedShadows=new THREE.Group();bedShadows.name='ninas:sombras-camas';
   for(const {cz} of BEDS)bedShadows.add(rectShadow(THREE,HEAD_X-BED_L/2,cz,BED_L/2,WH,.07,.5));
   ctx.group.add(bedShadows);
-
-  // Wardrobe (B01 'Armario 08'): the exported fronts are rebuilt as floor-to-ceiling
-  // shaker doors in opaque matte sage lacquer (render 7); the carcass stays baked.
-  ctx.removeExported({material:'lacquer',box:[[16.80,.08,-5.56],[18.45,2.16,-5.505]]});
-  ctx.removeExported({material:'bronze',box:[[16.78,.8,-5.62],[18.45,1.35,-5.50]]});
-  for(const piece of ctx.splitExported({material:'lacquer',box:[[16.78,0,-5.62],[18.45,2.3,-4.90]]})){
-    const mat=piece.material,prior=mat.onBeforeCompile,priorKey=mat.customProgramCacheKey?mat.customProgramCacheKey.bind(mat):()=>'';
-    mat.roughness=.78;mat.envMapIntensity=.45;
-    // app.js tints this lacquer #bcc2b0; bring the carcass to the doors' greyer sage.
-    mat.onBeforeCompile=(shader,r)=>{
-      prior.call(mat,shader,r);
-      shader.fragmentShader=shader.fragmentShader.replace('#include <alphamap_fragment>','diffuseColor.rgb*=vec3('+SAGE_TINT+');\n#include <alphamap_fragment>');
-    };
-    mat.customProgramCacheKey=()=>priorKey()+'|ninasLacquer2';
-  }
-  const ward=wardrobe(ctx);ctx.group.add(ward);ctx.lightRuntimeObject(ward);
 
   // Bedside drums (B01 'Mesilla dormitorio secundario' and '... inferior'): same
   // centres, rebuilt smaller (34/36 cm, 45 cm high) standing on the floor in greige

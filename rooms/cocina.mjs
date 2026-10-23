@@ -228,21 +228,6 @@ export async function apply(ctx){
     m.needsUpdate=true;
   }
 
-  // Shadow gaps between the tall fronts (5 mm in B01): render 9 draws them as crisp dark
-  // lines; the bake cannot resolve them. A dark strip sits 1.4 mm behind the front faces.
-  // Runs as in model_source.cabinet(): (rect, face, number of fronts).
-  const gapGeos=[];
-  for(const [[x0,y0,x1,y1],face] of [[[483.51,432.77,514.44,606.47],'east'],[[764.25,432.77,795.18,575.54],'west']]){
-    const L=y1-y0,count=Math.max(1,Math.round(L/51.53901216893343/.55));
-    const at=(u,v)=>face==='east'?ctx.plan(x1-v,y0+u):ctx.plan(x0+v,y0+u);
-    for(let i=1;i<count;i++){
-      const u=L*i/count,[ax,az]=at(u-.14,-.45),[bx,bz]=at(u+.14,.14);
-      gapGeos.push(new THREE.BoxGeometry(Math.abs(bx-ax),2.188-.09,Math.abs(bz-az)).translate((ax+bx)/2,(2.188+.09)/2,(az+bz)/2));
-    }
-  }
-  const gaps=new THREE.Mesh(mergeGeometries(gapGeos),mats.kitchenDark);gaps.name='Cocina juntas frentes';
-  ctx.group.add(gaps);ctx.lightRuntimeObject(gaps);
-
   // --- Ceiling: white paint ------------------------------------------------------------
   for(const piece of ctx.splitExported({material:'wall',region:'kitchen',box:[[7.3,2.19,-3.66],[13.4,2.215,-.2]]})){
     piece.material.color.multiply(new THREE.Color().setRGB(...CEILING_TINT));
@@ -256,7 +241,7 @@ export async function apply(ctx){
   // sheen at a third of the island top's baked light stands in for that reflection.
   {
     const [hx0,hz0]=ctx.plan(578,486),[hx1,hz1]=ctx.plan(618,518);
-    for(const piece of ctx.splitExported({material:'ovenGlass',region:'kitchen',box:[[hx0,.92,hz0],[hx1,.95,hz1]]})){
+    for(const piece of ctx.splitExported({material:'ovenGlass',region:'kitchen',box:[[hx0,.89,hz0],[hx1,.92,hz1]]})){
       const m=piece.material,prior=m.onBeforeCompile;m.color.set('#2b2927');m.roughness=.3;m.metalness=0;
       m.onBeforeCompile=(shader,r)=>{
         prior.call(m,shader,r);
@@ -427,7 +412,7 @@ function props(ctx){
   let seed=9;const rnd=()=>((seed=(seed*16807)%2147483647)-1)/2147483646;
 
   // Vase on the back worktop, right of the tap (seen from the pose), against the wall.
-  const [vx,vz]=ctx.plan(536,599),vy=.92;
+  const [vx,vz]=ctx.plan(536,599),vy=.90;
   const vaseProfile=[[0,0],[.034,0],[.05,.012],[.062,.045],[.064,.075],[.056,.11],[.04,.14],[.027,.16],[.024,.178],[.028,.188],[.025,.19],[.02,.17]]
     .map(([x,y])=>new THREE.Vector2(x,y));
   const vase=new THREE.LatheGeometry(vaseProfile,40);vase.translate(vx,vy,vz);
@@ -462,7 +447,7 @@ function props(ctx){
   for(const [dx,dz,len] of [[-.35,.05,.36],[.3,-.1,.42],[.05,-.25,.3],[-.1,.2,.33],[.45,.15,.27]])stem(mouth,[dx,1,dz],len,0);
 
   // Fruit bowl on the island, on the side away from the hob.
-  const [fx,fz]=ctx.plan(668,503),fy=.93;
+  const [fx,fz]=ctx.plan(668,503),fy=.90;
   const bowlProfile=[[0,0],[.06,0],[.062,.004],[.12,.03],[.15,.052],[.152,.056],[.146,.056],[.117,.036],[.06,.012],[0,.01]]
     .map(([x,y])=>new THREE.Vector2(x,y));
   const bowl=new THREE.LatheGeometry(bowlProfile,48);bowl.translate(fx,fy,fz);

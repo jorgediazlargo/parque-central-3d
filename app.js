@@ -3,19 +3,20 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=65f7ecdcd5';
 import {Post} from './post.mjs?v=8fc2bec064';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=08118117d7';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=15a3787123';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
-import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=d2ab8cd826';
+import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=142d51f6bb';
 import {applyRooms,preloadRooms} from './rooms.mjs?v=1bc441bbe7';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=4bcf41157e';
+import {createFronts} from './fronts.mjs?v=ad678e848d';
 
 const $=id=>document.getElementById(id),canvas=$('world');
-let scene,camera,renderer,composer,quality,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null;
-let lightmap,roomStatus={},reflections;const runtimeObjects=[];
+let scene,camera,renderer,composer,quality,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null,fronts={list:[],at:()=>null,step:()=>false};
+let lightmap,roomStatus={},reflections,mirrorSpan=()=>{};const runtimeObjects=[];
 // Día / Noche: the night bake (artificial light only, same UVs) swapped into the same
 // lightmap and probe textures, the outdoor lights and backdrop, and the room modules'
 // daylight effects (ctx.onTimeOfDay). Reflections are captured again after each switch.
@@ -169,7 +170,7 @@ function material(color,kind,roughness=.7){
       }
       if(kind==='floor'){
         // H01 pavements: oak planks (no herringbone) in bedrooms, the play room, their
-        // hall and the closet beside the kitchen; 90 cm porcelain at 45° elsewhere.
+        // hall and the closet beside the kitchen; 120 cm porcelain at 45° elsewhere.
         shader.uniforms.porcelainMap=porcelainMap;
         shader.fragmentShader='uniform sampler2D porcelainMap;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+shader.fragmentShader;
         shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
@@ -183,10 +184,10 @@ function material(color,kind,roughness=.7){
           // Render 7: paler, less orange oak in the girls' room.
           float girlsFloor=step(15.78,houseWorld.x)*step(houseWorld.z,-4.87);
           oakFloor=mix(oakFloor,mix(vec3(oakValue*1.30),oakFloor,.55)*vec3(1.0,1.02,1.08),girlsFloor);
-          // Porcelain module 0.90 m on the diagonal, band crossing on the H01 set-out point
+          // Porcelain module 1.20 m on the diagonal (proyecto de ejecución H01), band crossing on the H01 set-out point
           // at the entrance. Each piece is mirrored or turned at random to break repeats.
           vec2 porcelainAt=floorAt-vec2(14.086,-.218);
-          vec2 porcelainUv=vec2(porcelainAt.x+porcelainAt.y,porcelainAt.x-porcelainAt.y)*(.70710678/.90)+.098;
+          vec2 porcelainUv=vec2(porcelainAt.x+porcelainAt.y,porcelainAt.x-porcelainAt.y)*(.70710678/1.20)+.098;
           vec2 porcelainCell=floor(porcelainUv),porcelainF=fract(porcelainUv);
           float porcelainA=hashHouse(porcelainCell),porcelainB=hashHouse(porcelainCell+17.3);
           const float porcelainBand=.196;
@@ -221,6 +222,22 @@ function material(color,kind,roughness=.7){
         float veneerValue=dot(diffuseColor.rgb,vec3(.28,.59,.13));
         diffuseColor.rgb=mix(diffuseColor.rgb,vec3(veneerValue),.12)*vec3(1.0,.975,.95);
       `);
+      if(kind==='wallTile'){
+        // H03 wall porcelain (baths and showers): the floor's porcelain in 120 cm squares
+        // laid square on the wall, fine joints, each piece turned or toned a little.
+        shader.uniforms.porcelainMap=porcelainMap;
+        shader.fragmentShader='uniform sampler2D porcelainMap;\n'+shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
+          vec3 tileN=abs(houseNormal);
+          vec2 tileAt=tileN.x>tileN.z?vec2(houseWorld.z,houseWorld.y):vec2(houseWorld.x,houseWorld.y);
+          if(tileN.y>.5)tileAt=houseWorld.xz;
+          vec2 tileUv=tileAt/1.20+vec2(.13,0.0),tileCell=floor(tileUv),tileF=fract(tileUv);
+          float tileA=hashHouse(tileCell);
+          vec2 tileS=vec2(tileA>.5?1.0-tileF.x:tileF.x,fract(tileA*7.0)>.5?1.0-tileF.y:tileF.y);
+          vec3 tileColour=textureGrad(porcelainMap,.196+tileS*.804,dFdx(tileUv)*.804,dFdy(tileUv)*.804).rgb*.96*(1.0+.06*(hashHouse(tileCell+5.1)-.5));
+          float tileEdge=min(min(tileF.x,1.0-tileF.x),min(tileF.y,1.0-tileF.y));
+          float tileJoint=1.0-smoothstep(.0015,.0015+max(fwidth(tileEdge),1e-4)*1.5,tileEdge);
+          diffuseColor.rgb=mix(tileColour,tileColour*.6,tileJoint);`);
+      }
       if(kind==='lacquer'){
         const [sage,cream]=['#bcc2b0','#e6e0d6'].map(c=>new THREE.Color(c));
         shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
@@ -263,6 +280,14 @@ mats.kitchenStone=material('#e9e1d6','kitchenStone',.55);
 // Kitchen island, worktops and tall panel (region kitchen): cross-cut travertine.
 mats.kitchenCrosscut=material('#e9f2ff','crosscut',.5);
 mats.bronze.metalness=.65;
+// Proyecto de ejecución: textured melamine (wardrobe interiors), anthracite (kitchen
+// interiors), wall porcelain, and the cabinet LED strips the bake leaves out (they only
+// glow when a front opens).
+Object.assign(mats,{melamine:material('#ded8cd',null,.75),anthracite:material('#3b3a37',null,.6),wallTile:material('#ffffff','wallTile',.72),
+  ledStrip:new THREE.MeshStandardMaterial({color:'#ffe1a3',emissive:'#ffcf96',emissiveIntensity:4})});
+// E01-E03 bicolour aluminium; M2 mirror leaves (probe reflections, no second pass).
+mats.ral9001=material('#e9e2d0',null,.45);mats.facadeGold=material('#a88a52',null,.4);mats.facadeGold.metalness=.6;
+mats.mirrorLeaf=new THREE.MeshStandardMaterial({color:'#e4e4de',metalness:1,roughness:.18});
 // Wet-zone slabs share the floor: porcelain of the H01 plan.
 mats.tile=mats.floor;
 mats.curtain.transparent=true;mats.curtain.opacity=.62;mats.curtain.depthWrite=false;mats.curtain.userData.translucency=.75;
@@ -327,8 +352,9 @@ function box(group,w,h,d,x,y,z,mat){
 }
 // Studio screen after render 4: warm bronze-oak profiles, paired stiles at every joint,
 // rails at hand and transom height and arched side lites with an inner concentric arc.
-const STUDY={frame:.035,stile:.026,depth:.045,rails:[.88,2.08],height:2.40};
-const studyFrame=material('#5c4535',null,.42);studyFrame.metalness=.5;
+// M3 (G06): oak frame 3.00 x 2.20, rails at 0.78 and 1.87, arcs of 0.30 at the top corners.
+const STUDY={frame:.035,stile:.026,depth:.045,rails:[.78,1.87],height:2.20,side:.11,radius:.30};
+const studyFrame=material('#ffffff','wood',.55);
 function studyPanel(group,width,height){
   const {stile,depth,rails}=STUDY;
   box(group,width-.02,height-.02,.010,width/2,height/2,0,mats.glass);
@@ -344,16 +370,31 @@ function studyPanel(group,width,height){
 function leaf(width,height,glass,door){
   const group=new THREE.Group();
   if(glass&&door?.name==='Estudio')studyPanel(group,width,height);
+  else if(door?.finish==='mirror'){
+    // M2 (G05): mirror leaf in a slim Rimex bronze frame, the same on both faces.
+    box(group,width-.03,height-.03,.012,width/2,height/2,0,mats.mirrorLeaf);
+    for(const x of [.01,width-.01])box(group,.02,height,.032,x,height/2,0,mats.bronze);
+    for(const y of [.01,height-.01])box(group,width,.02,.032,width/2,y,0,mats.bronze);
+  }
   else if(glass){
     box(group,width-.035,height-.035,.014,width/2,height/2,0,mats.glass);
-    for(const x of [.012,width-.012])box(group,.024,height,.035,x,height/2,0,mats.bronze);
-    const terrace=door?.name?.startsWith('Terraza');
-    for(const y of terrace?[.012,height-.012]:door?.name==='Cocina'?[.012,height-.012,.78,.97]:[.012,height-.012,.73,height-.40])box(group,width,.020,.034,width/2,y,0,mats.bronze);
-    if(door?.name==='Cocina')box(group,.016,height,.024,width*.72,height/2,0,mats.kitchenBronze);
+    const terrace=door?.name?.startsWith('Terraza'),kitchen=door?.name==='Cocina';
+    // E01-E03: bicolour aluminium, RAL 9001 on the room side and gold outside. The
+    // room is +Z in the world; a leaf drawn westwards (E3) has its local +Z outside.
+    const room=terrace&&door.b[0]<door.a[0]?-1:1;
+    const profile=(w,h,x,y,depth=.035)=>{
+      if(!terrace)return box(group,w,h,depth,x,y,0,mats.bronze);
+      box(group,w,h,depth/2,x,y,room*depth/4,mats.ral9001);box(group,w,h,depth/2,x,y,-room*depth/4,mats.facadeGold);
+    };
+    for(const x of [.012,width-.012])profile(terrace?.05:.024,height,x,height/2);
+    // M1 (G04): double rail at 1.00 and 1.10 and a double stile 0.10 in from each edge.
+    for(const y of terrace?[.025,height-.025]:kitchen?[.012,height-.012,1.00,1.10]:[.012,height-.012,.73,height-.40])profile(width,terrace?.05:.020,width/2,y,.034);
+    if(kitchen)for(const x of [.10,width-.10])for(const dx of [-.016,.016])box(group,.012,height,.024,x+dx,height/2,0,mats.kitchenBronze);
     if(door){
       for(const side of [-1,1]){
         // Suite leaves park inside the 10 cm wall skin: a flush pull stays within it instead of poking through the plaster.
         if(door.type==='slide'){box(group,.014,.29,.012,Math.max(.06,width-.075),1.02,side*.022,mats.bronze);continue;}
+        if(terrace){box(group,.022,.16,.02,width-.03,1.05,side*.04,side*room>0?mats.ral9001:mats.facadeGold);continue;}
         box(group,.014,.29,.018,Math.max(.06,width-.075),1.02,side*.06,mats.bronze);
         for(const y of [.90,1.14])box(group,.014,.014,.055,Math.max(.06,width-.075),y,side*.036,mats.bronze);
       }
@@ -362,7 +403,9 @@ function leaf(width,height,glass,door){
     // Floor-to-ceiling oak leaf with fine shadow gaps.
     box(group,width-.008,height-.012,.046,width/2,height/2,0,mats.wood);
     for(const x of [.003,width-.003])box(group,.003,height,.048,x,height/2,0,mats.dark);
-    for(const z of [-.048,.048]) {
+    // P8 and P9 slide inside the wall skin: a flush recessed pull, no lever.
+    if(door?.type==='slide'){for(const z of [-.024,.024])box(group,.016,.30,.004,width-.06,1.03,z,mats.bronze);}
+    else for(const z of [-.048,.048]) {
       box(group,.11,.018,.025,width-.10,1.03,z,mats.bronze);
       const rose=new THREE.Mesh(new THREE.CylinderGeometry(.018,.018,.010,24),mats.bronze);
       rose.rotation.x=Math.PI/2;rose.position.set(width-.065,1.03,z*.58);group.add(rose);
@@ -376,7 +419,7 @@ function leaf(width,height,glass,door){
 }
 function placeDoor(d,t){
   const seg=doorSegments(d,t);
-  seg.forEach(([a,b],i)=>{const g=d.groups[i];g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);});
+  seg.forEach(([a,b],i)=>{const g=d.groups[i];g.position.set(a[0],d.base||0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);});
   d.polys=seg.map(([a,b])=>footprint(a,b));
 }
 function setupDoors(){
@@ -389,7 +432,7 @@ function setupDoors(){
   const [a,b]=data.fixedStudy,g=new THREE.Group(),length=Math.hypot(b[0]-a[0],b[1]-a[1]);
   g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);scene.add(g);runtimeObjects.push(g);
   const study=doors.find(d=>d.name==='Estudio'),along=p=>((p[0]-a[0])*(b[0]-a[0])+(p[1]-a[1])*(b[1]-a[1]))/length;
-  const {frame:f,stile,depth,rails,height:h}=STUDY,side=.31,doorFrom=along(study.a),doorTo=along(study.b),r=side;
+  const {frame:f,stile,depth,rails,height:h,side,radius:r}=STUDY,doorFrom=along(study.a),doorTo=along(study.b);
   const extrude=(shape,z=0,mat=studyFrame,d=depth)=>{
     const geo=new THREE.ExtrudeGeometry(shape,{depth:d,bevelEnabled:false,curveSegments:24});geo.translate(0,0,z-d/2);
     const o=new THREE.Mesh(geo,mat);o.castShadow=mat!==mats.glass;o.receiveShadow=true;g.add(o);return o;
@@ -405,20 +448,17 @@ function setupDoors(){
   const outer=arched(0);outer.holes.push(arched(f));extrude(outer);
   // Fixed glazing on both sides of the French pair.
   for(const [x0,x1] of [[f,doorFrom],[doorTo,length-f]])extrude(arched(f,x0,x1),0,mats.glass,.010);
-  // Paired stiles at each joint: side lites, the two fixed panels and the door opening.
-  for(const x of [side,doorFrom,doorTo,length-side]){
-    for(const dx of [-stile/2,stile/2]){
-      if((x===doorFrom&&dx>0)||(x===doorTo&&dx<0))continue;
-      box(g,stile,h-2*f,depth,x+dx,h/2,0,studyFrame);
-    }
-  }
+  // Stiles at the door opening; rails across the fixed panels.
+  box(g,stile,h-2*f,depth,doorFrom-stile/2,h/2,0,studyFrame);box(g,stile,h-2*f,depth,doorTo+stile/2,h/2,0,studyFrame);
   for(const y of rails)for(const [x0,x1] of [[f,doorFrom],[doorTo,length-f]])box(g,x1-x0,.032,depth,(x0+x1)/2,y,0,studyFrame);
-  // Inner concentric arcs of the side lites.
-  const inset=.075,ri=r-inset;
-  for(const [cx,x,a0,a1] of [[side,inset,Math.PI/2,Math.PI],[length-side,length-inset,0,Math.PI/2]]){
+  // Narrow side lite of each fixed panel: a stile `side` in from the jamb that turns
+  // into an arc concentric with the frame's corner and runs on as a top rail.
+  const ri=r-side;
+  for(const [x,cx,a0,a1,x0,x1] of [[side,r,Math.PI/2,Math.PI,r,doorFrom],[length-side,length-r,0,Math.PI/2,doorTo,length-r]]){
     const arc=new THREE.Shape();
     arc.absarc(cx,h-r,ri+stile/2,a0,a1,false);arc.absarc(cx,h-r,ri-stile/2,a1,a0,true);extrude(arc);
     box(g,stile,h-r-f,depth,x,(h-r+f)/2,0,studyFrame);
+    box(g,x1-x0,stile,depth,(x0+x1)/2,h-side,0,studyFrame);
   }
   g.traverse(o=>{if(o.isMesh)staticMeshes.push(o);});
 }
@@ -479,6 +519,8 @@ async function initScene(buffer,bake){
     const mesh=new THREE.Mesh(geo,finish);mesh.userData.exported={material:spec.material,region:spec.region,layer:spec.layer,sourceIndex};
     mesh.receiveShadow=true;mesh.castShadow=!['glass','led','curtain'].includes(spec.material);scene.add(mesh);staticMeshes.push(mesh);
   }
+  // Joinery fronts: per-vertex ids now, so room modules that split their meshes keep them.
+  fronts=createFronts(THREE,{data,staticMeshes,scene});
   // The master bed dressing replaces the exported duvet, pillows and blanket.
   const bedding=masterBedding();scene.add(bedding);runtimeObjects.push(bedding);bedding.traverse(o=>{if(o.isMesh)staticMeshes.push(o);});
   physics=new WorldPhysics(kitchenColliders(data),data.floors);player=[...data.spawn];setupDoors();
@@ -490,6 +532,20 @@ async function initScene(buffer,bake){
     // The mirror draws the house a second time (rooms/bano.mjs): only while a line of sight reaches it.
     const sight=mirrorSight(m,kitchenColliders(data).filter(c=>WALL_NAMES.test(c.name)).map(c=>c.poly));
     mirror.userData.inSight=cam=>{const e=cam.matrixWorld.elements;return sight.visible([e[12],e[14]],opaqueDoorPolys());};
+    // M2: the mirror leaves on either side of the vanity are coplanar with its mirror. A
+    // closed leaf joins the reflection (the probes alone left them a dark grey); an
+    // opening one leaves it and keeps its own probe reflection.
+    const leaves=doors.filter(d=>d.finish==='mirror');
+    mirrorSpan=()=>{
+      let x0=m.center[0]-m.width/2,x1=m.center[0]+m.width/2;
+      for(const d of leaves){
+        if(d.t>.01)continue;
+        const lo=Math.min(d.a[0],d.b[0])-.02,hi=Math.max(d.a[0],d.b[0])+.02;
+        if(hi<=x0+.05)x0=Math.min(x0,lo);else if(lo>=x1-.05)x1=Math.max(x1,hi);
+      }
+      mirror.scale.x=(x1-x0)/m.width;mirror.position.x=(x0+x1)/2;
+    };
+    mirrorSpan();
   }
   if(physics.blocked(player,activeDoorPolys()))throw Error('El punto de entrada no está libre.');
   camera.position.set(player[0],eye,player[1]);
@@ -612,7 +668,8 @@ async function enter(){
   if(!mobile){try{await canvas.requestPointerLock();}catch{notice('Arrastra el ratón para mirar. W A S D para caminar.');}}
 }
 function interact(){
-  if(!playing||!target)return;target.goal=target.goal>.5?0:1;
+  if(!playing||!target)return;
+  if(fronts.list.includes(target))fronts.toggle(target);else target.goal=target.goal>.5?0:1;
   notice((target.goal?'Abriendo · ':'Cerrando · ')+label(target.name));rayTime=1;
 }
 function label(s){return ({'Terraza salon':'Terraza · salón','Terraza comedor':'Terraza · comedor','Terraza izquierda':'Terraza','Bano secundario':'Baño','WC suite':'WC suite','Ducha suite':'Ducha suite','Suite izquierda':'Suite · vestidor','Suite derecha':'Suite · baño','Suite principal':'Dormitorio principal','Distribuidor dormitorios':'Distribuidor','Paso despensa bano':'Paso al baño','Dormitorio secundario':'Dormitorio niñas','Cortinas salón':'Cortinas · salón','Cortinas dormitorio':'Cortinas · dormitorio'})[s]||s;}
@@ -630,7 +687,7 @@ function updateTarget(){
   scene.updateMatrixWorld(true);camera.updateMatrixWorld(true);raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
   const hits=raycaster.intersectObjects([...staticMeshes.filter(shown),...doors.filter(d=>d.active!==false).flatMap(d=>d.groups)],true);
   // The closest surface must be an actual door or curtain, preventing interaction through walls.
-  target=hits[0]?.object.userData.door||hits[0]?.object.userData.curtain||null;
+  target=hits[0]?.object.userData.door||hits[0]?.object.userData.curtain||fronts.at(hits[0])||null;
   $('interaction').hidden=!target||!playing;
   if(target)$('interaction').querySelector('span').textContent=(target.goal>.5?'Cerrar · ':'Abrir · ')+label(target.name);
   $('touchDoor').disabled=!target;
@@ -667,7 +724,8 @@ function frame(time){
       if(Math.abs(c.goal-c.t)<.00001)continue;
       c.set(c.t+Math.sign(c.goal-c.t)*Math.min(dt*.5,Math.abs(c.goal-c.t)));
     }
-    if(doorChanged)renderer.shadowMap.needsUpdate=true;
+    if(doorChanged){renderer.shadowMap.needsUpdate=true;mirrorSpan();}
+    fronts.step(dt);
     rayTime+=dt;roomTime+=dt;if(rayTime>.12){updateTarget();rayTime=0;}
     if(roomTime>.4){
       let name='Recibidor';
@@ -719,7 +777,7 @@ async function load(){
     // only the last room module and the captures read. Shared bandwidth would otherwise
     // deliver the geometry last.
     const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
-    const house=Promise.all([get('./assets/house.json?v=68355a489c',r=>r.json()),get('./assets/house.bin?v=1b563863fc',r=>r.arrayBuffer())]);
+    const house=Promise.all([get('./assets/house.json?v=c90d3e03e9',r=>r.json()),get('./assets/house.bin?v=afb74fc721',r=>r.arrayBuffer())]);
     const surfaceMaps=loadSurfaceMaps(),views=loadViews();
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();

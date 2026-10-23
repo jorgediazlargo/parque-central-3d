@@ -356,8 +356,8 @@ function contactShadow(THREE,k=1){
 }
 
 // --- Desk wall ------------------------------------------------------------------------
-// The oak back panel of the desk niche (x 5.035, y 0.74-2.38) is one baked quad. Its
-// light stays; below the shelf (y < 1.62) it takes the plaster finish of render 4.
+// The oak back panel of the desk niche (x 5.035, y 0.69-2.38) is one baked quad. Its
+// light stays; below the shelf (y < 1.84) it takes the plaster finish of render 4.
 function deskWall(ctx,THREE){
   const parts=ctx.splitExported({material:'wood',box:[[5.03,.7,-8.86],[5.04,2.4,-6.72]]});
   const wall=ctx.mats.wall,plaster=wall.map;
@@ -369,12 +369,12 @@ function deskWall(ctx,THREE){
       shader.uniforms.deskPlasterColor={value:wall.color.clone()};
       shader.fragmentShader='uniform sampler2D deskPlaster;\nuniform vec3 deskPlasterColor;\n'+shader.fragmentShader
         .replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
-          bool deskIsPlaster=houseWorld.y<1.62;
+          bool deskIsPlaster=houseWorld.y<1.84;
           if(deskIsPlaster){
             vec3 lime=texture2D(deskPlaster,houseWorld.zy*.6).rgb;
             diffuseColor.rgb=deskPlasterColor*lime;roughnessFactor=.92;
           }`)
-        .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nif(houseWorld.y<1.62)normal=nonPerturbedNormal;');
+        .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nif(houseWorld.y<1.84)normal=nonPerturbedNormal;');
     };
     m.customProgramCacheKey=()=>(priorKey?priorKey():'')+'|estudio-desk-wall';
     m.needsUpdate=true;
@@ -387,13 +387,15 @@ function deskWall(ctx,THREE){
 // the shelf, a bronze mushroom lamp and a stone bowl on the desk. Replaces the
 // exported row of 13 evenly spaced books, the T lamp and the stacked-disc plant.
 // One mesh per material; contact shades under each piece.
-const SHELF={front:4.648,lower:1.645,upper:1.985,desk:.75};
-const BAYS=[[-8.824,-8.108],[-8.087,-7.370],[-7.349,-6.749]];
+// C9 (proyecto de ejecución): desk at 0.70, shelves at 1.84 and 2.10 (0.025 thick),
+// bays of 0.47 / 0.94 / 0.47.
+const SHELF={front:4.648,lower:1.865,upper:2.125,desk:.70};
+const BAYS=[[-8.823,-8.353],[-8.353,-7.413],[-7.413,-6.823]];
 function decor(ctx,THREE){
-  ctx.removeExported({material:['fabric','clay'],box:[[4.70,1.64,-8.70],[4.93,1.93,-7.25]]});
-  ctx.removeExported({material:'clay',box:[[4.64,1.64,-7.10],[4.81,1.79,-6.94]]});
-  ctx.removeExported({material:'sage',box:[[4.58,1.18,-7.14],[4.82,1.82,-6.88]]});
-  ctx.removeExported({material:['dark','bronze','led'],box:[[4.49,.745,-8.43],[4.73,1.075,-8.17]]});
+  ctx.removeExported({material:['fabric','clay'],box:[[4.70,1.86,-8.35],[4.93,2.1,-7.45]]});
+  ctx.removeExported({material:'clay',box:[[4.64,1.86,-7.10],[4.81,2.0,-6.94]]});
+  ctx.removeExported({material:'sage',box:[[4.58,1.40,-7.14],[4.82,2.03,-6.88]]});
+  ctx.removeExported({material:['dark','bronze','led'],box:[[4.49,.695,-8.43],[4.73,1.025,-8.17]]});
 
   seed=4242;
   const books=[],shades=[];
@@ -432,13 +434,13 @@ function decor(ctx,THREE){
     return y;
   };
   // Lower shelf.
-  row(SHELF.lower,-8.40,9);
-  row(SHELF.lower,-8.075,6,{lean:.22});stack(SHELF.lower,-7.56,4);
+  row(SHELF.lower,-8.50,5,{hMin:.17,hMax:.22});
+  row(SHELF.lower,-8.075,6,{hMin:.17,hMax:.22,lean:.22});stack(SHELF.lower,-7.56,4);
   stack(SHELF.lower,-7.23,2);
   // Upper shelf.
-  row(SHELF.upper,-8.81,5,{hMin:.22,hMax:.30,lean:.18});
-  row(SHELF.upper,-6.97,6,{hMin:.22,hMax:.31});
-  stack(SHELF.upper,-8.30,3);
+  row(SHELF.upper,-8.68,5,{hMin:.18,hMax:.23,lean:.18});
+  row(SHELF.upper,-6.99,6,{hMin:.18,hMax:.23});
+  stack(SHELF.upper,-8.20,3);
 
   const shelfX=SHELF.front+.16;
   // Ceramics share one mesh (vertex colour); placed by translating their geometry.
@@ -450,8 +452,8 @@ function decor(ctx,THREE){
   const at=(g,x,y,z)=>g.translate(x,y,z);
   const items=[];
   // Black glazed bowl, lower left bay; cream vase, upper middle bay.
-  at(ceramic(lathe(THREE,[[0,0],[.055,0],[.075,.012],[.088,.04],[.092,.066],[.085,.066],[.078,.043],[.062,.018],[0,.012]],28),'#1d1b19'),shelfX,SHELF.lower,-8.62);
-  shades.push([shelfX,SHELF.lower,-8.62,.22,.8]);
+  at(ceramic(lathe(THREE,[[0,0],[.055,0],[.075,.012],[.088,.04],[.092,.066],[.085,.066],[.078,.043],[.062,.018],[0,.012]],28),'#1d1b19'),shelfX,SHELF.lower,-8.73);
+  shades.push([shelfX,SHELF.lower,-8.73,.22,.8]);
   at(ceramic(lathe(THREE,[[0,0],[.04,0],[.058,.04],[.064,.10],[.05,.16],[.03,.20],[.034,.215],[.028,.215],[.022,.20],[0,.19]],24),'#d9d1c3'),shelfX+.02,SHELF.upper,-7.73);
   shades.push([shelfX+.02,SHELF.upper,-7.73,.17,.7]);
   // Pot with a trailing plant, right end of the lower shelf (over the desk).

@@ -16,6 +16,7 @@
 
 const S=51.53901216893343;
 const P=(x,y)=>[(x-106.5)/S,(y-619.85)/S];
+const TAPS=[213,260];
 
 export async function apply(ctx){
   const {THREE,group}=ctx;
@@ -23,9 +24,10 @@ export async function apply(ctx){
 
   // --- Remove exported pieces this module replaces -------------------------------
   ctx.removeExported({material:'stone',box:[[cx-A-.08,-.1,cz-B-.08],[cx+A+.08,.7,cz+B+.08]]});
-  for(const x of [217.5,263.5]){
+  // C12 (proyecto de ejecución): basins centred at plan x 213 and 260, taps 2 pt off the back.
+  for(const x of TAPS){
     const [wx]=P(x,0);
-    ctx.removeExported({material:'bronze',box:[[wx-.06,.84,-2.02],[wx+.06,1.25,-1.79]]});
+    ctx.removeExported({material:'bronze',box:[[wx-.06,.84,-2.22],[wx+.06,1.25,-1.99]]});
   }
 
   // --- Freestanding tub -------------------------------------------------------------
@@ -185,8 +187,8 @@ export async function apply(ctx){
   // Vanity gooseneck mixers with a lever beside each, contact shadows on the stone.
   // As in render 5 the neck turns towards screen right (west) over the basin, so it
   // reads in profile from the bath instead of as a flat post seen spout-on.
-  for(const x of [217.5,263.5]){
-    const [bx]=P(x,0),wx=bx+.05,z=-1.832,lx=bx-.13;
+  for(const x of TAPS){
+    const [bx]=P(x,0),wx=bx+.05,z=-2.032,lx=bx-.13;
     cyl(.03,.012,wx,.856,z,0,0,.032);
     gooseneck('Grifo lavabo cuello cisne',V(wx,.85,z),1.15,V(-.6,0,-.8),.078,.045,.0155);
     cyl(.02,.075,lx,.8875,z+.005);cyl(.0068,.065,lx,.925,z-.022,Math.PI/2+.35,0);
@@ -199,7 +201,7 @@ export async function apply(ctx){
   // slab: the kitchen's crosscut finish (world-projected colour and relief), on the
   // same baked light (split triangles keep their lightmap UVs).
   {
-    const top=ctx.splitExported({material:'stone',box:[[1.6,.69,-2.27],[3.6,.87,-1.78]]});
+    const top=ctx.splitExported({material:'stone',box:[[1.5,.59,-2.46],[3.55,.87,-1.98]]});
     const base=ctx.cloneMaterial(ctx.mats.kitchenCrosscut);base.color.set('#f4f0ea');
     // ctx.lightmap.material keeps the baked light; its program is keyed by kind-region.
     for(const piece of top)piece.material=ctx.lightmap.material(base,'crosscut','bano');
@@ -207,7 +209,7 @@ export async function apply(ctx){
     const c=document.createElement('canvas');c.width=4;c.height=64;const g=c.getContext('2d');
     const gr=g.createLinearGradient(0,0,0,64);gr.addColorStop(0,'#000');gr.addColorStop(.55,'#333');gr.addColorStop(1,'#fff');
     g.fillStyle=gr;g.fillRect(0,0,4,64);
-    contact(2.603,.8503,-1.83,.92,.04,.55,new THREE.CanvasTexture(c));
+    contact(2.522,.8503,-2.03,.97,.04,.55,new THREE.CanvasTexture(c));
   }
 
   // Two amber bottles right of the right-hand tap (render 5; screen right is west).
@@ -216,7 +218,7 @@ export async function apply(ctx){
     const label=new THREE.MeshStandardMaterial({color:'#e9e0d0',roughness:.8});
     const cap=new THREE.MeshStandardMaterial({color:'#151210',roughness:.35,metalness:.2});
     const prof=[[0,0],[.024,0],[.026,.004],[.026,.15],[.024,.162],[.012,.172],[.011,.19]].map(([r,y])=>new THREE.Vector2(r,y));
-    for(const [x,z,h] of [[1.93,-1.83,1],[1.86,-1.835,.93]]){
+    for(const [x,z,h] of [[1.93,-2.03,1],[1.86,-2.035,.93]]){
       const b=new THREE.Mesh(new THREE.LatheGeometry(prof,24),amber);b.scale.set(1,h,1);b.position.set(x,.85,z);group.add(b);
       const l=new THREE.Mesh(new THREE.CylinderGeometry(.0265,.0265,.07*h,24,1,true),label);l.position.set(x,.85+.085*h,z);group.add(l);
       const k=new THREE.Mesh(new THREE.CylinderGeometry(.012,.013,.03,16),cap);k.position.set(x,.85+.19*h+.015,z);group.add(k);

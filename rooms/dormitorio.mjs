@@ -199,12 +199,12 @@ export async function apply(ctx){
   // veneer tile (grain raised); the headboard and the bed base get one continuous
   // veneer sheet each (see veneerSheet): no tile repeats across their 3.3 and 2 m.
   const grain=oakGrain(THREE,ctx.mats.wood.map);
-  for(const piece of ctx.splitExported({material:'wood',box:[[.226,.32,-9.12],[.57,.5,-6.07]]})){
+  for(const piece of ctx.splitExported({material:'wood',box:[[.224,.2,-9.29],[.58,.52,-6.07]]})){
     piece.material.color.set('#d8dde6');
     if(grain){piece.material.map=grain;piece.material.needsUpdate=true;}
   }
   const sheet=veneerSheet(THREE,ctx.mats.wood.map);
-  const headboard=ctx.splitExported({material:'wood',box:[[.19,0,-9.3],[.235,1.2,-6.0]]});
+  const headboard=ctx.splitExported({material:'wood',box:[[.19,0,-9.3],[.2255,1.0,-5.9]]});
   const base=ctx.splitExported({material:'wood',box:[[.19,0,-8.75],[2.25,.3,-6.68]]});
   let panel=null;
   for(const [pieces,tint,isBase] of [[headboard,'#f6f6f8',false],[base,'#e3e8f0',true]]){

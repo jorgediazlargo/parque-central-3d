@@ -28,6 +28,17 @@ export function doorSegments(d,t) {
     const c=Math.cos(d.delta*t),s=Math.sin(d.delta*t);
     return [[d.a,[d.a[0]+dx*c+dz*s,d.a[1]+dz*c-dx*s]]];
   }
+  if(d.type==='doubleHinge') {
+    // French pair (M3): leaves hinged at a and b meet in the middle and swing d.delta
+    // (180 degrees) to the open side, pivoting d.pivot off the frame plane so each
+    // leaf folds flat over its fixed panel.
+    const len=Math.hypot(dx,dz),ux=dx/len,uz=dz/len,h=len/2,sg=Math.sign(d.delta);
+    const nx=uz*sg*(d.pivot??0),nz=-ux*sg*(d.pivot??0);
+    return [[d.a,1,ux,uz],[d.b,-1,-ux,-uz]].map(([p,k,vx,vz])=>{
+      const a=k*d.delta*t,c=Math.cos(a),s=Math.sin(a),q=[p[0]+nx*Math.sin(Math.abs(a)/2)**2*2,p[1]+nz*Math.sin(Math.abs(a)/2)**2*2];
+      return [q,[q[0]+(vx*c+vz*s)*h,q[1]+(vz*c-vx*s)*h]];
+    });
+  }
   if(d.type==='doubleSlide') {
     // Bi-parting pair: each leaf slides away from the centre, over the fixed
     // panel on its side, on a track d.trackOffset off the frame plane. The
