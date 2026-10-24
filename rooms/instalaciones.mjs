@@ -14,6 +14,22 @@
 export async function apply(ctx){
   const {THREE,data,group}=ctx;
   const sun=data.sunProtection,inst=data.installations;
+  // Stray export pieces (house.json `retired`, export_world.py): skirting laid where no
+  // wall is (rails on the salon floor) and the jamb posts that z-fight with the reveals.
+  // Removed by triangle index, so house.bin and its baked light stay as they are.
+  let retired=0;
+  for(const r of data.retired||[])retired+=ctx.removeExported({material:r.material,box:r.box});
+  // Door reveals lined in oak, like the flush leaves (G02): two jambs and the head over
+  // the export's jamb posts, which z-fought with the plaster reveal (a jagged frame).
+  {
+    const parts=[],DEPTH=.124,W=.03;
+    for(const {corners:[a,b]} of data.jambs||[]){
+      const dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz),tx=dx/L,tz=dz/L,yaw=Math.atan2(tx,tz),top=a[2];
+      const put=(along,w,y0,y1)=>{const g=new THREE.BoxGeometry(DEPTH,y1-y0,w);g.rotateY(yaw);g.translate(a[0]+tx*along,(y0+y1)/2,a[1]+tz*along);parts.push(g);};
+      put(W/2-.002,W,0,top);put(L-W/2+.002,W,0,top);put(L/2,L,top-.004,top+.002);
+    }
+    if(parts.length){const m=new THREE.Mesh(merge(THREE,parts),ctx.cloneMaterial(ctx.mats.wood));m.name='Jambas de roble';group.add(m);ctx.lightRuntimeObject(m);}
+  }
   const plastic=new THREE.MeshStandardMaterial({color:'#f1efea',roughness:.32});
   const metal=new THREE.MeshStandardMaterial({color:'#e7e3da',roughness:.4,metalness:.3});
   const dark=new THREE.MeshStandardMaterial({color:'#2b2a27',roughness:.6});
@@ -115,7 +131,7 @@ export async function apply(ctx){
     group.add(night);
     ctx.onTimeOfDay(n=>{night.visible=n;});
   }
-  console.info(`[rooms/instalaciones] ${sun.blinds.length} blinds, curtain, ${sun.shutters.length} shutters, ${inst.sockets.length} sockets, ${inst.switches.length} switch banks, ${inst.grilles.length} grilles`);
+  console.info(`[rooms/instalaciones] ${retired} stray triangles hidden, ${sun.blinds.length} blinds, curtain, ${sun.shutters.length} shutters, ${inst.sockets.length} sockets, ${inst.switches.length} switch banks, ${inst.grilles.length} grilles`);
 }
 
 function box(THREE,w,h,d,x,y,z){const g=new THREE.BoxGeometry(w,h,d);g.translate(x,y,z);return g;}
