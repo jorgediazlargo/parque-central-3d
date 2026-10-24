@@ -3,7 +3,7 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=65f7ecdcd5';
 import {Post} from './post.mjs?v=8fc2bec064';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=2f9d5cb8e0';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=dfa0ed6946';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
@@ -422,7 +422,9 @@ function leaf(width,height,glass,door){
     for(const x of [.003,width-.003])box(group,.003,height,.048,x,height/2,0,mats.dark);
     // P8 and P9 slide inside the wall skin: a flush recessed pull, no lever.
     if(door?.type==='slide'){for(const z of [-.024,.024])box(group,.016,.30,.004,width-.06,1.03,z,mats.bronze);}
-    else for(const z of [-.048,.048]) {
+    // G02: concealed hinges and a magnetic catch, both black: the catch on the lock edge.
+    else{box(group,.003,.12,.02,width-.0015,1.03,0,mats.dark);for(const y of [.25,1.10,1.95])box(group,.003,.10,.016,.0015,y,0,mats.dark);}
+    if(door?.type!=='slide')for(const z of [-.048,.048]) {
       box(group,.11,.018,.025,width-.10,1.03,z,mats.bronze);
       const rose=new THREE.Mesh(new THREE.CylinderGeometry(.018,.018,.010,24),mats.bronze);
       rose.rotation.x=Math.PI/2;rose.position.set(width-.065,1.03,z*.58);group.add(rose);
@@ -795,7 +797,7 @@ async function load(){
     // only the last room module and the captures read. Shared bandwidth would otherwise
     // deliver the geometry last.
     const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
-    const house=Promise.all([get('./assets/house.json?v=c4926e78ac',r=>r.json()),get('./assets/house.bin?v=d7106f39f2',r=>r.arrayBuffer())]);
+    const house=Promise.all([get('./assets/house.json?v=da98e82f2a',r=>r.json()),get('./assets/house.bin?v=e14ff2aa29',r=>r.arrayBuffer())]);
     const surfaceMaps=loadSurfaceMaps(),views=loadViews();
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();

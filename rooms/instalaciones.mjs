@@ -6,7 +6,8 @@
 //   (1,29), play room and girls' bedroom (2,08), rolled up by default; one curtain wall
 //   to wall across salon and dining, gathered in the four stacks of the plan; motorised
 //   exterior shutters on every window, raised (guides and bottom slat in sight).
-// - F06 sockets, F05 switch banks, F03 grilles (supply 0,89 m, return 0,50 m: in the
+// - F06 sockets, data points, ceiling outlets and wall devices, F05 switch banks, F04
+//   extract fans and outlets, F03 grilles (supply 0,89 m, return 0,50 m: in the
 //   ceiling, in a riser of a raised ceiling or high on a wall) and Airzone thermostats.
 // - Terrace (F05): its wall lights and soffit points are exported fixtures; at night
 //   they throw soft pools on the walls and floor (the terrace is not baked).
@@ -14,11 +15,14 @@
 export async function apply(ctx){
   const {THREE,data,group}=ctx;
   const sun=data.sunProtection,inst=data.installations;
-  // Stray export pieces (house.json `retired`, export_world.py): skirting laid where no
-  // wall is (rails on the salon floor) and the jamb posts that z-fight with the reveals.
-  // Removed by triangle index, so house.bin and its baked light stay as they are.
-  let retired=0;
-  for(const r of data.retired||[])retired+=ctx.removeExported({material:r.material,box:r.box});
+  // I02 Schock sinks (granite composite in the worktop's colour): the bake leaves the
+  // deep bowls nearly black, so they take the probes' light with the stone's finish.
+  for(const box of [[[8.64,.70,-.82],[9.26,.905,-.40]],[[15.52,.60,-.78],[16.07,.805,-.29]]]){
+    for(const piece of ctx.splitExported({material:'kitchenStone',box})){
+      piece.material=ctx.cloneMaterial(ctx.mats.kitchenStone);delete piece.material.userData.bakedLit;
+      piece.geometry.deleteAttribute('uv1');ctx.lightRuntimeObject(piece);
+    }
+  }
   // Door reveals lined in oak, like the flush leaves (G02): two jambs and the head over
   // the export's jamb posts, which z-fought with the plaster reveal (a jagged frame).
   {
@@ -89,6 +93,29 @@ export async function apply(ctx){
     onWall(plates,t,t.y,.09,.09,.016);
     onWall(screens,{at:t.at.map((v,i)=>v+t.normal[i]*.016),normal:t.normal},t.y+.008,.052,.04,.0008);
   }
+  // F06 data points (RJ45 plate) and wall devices: panel, entry phone, buzzer, router, repeater.
+  for(const d of inst.data||[]){
+    onWall(plates,d,d.y,.082,.082,.009);
+    onWall(holes,{at:d.at.map((v,i)=>v+d.normal[i]*.009),normal:d.normal},d.y,.016,.012,.0008);
+  }
+  for(const d of inst.devices||[]){
+    const deep={cuadro:.012,router:.035,videoportero:.02}[d.name]||.015;
+    onWall(plates,d,d.y,d.w,d.h,deep);
+    const face={at:d.at.map((v,i)=>v+d.normal[i]*deep),normal:d.normal};
+    if(d.name==='cuadro')onWall(holes,face,d.y-d.h/2+.03,.05,.004,.0008);           // finger pull
+    if(d.name==='videoportero')onWall(screens,face,d.y+.03,.09,.07,.0008);
+    if(d.name==='router')onWall(screens,face,d.y,d.w-.02,d.h-.02,.0008);
+  }
+  // F06 ceiling outlets for a screen and F04 ceiling extract fans: round plates.
+  const disc=(list,x,y,z,r,t)=>{const g=new THREE.CylinderGeometry(r,r,t,32);g.translate(x,y-t/2,z);list.push(g);};
+  for(const [x,z,h] of inst.ceilingPoints||[])disc(plates,x,h,z,.045,.008);
+  for(const [x,z,h] of inst.fans||[]){disc(plates,x,h,z,.085,.012);disc(holes,x,h-.012,z,.055,.001);}
+  // F04: the kitchen's extract grille in the riser of the island coffer, and the
+  // carbon-filter outlet in the island plinth.
+  if(inst.riserFan){const f=inst.riserFan;onWall(plates,f,f.y,.16,.16,.008);
+    for(let i=0;i<5;i++)onWall(holes,{at:f.at.map((v,k)=>v+f.normal[k]*.008),normal:f.normal},f.y-.05+i*.025,.12,.007,.0008);}
+  if(inst.plinthOutlet){const [x,z]=inst.plinthOutlet,o={at:[x,z+.003],normal:[0,1]};
+    for(let i=0;i<4;i++)onWall(holes,o,.025+i*.02,.21,.009,.002);}
   const add=(list,mat,name)=>{if(!list.length)return;const m=new THREE.Mesh(merge(THREE,list),mat);m.name=name;group.add(m);ctx.lightRuntimeObject(m);};
   add(plates,plastic,'Mecanismos placas');add(insets,plastic,'Mecanismos teclas');add(holes,dark,'Mecanismos tomas');add(screens,dark,'Termostatos pantalla');
 
@@ -131,7 +158,7 @@ export async function apply(ctx){
     group.add(night);
     ctx.onTimeOfDay(n=>{night.visible=n;});
   }
-  console.info(`[rooms/instalaciones] ${retired} stray triangles hidden, ${sun.blinds.length} blinds, curtain, ${sun.shutters.length} shutters, ${inst.sockets.length} sockets, ${inst.switches.length} switch banks, ${inst.grilles.length} grilles`);
+  console.info(`[rooms/instalaciones] ${sun.blinds.length} blinds, curtain, ${sun.shutters.length} shutters, ${inst.sockets.length} sockets, ${inst.switches.length} switch banks, ${inst.grilles.length} grilles`);
 }
 
 function box(THREE,w,h,d,x,y,z){const g=new THREE.BoxGeometry(w,h,d);g.translate(x,y,z);return g;}
