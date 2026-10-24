@@ -441,10 +441,11 @@ function placeDoor(d,t){
 }
 function setupDoors(){
   doors=data.doors.map(spec=>{
-    const d={...spec,t:0,goal:0,groups:[],polys:[]};
+    // spec.open: a door that starts open (M1, the kitchen screen, parks on the wall).
+    const t=spec.open||0,d={...spec,t,goal:t,groups:[],polys:[]};
     const n=d.panels||1,w=Math.hypot(d.b[0]-d.a[0],d.b[1]-d.a[1])/n;
     for(let i=0;i<n;i++){const g=leaf(w,d.height,d.glass,d);d.groups.push(g);scene.add(g);runtimeObjects.push(g);}
-    placeDoor(d,0);return d;
+    placeDoor(d,t);return d;
   });
   const [a,b]=data.fixedStudy,g=new THREE.Group(),length=Math.hypot(b[0]-a[0],b[1]-a[1]);
   g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);scene.add(g);runtimeObjects.push(g);
@@ -794,7 +795,7 @@ async function load(){
     // only the last room module and the captures read. Shared bandwidth would otherwise
     // deliver the geometry last.
     const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
-    const house=Promise.all([get('./assets/house.json?v=cf041d20b8',r=>r.json()),get('./assets/house.bin?v=d7106f39f2',r=>r.arrayBuffer())]);
+    const house=Promise.all([get('./assets/house.json?v=581b2f81b1',r=>r.json()),get('./assets/house.bin?v=d7106f39f2',r=>r.arrayBuffer())]);
     const surfaceMaps=loadSurfaceMaps(),views=loadViews();
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();
