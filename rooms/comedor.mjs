@@ -12,13 +12,8 @@
 // six merged into one mesh per material; the decals are one mesh too.
 //
 // Round 7 (render 2):
-// - Linear wall light. model_source places it (and the two relief panels) 1-4 cm
-//   behind the finished east wall face (x 12.967), so it was never seen nor baked.
-//   It is drawn here on that face (bronze bar, LED underside) and its grazing wash is
-//   added to the baked light of the wall in the shader (closed form of a line source
-//   4.5 cm off the wall, strong downward, weaker upward, fanning out at the ends; the
-//   plaster relief catches it). Relative to the wall's own baked light, so it holds
-//   if the bake changes.
+// - F05 has no wall light in the dining room (its light is the cove and the pendant
+//   over the table, both exported): the linear wall light of render 2 is gone.
 // - Table top rebuilt (the exported one had stretched, vertical grain on its edge):
 //   100 x 237 cm, R 10 cm corners, crisp 2 cm edge with a rounded arris and an
 //   undercut below, oak veneer running the length on the top and round the edge.
@@ -38,16 +33,6 @@ const CHAIRS=[[11.352,-7.070,-1],[11.078,-6.440,-1],[11.352,-5.810,-1],[12.182,-
 const PEDESTALS=[[11.767,-7.137],[11.767,-5.740]];
 const TABLE={x0:11.267,x1:12.267,z0:-7.625,z1:-5.255};
 
-// Finished east wall face and the wall light on it (model_source 'Aplique comedor').
-const WALL_X=12.967;
-const SCONCE={z0:-7.661,z1:-5.488,y0:1.730,y1:1.756,depth:.025};
-// Wash relative to the wall's baked light: a tight grazing term (source d metres off
-// the wall, peak gain at the bar) and a broad one (light bounced off floor and table).
-// base: the bake lights this wall about 20 % above render 2 (daylight from the facade,
-// the render is an evening scene), which left the wall a flat bright plane.
-const WASH={y:1.735,tight:{d:.045,down:12.0,up:8.0},broad:{d:.3,down:.25,up:.08},base:.85,color:[1,.80,.60]};
-// The base only offsets the facade daylight: 1 at night (ctx.onTimeOfDay).
-const WASH_BASE={value:WASH.base};
 const TOP={y0:.715,y1:.76,r:.50,arris:.004,edge:.02,under:.03};
 // Pedestal radii (m): under the top, slimmest, at the floor; the waist height.
 const PEDESTAL={top:.07,waist:.05,foot:.18,neck:.56};
@@ -64,7 +49,6 @@ const BACK={r:.218,half:62*Math.PI/180,cap:.075,thick:.025,height:.088,y:.716,le
 
 export async function apply(ctx){
   const {THREE}=ctx;
-  ctx.onTimeOfDay(night=>{WASH_BASE.value=night?1:WASH.base;});
   // The cove wash of the raised ceiling is now shared (lightmap.mjs upCoves).
   // Drop the exported chairs (cushions, backs, legs); the table stays.
   const boxes=CHAIRS.map(([x,z,s])=>[[x-.32,-.1,z-.26],[x+.32,1.0,z+.26]]);
@@ -121,7 +105,6 @@ export async function apply(ctx){
   shadow.renderOrder=-1;shadow.name='comedor:sombra';ctx.group.add(shadow);
 
   table(ctx);
-  wallLight(ctx);
 }
 
 // Table: the exported slab, drum pedestals and bowl go; a racetrack top with a crisp
@@ -219,50 +202,6 @@ function oakMaterial(ctx){
   };
   m.customProgramCacheKey=()=>key+'-comedorOak';
   return m;
-}
-
-// Linear wall light on the east wall and its wash on the plaster.
-function wallLight(ctx){
-  const {THREE}=ctx,{z0,z1,y0,y1,depth}=SCONCE,len=z1-z0;
-  const bronze=ctx.cloneMaterial(ctx.mats.bronze);bronze.roughness=.42;
-  const bar=new THREE.Mesh(new THREE.BoxGeometry(depth,y1-y0,len),bronze);
-  bar.position.set(WALL_X-depth/2,(y0+y1)/2,(z0+z1)/2);bar.name='comedor:aplique';
-  ctx.group.add(bar);ctx.lightRuntimeObject(bar);
-  const led=new THREE.Mesh(new THREE.PlaneGeometry(.012,len-.02).rotateX(Math.PI/2),ctx.mats.led);
-  led.position.set(WALL_X-depth/2,y0-.0005,(z0+z1)/2);led.name='comedor:aplique LED';ctx.group.add(led);
-
-  // Grazing wash: a uniform line source at distance d from the wall, emitting up or
-  // down (cosine about the vertical). On the wall, E ~ d|dy| * integral of dz/r^4 over
-  // the bar, in closed form; normalised to 1 at its peak (|dy| = d/sqrt2, mid-bar).
-  const f=(d,dy)=>d*Math.abs(dy)*Math.PI/2/Math.pow(dy*dy+d*d,1.5);
-  const term=({d,down,up},name)=>{
-    const peak=f(d,d/Math.SQRT2);
-    return `{float d=${d.toFixed(3)},r2=dy*dy+d*d,r=sqrt(r2);
-      float u1=${z1.toFixed(3)}-houseWorld.z,u0=${z0.toFixed(3)}-houseWorld.z;
-      float G=u1/(2.0*r2*(r2+u1*u1))+atan(u1/r)/(2.0*r2*r)-u0/(2.0*r2*(r2+u0*u0))-atan(u0/r)/(2.0*r2*r);
-      ${name}+=(dy<0.0?${down.toFixed(3)}:${up.toFixed(3)})*d*abs(dy)*G/${peak.toFixed(4)};}`;
-  };
-  const [cr,cg,cb]=WASH.color;
-  for(const piece of ctx.splitExported({material:'wall',box:[[WALL_X-.02,-.1,-8.8],[WALL_X+.02,2.6,-4.7]]})){
-    const mat=piece.material,prev=mat.onBeforeCompile,key=mat.customProgramCacheKey();
-    mat.onBeforeCompile=function(shader,renderer){
-      prev.call(this,shader,renderer);
-      shader.uniforms.comedorWashBase=WASH_BASE;
-      shader.fragmentShader='uniform float comedorWashBase;\n'+shader.fragmentShader.replace(/(vec3 bakedE=bakedSqrt\*bakedSqrt\*[\d.]+;)/,`$1
-        if(houseNormal.x<-.5){
-          float dy=houseWorld.y-${WASH.y.toFixed(3)},tight=0.0,broad=0.0;
-          ${term(WASH.tight,'tight')}
-          ${term(WASH.broad,'broad')}
-          // Grazing light shows the plaster relief: perturbed against flat normal.
-          vec3 sconceL=normalize(vec3(-${WASH.tight.d.toFixed(3)},-dy,0.0));
-          vec3 sconceN=inverseTransformDirection(normal,viewMatrix);
-          float relief=clamp(max(dot(sconceN,sconceL),0.0)/max(dot(normalize(houseNormal),sconceL),.05),.55,1.8);
-          bakedE*=comedorWashBase;
-          bakedE+=vec3(${cr.toFixed(2)},${cg.toFixed(2)},${cb.toFixed(2)})*dot(bakedE,vec3(.2126,.7152,.0722))*(tight*relief+broad);
-        }`);
-    };
-    mat.customProgramCacheKey=()=>key+'-comedorSconce';mat.needsUpdate=true;
-  }
 }
 
 // Vertex occlusion of the merged upholstery (world space): undersides and the seat

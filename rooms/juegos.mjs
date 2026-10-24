@@ -3,11 +3,8 @@
 // edits inside this room's zone (scripts/rooms/juegos.json).
 //
 // Render 8 against B01 (window 0.94 m, guest bench under it, desk west, kids' table east):
-// - Roller blind: the exported one (a box with the shared sheer material, ~10× brighter
-//   than the walls from behind, so it read as a white emissive panel) becomes a slub
-//   linen roller blind: woven canvas texture with a little openness (the outside shows
-//   faintly), weighted bottom bar and roller, lit by the probes with a measured
-//   diffuse transmission (probes behind it ≈ 135 W/m², walls by it ≈ 10).
+// - The electric blind of L01 (2,08 m, rooms/instalaciones.mjs) replaces the linen
+//   roller blind of render 8.
 // - A pale daylight haze just outside the glass so the view reads as bright daylight.
 // - Bench: a sewn seat cushion with a crowned top and piped edge replaces the exported
 //   slab and its two arm blocks (render 8 has none); soft cushions (puffy, pinched
@@ -27,53 +24,12 @@
 // - Walls and ceiling: the bake's 10–30 cm stains low-passed once on load (wallLowPass),
 //   limewash clouds down to a breath (the plaster grain is the house's, app.js), 60 % of the
 //   orange bounce chroma, crisp occlusion creases at the wall/ceiling/corner junctions.
-// - Plaster pelmet over the blind; paler oak; slimmer kids' table and chairs; denser
+// - Paler oak; slimmer kids' table and chairs; denser
 //   contact shadows.
-
-const BLIND={x0:14.565,x1:15.533,top:2.43,bottom:1.45,z:-9.392};
-// Diffuse transmission of the blind (patchLighting translucency).
-const BLIND_T=.13;
-
 
 function rand(seed){let s=seed>>>0;return ()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296;};}
 
 // Slub linen weave: RGB = reflectance detail (0.5 = material colour), A = coverage.
-function blindTexture(THREE,linen){
-  const N=1024,c=document.createElement('canvas');c.width=c.height=N;
-  const g=c.getContext('2d'),r=rand(81);
-  // Fine photographed weave (Poly Haven rough linen, 27 cm tile) shown at 18 cm.
-  g.fillStyle='#808080';g.fillRect(0,0,N,N);
-  if(linen){const k=N/2;for(let y=0;y<N;y+=k)for(let x=0;x<N;x+=k)g.drawImage(linen,x,y,k,k);}
-  const base=g.getImageData(0,0,N,N),d=base.data;
-  // Weft slubs: thicker, denser horizontal threads of random length (they read at
-  // room scale), and thin gaps between picks.
-  const dens=new Float32Array(N*N);
-  // 1024 px = 60 cm: slubs 2–7 mm thick and 3–45 cm long, so they read from the door.
-  for(let i=0;i<520;i++){
-    const y=Math.floor(r()*N),x0=Math.floor(r()*N),len=50+r()*r()*700,th=3+Math.floor(r()*r()*10),amp=(r()<.7?1:-1)*(.4+r()*.6);
-    for(let t=0;t<len;t++){
-      const x=(x0+t)%N,fade=Math.min(1,Math.sin(Math.PI*t/len)*2.5);
-      for(let k=0;k<th;k++)dens[((y+k)%N)*N+x]+=amp*fade*Math.sin(Math.PI*(k+.5)/th);
-    }
-  }
-  // Uneven warp: faint vertical bands.
-  const warp=new Float32Array(N);for(let i=0;i<60;i++){const x0=Math.floor(r()*N),w=2+Math.floor(r()*6),a=(r()-.5)*.8;for(let k=0;k<w;k++)warp[(x0+k)%N]+=a;}
-  for(let y=0;y<N;y++){
-    const row=Math.sin(y*Math.PI*2/N*96)*.5+.5;   // picks, ~1.9 mm
-    for(let x=0;x<N;x++){
-      const i=y*N+x,p=i*4,lin=d[p]/255,s=Math.max(-1.2,Math.min(1.6,dens[i]+warp[x]*.5));
-      // Denser slubs: more opaque, but they pass less light (darker against the window).
-      const v=Math.min(1,Math.max(0,.5+(lin-.5)*.5-s*.11));
-      const a=Math.min(1,Math.max(0,.80+s*.09-(1-row)*.05+(lin-.5)*.2));
-      d[p]=d[p+1]=d[p+2]=Math.round(v*255);d[p+3]=Math.round(a*255);
-    }
-  }
-  g.putImageData(base,0,0);
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.NoColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;
-  t.anisotropy=8;t.premultiplyAlpha=false;return t;
-}
-
-// Detail map (grey, 0.5 = own colour) applied with a set amount; optional pinstripes.
 function fabricMaterial(THREE,{color,detail,normal,amount=.6,normalScale=.6,stripes=null,key}){
   const m=new THREE.MeshStandardMaterial({color,roughness:.96,metalness:0,normalMap:normal||null});
   if(normal)m.normalScale.set(normalScale,normalScale);
@@ -468,9 +424,7 @@ function shadowAtlas(THREE){
 
 export async function apply(ctx){
   const {THREE,group,mats}=ctx;
-  const loadImg=url=>new Promise(res=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>res(null);im.src=url;});
-  const [linenImg,linenDetail,linenNormal]=await Promise.all([
-    loadImg('./assets/polyhaven/rough_linen/rough_linen_detail_1k.webp'),
+  const [linenDetail,linenNormal]=await Promise.all([
     ctx.loadTexture('./assets/polyhaven/rough_linen/rough_linen_detail_1k.webp',{srgb:false}),
     ctx.loadTexture('./assets/polyhaven/rough_linen/rough_linen_nor_gl_1k.webp',{srgb:false})]);
   linenNormal.repeat.set(1/.27,1/.27);
@@ -546,33 +500,8 @@ export async function apply(ctx){
       transparent:true,depthWrite:false,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2});
     const g=new THREE.PlaneGeometry(15.70-13.07,9.48-4.85);g.rotateX(-Math.PI/2);
     add(g,fl,{renderOrder:0}).position.set((13.07+15.70)/2,.0004,(-9.48-4.85)/2);}
-  // Plaster pelmet over the blind, flush with the ceiling (render 8): hides the roller and
-  // the sliver of reveal above it.
-  add(place(THREE,rbox(THREE,1.06,.12,.17,.004),[15.05,2.55-.06,-9.53+.085]),new THREE.MeshStandardMaterial({color:'#e2d9cc',roughness:.9}));
+  // L01: the electric blind of this window (2,08 m) is rooms/instalaciones.mjs'.
 
-  // --- Roller blind ---------------------------------------------------------------
-  // Exported blind (curtain box) and its oak bottom bar.
-  ctx.removeExported({material:'curtain',box:[[14.5,1.4,-9.45],[15.6,2.5,-9.35]]});
-  ctx.removeExported({material:'wood',box:[[14.5,1.4,-9.45],[15.6,1.5,-9.35]]});
-  const weave=blindTexture(THREE,linenImg);
-  const bw=BLIND.x1-BLIND.x0,bh=BLIND.top-BLIND.bottom,bx=(BLIND.x0+BLIND.x1)/2;
-  const blindGeo=new THREE.PlaneGeometry(bw,bh,1,1);
-  {const uv=blindGeo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*bw/.6,uv.getY(i)*bh/.6);}
-  const blindMat=new THREE.MeshStandardMaterial({color:new THREE.Color(.88,.80,.68).multiplyScalar(2),map:weave,roughness:1,metalness:0,
-    transparent:true,depthWrite:false,side:THREE.DoubleSide});
-  blindMat.userData.translucency=BLIND_T;
-  blindMat.onBeforeCompile=shader=>{
-    // No sheen on the cloth.
-    shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_end>','reflectedLight.directSpecular=vec3(0.0);\n#include <lights_fragment_end>');
-  };
-  blindMat.customProgramCacheKey=()=>'juegos-blind';
-  const blind=add(blindGeo,blindMat,{renderOrder:2});blind.position.set(bx,(BLIND.top+BLIND.bottom)/2,BLIND.z);
-  // Fabric-wrapped weighted bottom bar and the roller tube; brackets.
-  const barMat=fabricMaterial(THREE,{color:'#d9d0c2',detail:linenDetail,normal:linenNormal,amount:.4,key:'bar'});
-  add([place(THREE,new THREE.BoxGeometry(bw,.022,.014),[bx,BLIND.bottom+.004,BLIND.z+.004]),
-    place(THREE,new THREE.CylinderGeometry(.026,.026,bw+.02,24),[bx,BLIND.top+.018,BLIND.z-.012],[0,0,Math.PI/2])],barMat);
-  add([BLIND.x0-.012,BLIND.x1+.012].map(x=>place(THREE,new THREE.BoxGeometry(.012,.07,.06),[x,BLIND.top+.018,BLIND.z-.02])),
-    new THREE.MeshStandardMaterial({color:'#e8e4dc',roughness:.5}));
   // Daylight outside the glass: the shared backdrop is a print at display brightness,
   // so behind this window it is lifted ×4.4 (dst·(1+k), detail kept) and softened by a
   // light haze, to read as bright daylight behind a sunlit blind (render 8).
@@ -583,7 +512,7 @@ export async function apply(ctx){
   const haze=new THREE.Mesh(new THREE.PlaneGeometry(.94,1.40),new THREE.MeshBasicMaterial({color:new THREE.Color(2.3,2.24,2.12),transparent:true,opacity:.2,depthWrite:false,toneMapped:false}));
   haze.position.set(15.05,1.65,-9.69);group.add(haze);
   // At night the window wash, the lifted backdrop and the haze go: the room keeps its
-  // night bake (globe sconce, downlight) and the night backdrop behind the blind.
+  // night bake (ceiling points) and the night backdrop behind the blind.
   ctx.onTimeOfDay(night=>{
     JG_DAY.value=night?0:1;lift.visible=haze.visible=!night;
     const key=night?'night':'day';lowPasses[key]??=wallLowPass(THREE,ctx,wallPieces);jgBlur.value=lowPasses[key].texture;
@@ -701,12 +630,12 @@ export async function apply(ctx){
 
   // Probe light and room reflections for everything lit (not the haze or shadows).
   ctx.lightRuntimeObject(group);
-  // Window wash on everything probe-lit here (not the blind, which has its own
-  // transmission, nor the haze, overlay or shadows).
+  // Window wash on everything probe-lit here (not the haze, overlay or shadows; the
+  // L01 blind belongs to rooms/instalaciones.mjs).
   const washed=new Map();
   group.traverse(o=>{
     const src=o.material;
-    if(!o.isMesh||o===blind||!src?.userData?.runtimeLit)return;
+    if(!o.isMesh||!src?.userData?.runtimeLit)return;
     if(!washed.has(src)){
       const m=ctx.cloneMaterial(src),prior=m.onBeforeCompile,key=src.customProgramCacheKey();
       m.onBeforeCompile=(shader,r)=>{

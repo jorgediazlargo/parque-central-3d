@@ -3,12 +3,12 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=65f7ecdcd5';
 import {Post} from './post.mjs?v=8fc2bec064';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=15a3787123';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=2f9d5cb8e0';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=142d51f6bb';
-import {applyRooms,preloadRooms} from './rooms.mjs?v=1bc441bbe7';
+import {applyRooms,preloadRooms} from './rooms.mjs?v=23a0bca5eb';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=4bcf41157e';
@@ -38,7 +38,7 @@ for(const key of ['sound','bob','night']) {
 $('night').disabled=true;  // until the house is lit (load)
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
-const porcelainMap={value:null},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null};
+const porcelainMap={value:null},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
 const PLASTER_TILE=.75;  // metres per plaster.webp tile (style_textures.py)
 // Clear glass: a faint tinted body, reflections (box-projected room probes) at full
 // strength and the background let through by what neither takes (Schlick Fresnel),
@@ -144,26 +144,32 @@ function material(color,kind,roughness=.7){
         // pores, calcite flecks and trowelled streaks, projected in world metres as the
         // export lays its UVs. Two samples of the tile at unrelated scales and turns hide
         // the repeat; the relief tilts the normal in the same frame. Over it the
-        // limewash clouds, now a faint breath (at ±13 % they read as stains). Ceilings
-        // are paint: a calmer finish.
+        // limewash clouds, now a faint breath (at ±13 % they read as stains).
+        // H03: lime paint only on the faces the plan marks (cal-mask.png, sampled 1 cm in
+        // front of the wall); every other wall and every ceiling (H04) is smooth white
+        // plastic paint.
         shader.uniforms.plasterMap=plasterMap;shader.uniforms.plasterNormal=plasterNormal;
-        shader.fragmentShader='uniform sampler2D plasterMap,plasterNormal;\n'+shader.fragmentShader.replace('void main() {',`
+        shader.uniforms.limeMask=limeMask;shader.uniforms.limeBox=limeBox;
+        shader.fragmentShader='uniform sampler2D plasterMap,plasterNormal,limeMask;\nuniform vec4 limeBox;\n'+shader.fragmentShader.replace('void main() {',`
           #define PLASTER_TILE ${PLASTER_TILE.toFixed(2)}
           #define PLASTER_RELIEF 1.6
           const mat2 plasterTurn=mat2(.8387,.5446,-.5446,.8387),plasterBack=mat2(.8387,-.5446,.5446,.8387);
           void main() {`).replace('#include <map_fragment>',`
           float limeCeiling=smoothstep(-.45,-.85,houseNormal.y);
+          vec2 limeN=houseNormal.xz;limeN=length(limeN)>.001?normalize(limeN):vec2(0.0);
+          float limeF=texture2D(limeMask,(houseWorld.xz+limeN*.01-limeBox.xy)/(limeBox.zw-limeBox.xy)).r*step(abs(houseNormal.y),.5);
           vec3 plasterAxis=abs(houseNormal),plasterT=vec3(1.0,0.0,0.0),plasterB=vec3(0.0,1.0,0.0);vec2 plasterAt=houseWorld.xy;
           if(plasterAxis.y>max(plasterAxis.x,plasterAxis.z)){plasterAt=vec2(houseWorld.x,-houseWorld.z);plasterB=vec3(0.0,0.0,-1.0);}
           else if(plasterAxis.x>plasterAxis.z){plasterAt=vec2(-houseWorld.z,houseWorld.y);plasterT=vec3(0.0,0.0,-1.0);}
           vec2 plasterUvA=plasterAt/PLASTER_TILE,plasterUvB=plasterTurn*plasterAt/(PLASTER_TILE*1.29)+vec2(.37,.61);
-          float plasterAmount=mix(1.0,.3,limeCeiling);
+          float plasterAmount=mix(.12,1.0,limeF);
           diffuseColor.rgb*=1.0+((texture2D(plasterMap,plasterUvA).rgb*1.9922-1.0)+(texture2D(plasterMap,plasterUvB).rgb*1.9922-1.0)*.7)*plasterAmount;
           #ifdef USE_MAP
           float lime=(texture2D(map,vMapUv).r-.5)*.5+(texture2D(map,vMapUv*.37+vec2(.31,.17)).r-.5)*.4;
-          diffuseColor.rgb*=1.0+lime*mix(.30,.25,limeCeiling)*vec3(.92,1.0,1.15);
+          diffuseColor.rgb*=1.0+lime*mix(.30,.25,limeCeiling)*limeF*vec3(.92,1.0,1.15);
           #endif
-          diffuseColor.rgb*=mix(vec3(1.0),vec3(.94,.93,.92),limeCeiling);`).replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+          // White plastic paint (#f2efea) where there is no lime (#e0d3c8).
+          diffuseColor.rgb*=mix(vec3(1.19,1.326,1.424),vec3(1.0),limeF);`).replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
           {vec2 plasterTilt=((texture2D(plasterNormal,plasterUvA).xy*2.0-1.0)+plasterBack*(texture2D(plasterNormal,plasterUvB).xy*2.0-1.0)*.7)*PLASTER_RELIEF*plasterAmount;
           vec3 plasterN=inverseTransformDirection(normal,viewMatrix);
           normal=normalize((viewMatrix*vec4(normalize(plasterN+plasterT*plasterTilt.x+plasterB*plasterTilt.y),0.0)).xyz);}`);
@@ -249,8 +255,8 @@ function material(color,kind,roughness=.7){
       }
       if(kind==='wall'){
         let glow='float cove=0.0;';
-        for(const r of data?.coves||[]){
-          const [x0,z0,x1,z1,h]=r;
+        for(const i of data?.litCoves||[]){
+          const [x0,z0,x1,z1,h]=data.coves[i];
           glow+=`{vec2 q=houseWorld.xz;vec2 lo=vec2(${x0.toFixed(5)},${z0.toFixed(5)}),hi=vec2(${x1.toFixed(5)},${z1.toFixed(5)});vec2 outer=max(max(lo-q,q-hi),vec2(0.0));float edge=min(min(abs(q.x-lo.x),abs(q.x-hi.x)),min(abs(q.y-lo.y),abs(q.y-hi.y)));cove+=exp(-edge*7.0-length(outer)*13.0-abs(houseWorld.y-${(h+.07).toFixed(3)})*6.0)*.42;}`;
         }
         shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',glow+'\noutgoingLight+=vec3(1.0,.62,.32)*cove;\n// Terrace soffit (photo): pale, lit by the sunlit floor and the sky, which the bake does not carry out there.\nfloat terraceSoffit=step(2.5,houseWorld.y)*step(houseWorld.z,-8.7)*step(4.3,houseWorld.x)*step(houseWorld.x,14.4);\noutgoingLight+=diffuseColor.rgb*vec3(1.0,.985,.95)*.85*terraceSoffit;\n#include <opaque_fragment>');
@@ -288,6 +294,13 @@ Object.assign(mats,{melamine:material('#ded8cd',null,.75),anthracite:material('#
 // E01-E03 bicolour aluminium; M2 mirror leaves (probe reflections, no second pass).
 mats.ral9001=material('#e9e2d0',null,.45);mats.facadeGold=material('#a88a52',null,.4);mats.facadeGold.metalness=.6;
 mats.mirrorLeaf=new THREE.MeshStandardMaterial({color:'#e4e4de',metalness:1,roughness:.18});
+// K01-K02 mirrors (silvered glass, probe reflections); I02 finishes: Tece flush plates
+// in gloss white, taps in brushed nickel (G4, G5), raw brushed metal (G3), copper (G7).
+// The room probes give these small mirrors almost no reflection (a black pane), so they
+// read as pale silvered glass: probe-lit grey with a glossy sheen, no second pass.
+mats.mirror=new THREE.MeshStandardMaterial({color:'#b9bcba',metalness:.35,roughness:.12});
+Object.assign(mats,{glossWhite:material('#f3f1ec',null,.14),nickel:material('#bdb8ae',null,.3),rawMetal:material('#93897b',null,.4),copper:material('#b39280',null,.36)});
+mats.nickel.metalness=.9;mats.rawMetal.metalness=.85;mats.copper.metalness=.9;
 // Wet-zone slabs share the floor: porcelain of the H01 plan.
 mats.tile=mats.floor;
 mats.curtain.transparent=true;mats.curtain.opacity=.62;mats.curtain.depthWrite=false;mats.curtain.userData.translucency=.75;
@@ -307,10 +320,11 @@ function loadSurfaceMaps(){
     image('./assets/textures/travertine.webp?v=2bc29d0cfa'),
     Promise.all(['stone_crosscut','stone_crosscut_nor'].map(n=>image(`./assets/textures/${n}.webp`))),
     Promise.all(['./assets/textures/limewash.webp?v=76a3d72611','./assets/textures/plaster.webp?v=c910d3af3d',
-      './assets/textures/plaster_nor.webp?v=70c8c6dff6','./assets/textures/white_plaster_02_rough_1k.jpg?v=4ff1fe957c'].map(n=>image(n)))]);
+      './assets/textures/plaster_nor.webp?v=70c8c6dff6','./assets/textures/white_plaster_02_rough_1k.jpg?v=4ff1fe957c'].map(n=>image(n))),
+    image('./assets/cal-mask.png?v=426724678d',{flipY:false})]);
 }
 async function surfaceTextures(loading){
-  const [sets,porcelain,oak,kitchenOak,stone,[crosscut,crosscutNor],[lime,plaster,plasterNor,plasterRough]]=await loading;
+  const [sets,porcelain,oak,kitchenOak,stone,[crosscut,crosscutNor],[lime,plaster,plasterNor,plasterRough],mask]=await loading;
   for(const {maps,targets,scale,strength} of sets){
     maps.forEach((t,i)=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(scale,scale);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());if(i===0)t.colorSpace=THREE.SRGBColorSpace;});
     for(const key of targets){mats[key].map=maps[0];mats[key].normalMap=maps[1];mats[key].roughnessMap=maps[2];mats[key].normalScale.set(strength,strength);mats[key].needsUpdate=true;}
@@ -335,6 +349,9 @@ async function surfaceTextures(loading){
   for(const t of [lime,plaster,plasterNor,plasterRough]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
   lime.repeat.set(.6,.6);plasterRough.repeat.set(.8,.8);plasterMap.value=plaster;plasterNormal.value=plasterNor;
   mats.wall.map=lime;mats.wall.roughnessMap=plasterRough;mats.wall.needsUpdate=true;
+  // H03 lime-paint mask (export_world.py, acabados.py): 1 cm per pixel over data.limeMask.box.
+  mask.generateMipmaps=false;mask.minFilter=mask.magFilter=THREE.LinearFilter;mask.colorSpace=THREE.NoColorSpace;limeMask.value=mask;
+  if(data?.limeMask)limeBox.value.set(...data.limeMask.box);
   // Bouclé, slub linen and knotted rug read as real textiles at walking distance.
   for(const [key,kind] of [['fabric','fabric'],['kitchenFabric','fabric'],['sage','fabric'],['clay','fabric'],['linen','linen'],['shirt','linen'],['rug','rug']]){
     const m=mats[key];m.map=textile(kind);m.normalMap=textileNormal(kind);m.normalScale.setScalar(textileNormalScale[kind]);m.bumpMap=null;m.needsUpdate=true;
@@ -493,7 +510,7 @@ async function initScene(buffer,bake){
   const sun=new THREE.DirectionalLight('#ffe2bd',2.1);Object.assign(outdoor,{sky,sun});sun.position.set(9,17,-25);sun.target.position.set(9,0,-3);
   sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-16,right:16,top:13,bottom:-13,near:1,far:65});sun.shadow.normalBias=.024;sun.shadow.bias=-.0001;scene.add(sun,sun.target);
   const hash=crypto.subtle.digest('SHA-256',buffer).then(h=>Array.from(new Uint8Array(h),v=>v.toString(16).padStart(2,'0')).join(''));
-  lightmap=await loadLightmap(renderer,hash,lighting,{upCoves:(data.coves||[]).slice(0,2),prefetched:bake});
+  lightmap=await loadLightmap(renderer,hash,lighting,{upCoves:(data.litCoves||[]).map(i=>data.coves[i]),prefetched:bake});
   reflections=new ReflectionProbes(probeRooms(data));
   lighting.uniforms={...lightmap.probes.uniforms,...reflections.uniforms,...pocketUniforms(data)};
   mats.art=artwork();const sheer=curtainMaterial(mats.curtain);sheer.userData.translucency=.75;
@@ -777,7 +794,7 @@ async function load(){
     // only the last room module and the captures read. Shared bandwidth would otherwise
     // deliver the geometry last.
     const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
-    const house=Promise.all([get('./assets/house.json?v=c90d3e03e9',r=>r.json()),get('./assets/house.bin?v=afb74fc721',r=>r.arrayBuffer())]);
+    const house=Promise.all([get('./assets/house.json?v=cf041d20b8',r=>r.json()),get('./assets/house.bin?v=d7106f39f2',r=>r.arrayBuffer())]);
     const surfaceMaps=loadSurfaceMaps(),views=loadViews();
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();

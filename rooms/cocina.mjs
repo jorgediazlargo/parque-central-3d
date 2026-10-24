@@ -7,7 +7,8 @@
 //   one) takes a calm "fiorito" map made by scripts/cocina_textures.py.
 // - Oak: the photographed white oak veneer (Poly Haven, CC0, already loaded for `wood`)
 //   with a longer tile, more grain contrast and a warm mid-brown tint.
-// - Ceiling: flat white paint at 2.20 m (the export has no island coffer since r5).
+// - Ceiling (H04, D02): white plastic paint at 2.20 m with the coffer at 2.55 m over the
+//   island and the two F05 rails along it (all exported; the paint is the house's).
 // Round 6:
 // - Stools: the exported ones (thin dark legs, flat seat, thin band back) are replaced
 //   by the stools of render 9: a thick round upholstered seat, a low curved upholstered
@@ -49,9 +50,6 @@ const ZONE=[[7.3,-.2,-3.66],[13.4,3.2,-.2]];
 const VERSION='r9';
 // Designer's slab (m): length, width.
 const SLAB=[3.2,1.95],CEILING=2.2;
-// Render 9's ceiling: lighter and far less orange than our bake (measured on the
-// captures: R x1.67, G x2.15, B x3.0 linear); part of it as a paint gain.
-const CEILING_TINT=[1.14*1.75,1.27*2.08,1.4*2.55];
 // B01 stool footprints (plan x ranges) on the island's north side, plan y 479.765.
 const STOOLS=[[581.64,603.30],[612.99,634.65],[644.34,666],[675.69,697.32]];
 const STOOL={seatR:.198,seatTop:.672,seatBottom:.592,edge:.034,ringY:.69,ringR:.214,tube:.0105,
@@ -226,12 +224,6 @@ export async function apply(ctx){
     };
     m.customProgramCacheKey=()=>'cocina-oak-'+VERSION;
     m.needsUpdate=true;
-  }
-
-  // --- Ceiling: white paint ------------------------------------------------------------
-  for(const piece of ctx.splitExported({material:'wall',region:'kitchen',box:[[7.3,2.19,-3.66],[13.4,2.215,-.2]]})){
-    piece.material.color.multiply(new THREE.Color().setRGB(...CEILING_TINT));
-    piece.material.needsUpdate=true;
   }
 
   // --- Induction hob on the island ---------------------------------------------------

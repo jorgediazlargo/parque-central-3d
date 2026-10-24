@@ -3,12 +3,12 @@ import {GLTFLoader} from './assets/jsm/loaders/GLTFLoader.js';
 import {lightObject} from './lighting.mjs?v=65f7ecdcd5';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {clothMaps} from './bedding.mjs?v=322afdf762';
-import {createCurtain} from './curtains.mjs?v=e78b87cc13';
+import {createCurtain,createBlind} from './curtains.mjs?v=023dd6f85e';
 
 // Per-room modules (rooms/<id>.mjs), each exporting `async function apply(ctx)`.
 // They run after the house, textures and baked light are ready and before the tour
 // starts. A failing module is logged and skipped: the others still apply.
-export const ROOM_IDS=['salon','comedor','dormitorio','estudio','bano','vestidor','ninas','juegos','cocina'];
+export const ROOM_IDS=['salon','comedor','dormitorio','estudio','bano','vestidor','ninas','juegos','cocina','instalaciones'];
 export const PLAN_SCALE=51.53901216893343;
 // B01 plan points (PDF units) to world metres [x, z]; y is height.
 export const plan=(x,y)=>[(x-106.5)/PLAN_SCALE,(y-619.85)/PLAN_SCALE];
@@ -118,6 +118,13 @@ export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap
       const curtain=createCurtain(THREE,options);
       for(const mesh of curtain.meshes){lightObject(mesh,lighting);group.add(mesh);staticMeshes.push(mesh);}
       curtains.push(curtain);return curtain;
+    },
+    // Roller blind (curtains.mjs createBlind): opens (rolls up) and closes with E like a
+    // curtain; lit like lightRuntimeObject. Returns the blind.
+    addBlind(options){
+      const blind=createBlind(THREE,options);
+      for(const mesh of blind.meshes){lightObject(mesh,lighting);group.add(mesh);staticMeshes.push(mesh);}
+      curtains.push(blind);return blind;
     },
     // Lights runtime meshes like the baked rooms: diffuse light from the irradiance
     // probes baked by Cycles with the lightmaps (an ambient cube every 30 cm, so a

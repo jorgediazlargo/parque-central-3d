@@ -6,6 +6,8 @@
 // time, not baked) becomes a slender freestanding oval tub of the same 160 × 80 cm
 // footprint and position (plan x=240.675, y=431.735), smooth cream resin-stone with a
 // 2 cm rolled rim, a base that tucks in towards the floor and a soft contact shadow.
+// Execution project (I02): the tub is a Riluxa Ocean in white, every tap of the suite
+// (G6 basins, G7 shower, G8 bath) Zucchetti Helm in brushed copper.
 // Render 5 shows a floor-standing brushed-bronze bath mixer at the near right end of
 // the tub: it is added there. The vanity's thin rod taps become gooseneck mixers with
 // a side lever, also in brushed bronze.
@@ -89,13 +91,14 @@ export async function apply(ctx){
     const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;
     t.anisotropy=8;return t;
   })();
-  const resin=new THREE.MeshStandardMaterial({color:'#efe5d8',map:tex,vertexColors:true,roughness:.5,
+  // I02 B3: Riluxa Ocean, white.
+  const resin=new THREE.MeshStandardMaterial({color:'#f4f3f0',map:tex,vertexColors:true,roughness:.5,
     envMapIntensity:.7,side:THREE.DoubleSide});
   const tub=new THREE.Mesh(geo,resin);tub.name='Banera exenta resina';
-  // Brass waste at the west end of the bowl's flat floor: from the closet, whose view
+  // Copper waste at the west end of the bowl's flat floor: from the closet, whose view
   // looks down into the tub, it says bath at once.
   {
-    const drain=new THREE.Mesh(new THREE.CylinderGeometry(.034,.037,.006,32),new THREE.MeshPhysicalMaterial({color:'#d9c29a',metalness:1,roughness:.22,envMapIntensity:1.6}));
+    const drain=new THREE.Mesh(new THREE.CylinderGeometry(.034,.037,.006,32),new THREE.MeshPhysicalMaterial({color:'#c4a493',metalness:1,roughness:.36,envMapIntensity:1.6}));
     drain.position.set(cx-.32,yb+.002,cz);drain.name='Banera desague';group.add(drain);
   }
   tub.castShadow=tub.receiveShadow=true;group.add(tub);
@@ -149,10 +152,10 @@ export async function apply(ctx){
     m.rotation.x=-Math.PI/2;m.position.set(x,y,z);m.renderOrder=1;group.add(m);shadows.push(m);return m;
   };
 
-  // --- Polished brass taps ----------------------------------------------------------
-  // Render 5: warm brass with bright, crisp highlights (the room probe reflected by a
-  // near-mirror lacquer), not the matte copper of round 5.
-  const bronze=new THREE.MeshPhysicalMaterial({color:'#e8d2ac',metalness:1,roughness:.12,clearcoat:1,clearcoatRoughness:.03,envMapIntensity:2.2});
+  // --- Taps: brushed copper ------------------------------------------------------------
+  // I02 G6-G8: Zucchetti Helm (basin mixers, shower and bath), cobre cepillado: warm
+  // copper with soft, spread highlights (no lacquer).
+  const bronze=new THREE.MeshPhysicalMaterial({color:'#c4a493',metalness:1,roughness:.36,envMapIntensity:1.8});
   const V=(x,y,z)=>new THREE.Vector3(x,y,z);
   class Arc extends THREE.Curve{
     constructor(c,dir,r){super();this.c=c;this.dir=dir;this.r=r;}

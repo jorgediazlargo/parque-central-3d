@@ -2,16 +2,13 @@
 // Use ctx.THREE (never a second copy of three), ctx.group for new objects, and keep
 // edits inside this room's zone (scripts/rooms/dormitorio.json).
 //
-// Render 3 (round 5): no LED line is seen anywhere in the room. The light is a curtain
-// pocket hidden over the sheers and a vertical slot beside the wardrobe front; the
-// bake side of that (headboard strip, ceiling slit, vertical slot) is proposed in
-// review-loop/proposals/r5-dormitorio.md. Here: hide the visible lines, add the rug
-// under the bed (lit by the floor's own baked light) and darken the oak a little.
+// Light (F05, light_layout.py): two pendants at the bedsides, a ceiling LED profile
+// washing the headboard wall and three points over the foot of the bed, all exported;
+// the electric blind of L01 is added by rooms/instalaciones.mjs. Here: the rug under
+// the bed (lit by the floor's own baked light), the oak and the nightstand props.
 
 // Floor rug of render 3: pale wool, 2.20 x 2.38 m, from under the nightstands to
 // about 55 cm past the foot of the bed (bed: x 0.20-2.20, z -8.71 to -6.71).
-// Diffuse transmission of the voile (the shared sheer has .75 and read blown out).
-const SHEER_T=.42;
 const RUG={x0:.55,x1:2.75,z0:-8.90,z1:-6.52,h:.012};
 
 // The shared oak veneer map with its grain contrast raised (×1.75 around the mean).
@@ -32,25 +29,6 @@ function oakGrain(THREE,source){
 }
 
 function rand(seed){let s=seed>>>0;return ()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296;};}
-
-// Voile coverage (alpha) and a faint value detail: fine weave plus slubby threads.
-// 512 px = 40 cm.
-function voileTexture(THREE){
-  const N=512,c=document.createElement('canvas');c.width=c.height=N;
-  const g=c.getContext('2d'),im=g.createImageData(N,N),d=im.data,r=rand(33);
-  const warp=new Float32Array(N),weft=new Float32Array(N);
-  for(let i=0;i<N;i++){warp[i]=(r()-.5)*.10;weft[i]=(r()-.5)*.06;}
-  for(let i=0;i<40;i++){const x=Math.floor(r()*N),w=1+Math.floor(r()*2),a=(r()-.3)*.12;for(let k=0;k<w;k++)warp[(x+k)%N]+=a;}
-  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
-    const p=(y*N+x)*4,s=warp[x]+weft[y];
-    const v=.5+s*.35;
-    d[p]=d[p+1]=d[p+2]=Math.round(Math.max(0,Math.min(1,v))*255);
-    d[p+3]=Math.round(Math.max(0,Math.min(1,.52+s*.6))*255);
-  }
-  g.putImageData(im,0,0);
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.NoColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;
-  t.anisotropy=8;t.premultiplyAlpha=false;return t;
-}
 
 // Smooth 2-D value noise in [-1, 1].
 function noise2(seed){
@@ -142,14 +120,6 @@ function lathe(THREE,profile,segments){
 export async function apply(ctx){
   const {THREE}=ctx;
 
-  // 1. Visible LED lines out: headboard strip (top edge of the oak panel), the ceiling
-  // slit at the back left and the curtain-pocket line (concealed in render 3). Their
-  // meshes do not emit in the bake (pocket, slit) or are proposed off (headboard).
-  ctx.removeExported({material:'led',box:[
-    [[.21,1.115,-9.29],[.245,1.145,-6.05]],    // Cama principal cabecero LED
-    [[.20,2.50,-6.01],[.72,2.545,-5.96]],      // LED rendija Slot Principal
-    [[.58,2.50,-9.35],[3.10,2.545,-9.31]]]});  // LED rendija Pocket Principal (ends at the screen)
-
   // 2. Rug: its top samples the floor's baked page (planar UVs, so the bed's contact
   // shadow and the window light fall on it as on the oak around it).
   const floors=ctx.staticMeshes.filter(m=>m.userData.exported?.material==='floor'&&m.geometry.getAttribute('uv1'));
@@ -234,40 +204,6 @@ export async function apply(ctx){
     strip(top,.035,wallX,top/2,panel.max.z+.0175,Math.PI/2,.26);     // south end
     strip(top,.035,wallX,top/2,panel.min.z-.0175,-Math.PI/2,.26);    // north end
   }
-
-  // 4. Vertical slot of render 3 beside the wardrobe front: a 3 cm reveal, floor to
-  // ceiling, on the east jamb of the dressing-room opening (in render 3 the dark
-  // vertical line where the wardrobe front ends, x ~ 1.46-1.52 m in this pose). Its
-  // concealed light is proposed in r5-dormitorio.md (light_layout 'Slot Principal').
-  const slot=new THREE.Mesh(new THREE.BoxGeometry(.03,2.55,.003),ctx.cloneMaterial(ctx.mats.dark));
-  slot.position.set(1.545,2.55/2,-5.9115);slot.name='Ranura vertical dormitorio';
-  ctx.group.add(slot);ctx.lightRuntimeObject(slot,{strength:.6});
-  // 5. Sheers of render 3: the exported sheet (shared material, translucency .75, read
-  // as a blown-out white block) becomes a ripple-fold voile, wall to screen, that lets
-  // the windows and their frames show faintly (coverage ~50 %). Fold flanks seen edge-on
-  // thin out, so each crest is a soft roll and not the hard edge of a slat; hem doubled,
-  // no sheen.
-  ctx.removeExported({material:'curtain',box:[[.55,-.1,-9.5],[3.1,2.7,-9.3]]});
-  const voile=voileTexture(THREE);voile.repeat.set(1/.4,1/.4);
-  const sheerMat=new THREE.MeshStandardMaterial({color:'#ece6dc',map:voile,roughness:1,metalness:0,vertexColors:true,
-    transparent:true,depthWrite:false,side:THREE.DoubleSide});
-  sheerMat.color.multiplyScalar(1.5);sheerMat.defines={USE_UV:''};
-  sheerMat.userData.translucency=SHEER_T;
-  sheerMat.onBeforeCompile=shader=>{
-    shader.fragmentShader=shader.fragmentShader
-      .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
-        {float hem=1.0-smoothstep(.085,.095,vUv.y);
-        diffuseColor.a=mix(diffuseColor.a,1.0-(1.0-diffuseColor.a)*(1.0-diffuseColor.a),hem);
-        float nv=abs(dot(normal,normalize(vViewPosition)));
-        // Fold edges seen side-on fade instead of drawing a hard line (round, soft rolls).
-        diffuseColor.a*=mix(.22,1.0,smoothstep(.05,.65,nv));}`)
-      .replace('#include <lights_fragment_end>','reflectedLight.directSpecular=vec3(0.0);\n#include <lights_fragment_end>');
-  };
-  sheerMat.customProgramCacheKey=()=>'dormitorio-voile';
-  // Two halves of the same voile, drawn by default (the render); E gathers each one at its end.
-  const half=(3.085-.60)/2;
-  ctx.addCurtain({name:'Cortinas dormitorio',material:sheerMat,z:-9.40,y0:.012,y1:2.55,pitch:.095,depth:.027,seed:19,t:0,
-    panels:[{anchor:.60,dir:1,open:.26,closed:half},{anchor:3.085,dir:-1,open:.26,closed:half}]});
 
   // 6. Nightstand props of render 3 (tops at y 0.49): left, a stoneware bud vase with a
   // branch and two books; right, a low ceramic bowl. Lathes and boxes, a few hundred

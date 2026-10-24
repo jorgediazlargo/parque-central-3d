@@ -193,10 +193,11 @@ function paneRect(THREE,geo,fixed){
 }
 
 const GLINT_Z=12;
-// Bedroom window wall: the sheers run along x at this z (north wall of the suite).
+// Bedroom window wall (north wall of the suite): its electric blind (L01) is raised by
+// default, so the windows themselves are reflected.
 const WIN={z:-9.40,x0:.15,x1:3.05,k:.16};
 // Sheen, glints and the reflected window are painted light: at night (ctx.onTimeOfDay)
-// only the pocket-lit sheers and the lamps are there to reflect, so they drop.
+// only the lamps are there to reflect, so they drop.
 const PANE_GLOW={value:1};
 function studyGlass(THREE,stileZ){
   const zs=[...stileZ.slice(0,GLINT_Z)];while(zs.length<GLINT_Z)zs.push(-1e3);
@@ -205,8 +206,8 @@ function studyGlass(THREE,stileZ){
   // where each pane meets its frame, so the panes read as glass between the profiles.
   // Round 7: the body is a light warm haze lit by the bedroom (it veils the study a
   // little: less contrast, warmer), the room reflection is stronger, and the bedroom
-  // window wall (the sheers, WIN) is reflected analytically: light vertical folds
-  // on the left panes that move with the viewer, as in render 4.
+  // window wall (WIN) is reflected analytically on the left panes and moves with the
+  // viewer.
   const m=new THREE.MeshPhysicalMaterial({color:'#8f7d6a',transparent:true,premultipliedAlpha:true,opacity:.12,roughness:.02,metalness:0,depthWrite:false,side:THREE.DoubleSide,envMapIntensity:1});
   m.onBeforeCompile=shader=>{
     shader.uniforms.paneStileZ={value:zs};shader.uniforms.paneGlow=PANE_GLOW;
@@ -227,18 +228,17 @@ function studyGlass(THREE,stileZ){
         vec3 h=vPaneWorld+winR*((${WIN.z.toFixed(3)}-vPaneWorld.z)/winR.z);
         float inX=smoothstep(${WIN.x0.toFixed(3)},${(WIN.x0+.2).toFixed(3)},h.x)*(1.0-smoothstep(${(WIN.x1-.15).toFixed(3)},${WIN.x1.toFixed(3)},h.x));
         float inY=smoothstep(.10,.55,h.y)*(1.0-smoothstep(2.20,2.45,h.y));
-        float folds=.45+.55*pow(.5+.5*sin(h.x*${(Math.PI*2/.115).toFixed(3)}+sin(h.x*7.0)),2.0);
-        win=inX*inY*folds*(.75+.25*smoothstep(.3,2.2,h.y));
+        win=inX*inY*.7*(.75+.25*smoothstep(.3,2.2,h.y));
       }
-      // Sheen: soft vertical bands keyed to the reflected azimuth (the bedroom's sheer
-      // folds and window light), so they slide across the panes as the viewer moves.
+      // Sheen: soft vertical bands keyed to the reflected azimuth (the bedroom's window
+      // light), so they slide across the panes as the viewer moves.
       vec3 shV=normalize(vPaneWorld-cameraPosition);
       float t=atan(shV.z,abs(shV.x))*6.5+vPaneWorld.y*.2;
       float sheen=(pow(max(0.0,sin(t)),4.0)*.75+pow(max(0.0,sin(t*2.9+1.3)),8.0)*.25)*smoothstep(.2,1.0,vPaneWorld.y)*(1.0-.4*smoothstep(1.6,2.4,vPaneWorld.y));
       vec3 glow=(vec3(1.0,.95,.88)*(glint*.18+sheen*.2)+vec3(1.0,.96,.90)*win*${WIN.k.toFixed(3)}*(.6+4.0*glassF))*paneGlow;
       gl_FragColor=vec4(totalDiffuse*diffuseColor.a+totalSpecular*2.0+glow,diffuseColor.a+(1.0-diffuseColor.a)*glassF*.85+glint*.05+win*.03);}`);
   };
-  m.customProgramCacheKey=()=>'glass-estudio-7';
+  m.customProgramCacheKey=()=>'glass-estudio-8';
   return m;
 }
 

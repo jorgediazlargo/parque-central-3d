@@ -10,8 +10,8 @@ import {mergeGeometries} from '../assets/jsm/utils/BufferGeometryUtils.js';
 // and two rectangular linen cushions with pinched corners (sage behind, sand lumbar
 // in front). The exported soft mattress cloth, pillow and round cushions are
 // dropped; the exported base and headboards stay with their baked light. Also:
-// greige linen bedside drums on the B01 centres, a brass sconce and the glazed, framed
-// watercolour print of the render.
+// greige linen bedside drums on the B01 centres and the glazed, framed watercolour
+// print of the render.
 
 const ZONE=[[15.78,-.2,-9.8],[18.7,3.2,-4.87]];
 // Beds (B01 'Cama secundaria 1/2'): head at the east wall, 2 m long towards -x.
@@ -227,23 +227,8 @@ function contactShadow(THREE,x,z,r){
   m.rotation.x=-Math.PI/2;m.position.set(x,.0135,z);m.renderOrder=1;return m;
 }
 
-// Wall sconce of render 7 in brushed brass: round backplate, short arm, stem and a
-// collar holding the exported globe (centre x 18.307, z -7.836, base y 1.115).
-function sconce(THREE){
-  const X=18.307,Z=-7.836,Y=.985,parts=[];
-  const add=(g,x,y,rotZ=0)=>{if(rotZ)g.rotateZ(rotZ);g.translate(x,y,Z);parts.push(g);};
-  add(new THREE.CylinderGeometry(.038,.038,.012,32),18.426,Y,Math.PI/2);
-  add(new THREE.CylinderGeometry(.007,.007,.008,12),18.416,Y-.022,Math.PI/2);      // toggle
-  add(new THREE.CylinderGeometry(.0055,.0055,.115,12),(18.42+X)/2,Y,Math.PI/2);    // arm
-  add(new THREE.SphereGeometry(.0075,12,8),X,Y);
-  add(new THREE.CylinderGeometry(.0055,.0055,.125,12),X,(Y+1.11)/2);               // stem
-  add(new THREE.CylinderGeometry(.024,.015,.022,24),X,1.112);                       // collar
-  const brass=new THREE.MeshStandardMaterial({color:'#e8c890',metalness:.45,roughness:.32});
-  const m=new THREE.Mesh(mergeGeometries(parts),brass);m.name='ninas:aplique';return m;
-}
-
 // Oak-framed print with a cream mount: an elephant on a crescent moon among clouds,
-// drawn on a canvas (render 7). Hung on the east wall (x 18.432) over the sconce.
+// drawn on a canvas (render 7). Hung on the east wall (x 18.432).
 function print(ctx){
   const {THREE}=ctx,W=.48,H=.68,Z=-7.836,Y=1.71,X=18.432,g=new THREE.Group();g.name='ninas:cuadro';
   // Watercolour on cold-pressed paper: soft-edged washes with pigment pooled at
@@ -394,12 +379,8 @@ export async function apply(ctx){
   // than the duvet so the drop reads against them.
   for(const piece of ctx.splitExported({material:'fabric',box:[[16.3,.05,-9.1],[18.45,.32,-6.55]]}))piece.material.color.set('#b5a796');
 
-  // Sconce (render 7): brushed brass backplate, arm, stem and collar under the globe,
-  // instead of the exported dark bar.
-  ctx.removeExported({material:'bronze',box:[[18.2,.85,-7.95],[18.45,1.25,-7.7]]});
-  const lamp=sconce(THREE);ctx.group.add(lamp);ctx.lightRuntimeObject(lamp);
-
-  // Framed nursery print above the sconce, centred between the headboards.
+  // F05 has no wall light here (the render 7 globe sconce is gone): the room's light
+  // is its two ceiling points. Framed nursery print centred between the headboards.
   const art=print(ctx);ctx.group.add(art);ctx.lightRuntimeObject(art);
 
 }

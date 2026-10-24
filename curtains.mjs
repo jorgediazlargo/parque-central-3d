@@ -102,3 +102,31 @@ export function createCurtain(THREE,{name,material,z,y0,y1,panels,pitch=.095,dep
   curtain.set(t);
   return curtain;
 }
+
+// Electric roller blind (L01): a cassette under the ceiling, the fabric and a weighted
+// bottom bar. t = 1 rolled up (open), 0 down to `bottom`. Same interface as a curtain
+// ({name,t,goal,meshes,set}): E raises and lowers it.
+//
+//   createBlind(THREE,{name,fabric,metal,x0,x1,z,top,bottom,t})
+//
+// x0..x1 along the window wall at depth z (the fabric plane), the cassette's top at
+// `top`. The fabric's UVs are in metres (u along x, v down from the roller).
+export function createBlind(THREE,{name,fabric,metal,x0,x1,z,top,bottom,t=1}){
+  const W=x1-x0,CASE=.085,roll=top-CASE+.012,blind={name,t,goal:t,meshes:[]};
+  const cassette=new THREE.Mesh(new THREE.BoxGeometry(W+.03,CASE,CASE),metal);
+  cassette.position.set((x0+x1)/2,top-CASE/2,z+.01);
+  const pos=new Float32Array(12),uv=new Float32Array(8),geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+  geo.setIndex([0,2,1,1,2,3]);
+  const cloth=new THREE.Mesh(geo,fabric);
+  const bar=new THREE.Mesh(new THREE.BoxGeometry(W-.01,.03,.018),metal);
+  for(const [k,m] of [cassette,cloth,bar].entries()){m.name=`${name} ${['cajón','tejido','contrapeso'][k]}`;m.userData.curtain=blind;blind.meshes.push(m);}
+  blind.set=v=>{
+    blind.t=v;const e=v*v*(3-2*v),y=bottom+(roll-.03-bottom)*e;
+    pos.set([x0,roll,z, x1,roll,z, x0,y,z, x1,y,z]);uv.set([0,0, W,0, 0,roll-y, W,roll-y]);
+    geo.attributes.position.needsUpdate=geo.attributes.uv.needsUpdate=true;geo.computeVertexNormals();geo.computeBoundingSphere();
+    cloth.visible=roll-y>.004;bar.position.set((x0+x1)/2,y-.015,z+.004);
+  };
+  blind.set(t);
+  return blind;
+}
