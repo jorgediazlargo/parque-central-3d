@@ -8,7 +8,8 @@ import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=142d51f6bb';
-import {applyRooms,preloadRooms} from './rooms.mjs?v=23a0bca5eb';
+import {applyRooms,preloadRooms,makeContext} from './rooms.mjs?v=23a0bca5eb';
+import {createOpenPlan,openPlanColliders} from './openplan.mjs?v=927e00d1ed';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=4bcf41157e';
@@ -16,7 +17,7 @@ import {createFronts} from './fronts.mjs?v=ad678e848d';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,quality,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null,fronts={list:[],at:()=>null,step:()=>false};
-let lightmap,roomStatus={},reflections,mirrorSpan=()=>{};const runtimeObjects=[];
+let lightmap,roomStatus={},reflections,mirrorSpan=()=>{},mirrorSight_=null,studyScreen=null,openPlanSwitch=null;const runtimeObjects=[];
 // Día / Noche: the night bake (artificial light only, same UVs) swapped into the same
 // lightmap and probe textures, the outdoor lights and backdrop, and the room modules'
 // daylight effects (ctx.onTimeOfDay). Reflections are captured again after each switch.
@@ -27,15 +28,17 @@ let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,rayTime=0,roomTime=0;
 const mobile=matchMedia('(pointer:coarse)').matches,eye=1.6;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false};
-try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night'])if(key in saved)settings[key]=saved[key];}catch{}
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,openPlan:false};
+try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','openPlan'])if(key in saved)settings[key]=saved[key];}catch{}
 // ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved.
 {const q=new URLSearchParams(location.search).get('noche');if(q!==null)settings.night=q!=='0';}
+// ?diafano (or ?diafano=1) opens with bedroom and study as one room, ?diafano=0 as in the plan.
+{const q=new URLSearchParams(location.search).get('diafano');if(q!==null)settings.openPlan=q!=='0';}
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
-for(const key of ['sound','bob','night']) {
-  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night')setNight(settings.night);};
+for(const key of ['sound','bob','night','openPlan']) {
+  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night')setNight(settings.night);if(key==='openPlan')setOpenPlan(settings.openPlan);};
 }
-$('night').disabled=true;  // until the house is lit (load)
+$('night').disabled=true;$('openPlan').disabled=true;  // until the house is lit (load)
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
 const porcelainMap={value:null},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
@@ -450,7 +453,7 @@ function setupDoors(){
     placeDoor(d,t);return d;
   });
   const [a,b]=data.fixedStudy,g=new THREE.Group(),length=Math.hypot(b[0]-a[0],b[1]-a[1]);
-  g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);scene.add(g);runtimeObjects.push(g);
+  g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);scene.add(g);runtimeObjects.push(g);studyScreen=g;
   const study=doors.find(d=>d.name==='Estudio'),along=p=>((p[0]-a[0])*(b[0]-a[0])+(p[1]-a[1])*(b[1]-a[1]))/length;
   const {frame:f,stile,depth,rails,height:h,side,radius:r}=STUDY,doorFrom=along(study.a),doorTo=along(study.b);
   const extrude=(shape,z=0,mat=studyFrame,d=depth)=>{
@@ -493,6 +496,9 @@ function uploadTextures(){
     }
   });
 }
+// Static colliders: the open plan drops the M3 glass and the piers beside it.
+function houseColliders(){const c=kitchenColliders(data);return settings.openPlan&&openPlanSwitch?openPlanColliders(c):c;}
+function buildPhysics(){physics=new WorldPhysics(houseColliders(),data.floors);}
 function activeDoorPolys(){return doors.filter(d=>d.active!==false).flatMap(d=>d.polys);}
 // Glass doors (the shower's) do not hide the mirror.
 function opaqueDoorPolys(){return doors.filter(d=>d.active!==false&&!d.glass).flatMap(d=>d.polys);}
@@ -543,14 +549,15 @@ async function initScene(buffer,bake){
   fronts=createFronts(THREE,{data,staticMeshes,scene});
   // The master bed dressing replaces the exported duvet, pillows and blanket.
   const bedding=masterBedding();scene.add(bedding);runtimeObjects.push(bedding);bedding.traverse(o=>{if(o.isMesh)staticMeshes.push(o);});
-  physics=new WorldPhysics(kitchenColliders(data),data.floors);player=[...data.spawn];setupDoors();
+  player=[...data.spawn];buildPhysics();setupDoors();
   const m=data.vanityMirror;
   if(m){
     const mirror=new Reflector(new THREE.PlaneGeometry(m.width,m.top-m.bottom),{color:0xc9c9c9,textureWidth:512,textureHeight:512,clipBias:.003,multisample:0});
     mirror.position.set(m.center[0],(m.top+m.bottom)/2,m.center[1]);mirror.rotation.y=Math.PI;
     scene.add(mirror);staticMeshes.push(mirror);
     // The mirror draws the house a second time (rooms/bano.mjs): only while a line of sight reaches it.
-    const sight=mirrorSight(m,kitchenColliders(data).filter(c=>WALL_NAMES.test(c.name)).map(c=>c.poly));
+    const sightOf=()=>mirrorSight(m,houseColliders().filter(c=>WALL_NAMES.test(c.name)).map(c=>c.poly));
+    let sight=sightOf();mirrorSight_=()=>{sight=sightOf();};
     mirror.userData.inSight=cam=>{const e=cam.matrixWorld.elements;return sight.visible([e[12],e[14]],opaqueDoorPolys());};
     // M2: the mirror leaves on either side of the vanity are coplanar with its mirror. A
     // closed leaf joins the reflection (the probes alone left them a dark grey); an
@@ -660,6 +667,21 @@ function setNight(night){
     notice(night?'Noche · todas las luces encendidas':'Día');
   }).catch(e=>{console.error(e);notice('No se ha podido cambiar la luz.');settings.night=timeOfDay.night;$('night').checked=timeOfDay.night;savePreferences();});
   return timeSwitch;
+}
+
+// Dormitorio y estudio diáfanos: geometry, collisions and the mirror's line of sight;
+// shadows and reflections again once the house is shown. Refused while the visitor
+// stands where the screen closes.
+function applyOpenPlan(){openPlanSwitch(settings.openPlan);buildPhysics();mirrorSight_?.();}
+function setOpenPlan(open){
+  if(!ready||!openPlanSwitch)return;
+  applyOpenPlan();
+  if(physics.blocked(player,activeDoorPolys())){
+    settings.openPlan=!open;$('openPlan').checked=!open;savePreferences();applyOpenPlan();
+    notice('Sal del paso entre dormitorio y estudio para cerrarlo');return;
+  }
+  timeSwitch=timeSwitch.then(()=>{reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;});
+  notice(open?'Dormitorio y estudio diáfanos':'Dormitorio y estudio según el plano');
 }
 
 // Link errors, reported as three would at first draw (renderer.debug.checkShaderErrors).
@@ -814,6 +836,9 @@ async function load(){
     // synchronous part has run: their canvas read-backs would wait behind the compiles.
     setTimeout(()=>reflections.compile(renderer,scene,camera,composer.sceneRT,{wait:false}));
     roomStatus=await rooms;progress?.stage(.7);
+    // Dormitorio y estudio diáfanos: built once (split meshes and patches), then toggled.
+    openPlanSwitch=createOpenPlan(makeContext({id:'openplan',scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,curtains,lighting,timeOfDay}),{screen:studyScreen});
+    if(settings.openPlan)applyOpenPlan();
     // Doors, the study screen, the master bedding and the mirror frame are not baked:
     // they take the probes. Then each room is captured for its reflections, props included.
     for(const o of runtimeObjects)lightObject(o,lighting);
@@ -824,7 +849,7 @@ async function load(){
     // first capture) and again when a door moves, not for every face of every capture.
     renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     reflections.capture(renderer,scene);
-    ready=true;progress?.done();$('night').disabled=false;
+    ready=true;progress?.done();$('night').disabled=false;$('openPlan').disabled=false;
     // The tour starts on the reduced lightmaps: reflections again once the full pages are in.
     lightmap.sharp.then(()=>{timeSwitch=timeSwitch.then(()=>reflections.capture(renderer,scene));});
     const params=new URLSearchParams(location.search);
