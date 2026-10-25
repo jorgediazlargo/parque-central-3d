@@ -17,14 +17,10 @@ import {probeVolume,fetchProbeData,patchLighting} from './lighting.mjs?v=65f7ecd
 // RGBM needs the alpha untouched: decode without premultiplication or colour conversion.
 const bitmaps=new THREE.ImageBitmapLoader().setOptions({imageOrientation:'flipY',premultiplyAlpha:'none',colorSpaceConversion:'none'});
 const bakeVersion=data=>data.contextSha256.slice(0,10)+data.samples;
-// Iluminación propuesta: its own night ('nightProposal', house-night-propuesta-*, same
-// UVs) once baked (scripts/luz_propuesta.py); until then the F05 night (propuesta.mjs
-// relights it at runtime).
-const modeOf=(data,m)=>m==='nightProposal'&&!data.nightProposal?'night':m;
-const bakeFiles=(data,m)=>{m=modeOf(data,m);const v=m==='night'?data.night:m==='nightProposal'?data.nightProposal:null;return v?{pages:v.lightmaps,probes:v.probes}:{pages:data.lightmaps,probes:data.probes.file};};
+const bakeFiles=(data,m)=>m==='night'?{pages:data.night.lightmaps,probes:data.night.probes}:{pages:data.lightmaps,probes:data.probes.file};
 // Progressive loading: the first mode shows the reduced pages (data.lowres, 1/4 of the size,
 // scripts/lightmap_lowres.py) and swaps in the full ones when they arrive.
-const lowPages=(data,m)=>data.lowres?.[{night:'night',nightProposal:'nightProposal'}[modeOf(data,m)]||'lightmaps'];
+const lowPages=(data,m)=>data.lowres?.[m==='night'?'night':'lightmaps'];
 const loadPages=(names,version)=>Promise.all(names.map(name=>bitmaps.loadAsync('./assets/'+name+'?v='+version)));
 // Requests the bake of `mode` now (its JSON and UVs) and its pages and probes once
 // `after` settles, so it downloads alongside the geometry; loadLightmap takes the result.
@@ -32,7 +28,7 @@ const loadPages=(names,version)=>Promise.all(names.map(name=>bitmaps.loadAsync('
 // probes by bake, so a re-denoise is revalidated (no-cache).
 export function fetchLightmap(mode='day',{after=null}={}){
   const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar la iluminación.');return read(r);});
-  const json=get('./assets/house-light.json?v=c3fd640453',r=>r.json()),uvs=get('./assets/house-light.bin?v=bcb5f367e8',r=>r.arrayBuffer());
+  const json=get('./assets/house-light.json?v=bc6bac6bea',r=>r.json()),uvs=get('./assets/house-light.bin?v=bcb5f367e8',r=>r.arrayBuffer());
   const files=Promise.all([json,uvs]);
   const maps=Promise.all([json,after]).then(([data])=>{
     if(data.encoding!=='rgbm-sqrt-range-64')throw Error('Iluminación con un formato antiguo.');
@@ -47,7 +43,7 @@ export function fetchLightmap(mode='day',{after=null}={}){
 // Resolves with the UVs; the pages and probes fill their textures when decoded (`loaded`),
 // so the house is built (and its programs compiled) meanwhile.
 export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],prefetched=fetchLightmap()}={}){
-  const [data,buffer]=await prefetched.files,mode=modeOf(data,prefetched.mode);
+  const {mode}=prefetched,[data,buffer]=await prefetched.files;
   if(data.sourceSha256!==await sourceHash)throw Error('La geometría y la iluminación no corresponden a la misma versión.');
   const version=bakeVersion(data),files=m=>bakeFiles(data,m);
   const pages=files(mode).pages.map(()=>new THREE.Texture()),probes=probeVolume(data.probes);
@@ -67,7 +63,6 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
     if(current===mode)show(full);
   }).catch(e=>console.warn('Iluminación en alta resolución no disponible:',e));
   async function setMode(next){
-    next=modeOf(data,next);
     if(next===current)return false;
     variants[next]??=Promise.all([loadPages(files(next).pages,version),fetchProbeData(files(next).probes,version)])
       .then(([b,p])=>({bitmaps:b,probes:p})).catch(e=>{delete variants[next];throw e;});
@@ -80,7 +75,7 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
   lighting.probes=probes;
   const RANGE=data.range;
   const spans=new Map(data.meshes.map(m=>[m.sourceIndex,m]));
-  const materials=new Map(),bases=new Map(),planar=new Map();
+  const materials=new Map(),bases=new Map();
   function bind(geometry,sourceIndex){
     const m=spans.get(sourceIndex);if(!m)return false;
     geometry.setAttribute('uv1',new THREE.BufferAttribute(new Uint16Array(buffer,m.offset,m.count*2),2,true));return true;
@@ -95,10 +90,9 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
       if(kind==='rug')m.color.set('#b9ab94');
     }
     if(region==='kitchen'&&kind==='kitchenFabric')m.color.set('#776d60');
-    const planarLight={value:pages[1]};planar.set(m,planarLight);
     m.onBeforeCompile=shader=>{
       base.onBeforeCompile(shader);
-      shader.uniforms.planarLight=planarLight;
+      shader.uniforms.planarLight={value:pages[1]};
       if(region==='salon')shader.fragmentShader=shader.fragmentShader.replace('yarnCloth*.018','yarnCloth*.004');
       if(region==='kitchen'&&kind==='kitchenOak')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
         diffuseColor.rgb=mix(vec3(dot(diffuseColor.rgb,vec3(.2126,.7152,.0722))),diffuseColor.rgb,.88)*.90;
@@ -154,11 +148,5 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
       m.needsUpdate=true;
     }
   }
-  // Pages shown instead of the bake's (two textures with the same UVs and encoding, e.g.
-  // the proposal relit at runtime, propuesta.mjs), or null for the bake's again.
-  function override(list){
-    const [a,b]=list||pages;
-    for(const [m,u] of planar){m.lightMap=a;u.value=b;}
-  }
-  return {bind,material,syncTextures,setMode,override,get mode(){return current;},get proposalBaked(){return !!data.nightProposal;},pages,probes,data,loaded,sharp};
+  return {bind,material,syncTextures,setMode,get mode(){return current;},pages,probes,data,loaded,sharp};
 }

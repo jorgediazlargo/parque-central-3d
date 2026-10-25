@@ -3,12 +3,12 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=65f7ecdcd5';
 import {Post} from './post.mjs?v=8fc2bec064';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=700b3a4be6';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=dfa0ed6946';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=142d51f6bb';
-import {applyRooms,preloadRooms,makeContext} from './rooms.mjs?v=23a0bca5eb';
+import {applyRooms,preloadRooms} from './rooms.mjs?v=23a0bca5eb';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=4bcf41157e';
@@ -16,7 +16,7 @@ import {createFronts} from './fronts.mjs?v=ad678e848d';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,quality,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null,fronts={list:[],at:()=>null,step:()=>false};
-let lightmap,roomStatus={},reflections,mirrorSpan=()=>{},proposal=null;const runtimeObjects=[];
+let lightmap,roomStatus={},reflections,mirrorSpan=()=>{};const runtimeObjects=[];
 // Día / Noche: the night bake (artificial light only, same UVs) swapped into the same
 // lightmap and probe textures, the outdoor lights and backdrop, and the room modules'
 // daylight effects (ctx.onTimeOfDay). Reflections are captured again after each switch.
@@ -27,15 +27,13 @@ let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,roomTimer,rayTime=0,roomTime=0;
 const mobile=matchMedia('(pointer:coarse)').matches,eye=1.6;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,proposal:false,fullscreen:true};
-try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','proposal','fullscreen'])if(key in saved)settings[key]=saved[key];}catch{}
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,fullscreen:true};
+try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','fullscreen'])if(key in saved)settings[key]=saved[key];}catch{}
 // ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved.
 {const q=new URLSearchParams(location.search).get('noche');if(q!==null)settings.night=q!=='0';}
-// ?iluminacion=propuesta opens with our lighting proposal, ?iluminacion=f05 with the plan's.
-{const q=new URLSearchParams(location.search).get('iluminacion');if(q!==null)settings.proposal=q==='propuesta';}
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
-for(const key of ['sound','bob','night','proposal','fullscreen']) {
-  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night')setNight(settings.night);if(key==='proposal')setProposal(settings.proposal);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
+for(const key of ['sound','bob','night','fullscreen']) {
+  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night')setNight(settings.night);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
 }
 // Pantalla completa: Entrar fills the screen with the whole page (menu and prompts stay on
 // top) when the option is on, and F switches it while walking. Walking full screen hides the
@@ -59,7 +57,7 @@ for(const type of ['fullscreenchange','webkitfullscreenchange'])document.addEven
   // Switching screens can drop the capture (or it was refused): full screen lets it back without a click.
   if(playing&&!mobile&&!document.pointerLockElement)Promise.resolve(canvas.requestPointerLock()).catch(()=>{});
 });
-$('night').disabled=true;$('proposal').disabled=true;  // until the house is lit (load)
+$('night').disabled=true;  // until the house is lit (load)
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
 const porcelainMap={value:null},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
@@ -677,35 +675,12 @@ function setNight(night){
   timeSwitch=timeSwitch.then(async()=>{
     if(!ready||night===timeOfDay.night)return;
     notice(night?'Encendiendo las luces…':'Amaneciendo…');
-    await lightmap.setMode(night?(settings.proposal?'nightProposal':'night'):'day');
-    timeOfDay.night=night;outdoorLight(night);proposal?.set(proposal.on,{night,baked:lightmap.proposalBaked});
+    await lightmap.setMode(night?'night':'day');
+    timeOfDay.night=night;outdoorLight(night);
     await Promise.all([...timeOfDay.listeners].map(fn=>fn(night)));
     reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;idle(reportShaderErrors);
     notice(night?'Noche · todas las luces encendidas':'Día');
   }).catch(e=>{console.error(e);notice('No se ha podido cambiar la luz.');settings.night=timeOfDay.night;$('night').checked=timeOfDay.night;savePreferences();});
-  return timeSwitch;
-}
-
-// Iluminación propuesta (propuesta.mjs, built the first time it is shown): its fixtures
-// instead of the F05 ones and, at night, its own bake or the F05 night relit.
-let proposalCtx=null;
-async function applyProposal(on){
-  if(on&&!proposal){
-    const {createProposal}=await import('./propuesta.mjs?v=bb500790b2');
-    proposal=await createProposal(proposalCtx(),{mats});
-  }
-  if(!proposal)return;
-  if(timeOfDay.night)await lightmap.setMode(on?'nightProposal':'night');
-  proposal.set(on,{night:timeOfDay.night,baked:lightmap.proposalBaked});
-}
-function setProposal(on){
-  timeSwitch=timeSwitch.then(async()=>{
-    if(!ready)return;
-    notice(on?'Cargando la iluminación propuesta…':'Iluminación del plano (F05)');
-    await applyProposal(on);
-    reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;idle(reportShaderErrors);
-    notice(on?'Iluminación propuesta'+(timeOfDay.night&&!lightmap.proposalBaked?' (aproximada, sin calcular)':''):'Iluminación del plano (F05)');
-  }).catch(e=>{console.error(e);notice('No se ha podido cambiar la iluminación.');settings.proposal=!!proposal?.on;$('proposal').checked=settings.proposal;savePreferences();});
   return timeSwitch;
 }
 
@@ -852,7 +827,7 @@ async function load(){
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();
     for(const p of [surfaceMaps,views])p.catch(()=>{});  // reported where awaited
-    const bake=fetchLightmap(settings.night?(settings.proposal?'nightProposal':'night'):'day',{after:Promise.allSettled([house,surfaceMaps,views])});
+    const bake=fetchLightmap(settings.night?'night':'day',{after:Promise.allSettled([house,surfaceMaps,views])});
     const [json,buffer]=await house;
     const progress=window.loadProgress;progress?.stage(.1);
     data=json;timeOfDay.night=settings.night;await initScene(buffer,bake);progress?.stage(.35);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);progress?.stage(.5);
@@ -864,22 +839,19 @@ async function load(){
     // synchronous part has run: their canvas read-backs would wait behind the compiles.
     setTimeout(()=>reflections.compile(renderer,scene,camera,composer.sceneRT,{wait:false}));
     roomStatus=await rooms;progress?.stage(.7);
-    proposalCtx=()=>makeContext({id:'propuesta',scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,curtains,lighting,timeOfDay});
-    if(settings.proposal)await applyProposal(true).catch(e=>{console.error(e);settings.proposal=false;$('proposal').checked=false;});
     // Doors, the study screen, the master bedding and the mirror frame are not baked:
     // they take the probes. Then each room is captured for its reflections, props included.
     for(const o of runtimeObjects)lightObject(o,lighting);
     for(const o of staticMeshes)if(o.userData.exported&&!o.material.userData?.bakedLit)lightObject(o,lighting);
     const compiled=reflections.compile(renderer,scene,camera,composer.sceneRT);composer.compile();
     await Promise.all([beddingReady(),lightmap.loaded]);progress?.stage(.85);uploadTextures();await compiled;
-    proposal?.set(proposal.on,{night:timeOfDay.night,baked:lightmap.proposalBaked});  // its night needs the pages
     // The sun's shadow map depends on the geometry and the doors only: drawn once (by the
     // first capture) and again when a door moves, not for every face of every capture.
     renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     reflections.capture(renderer,scene);
-    ready=true;progress?.done();$('night').disabled=false;$('proposal').disabled=false;
+    ready=true;progress?.done();$('night').disabled=false;
     // The tour starts on the reduced lightmaps: reflections again once the full pages are in.
-    lightmap.sharp.then(()=>{timeSwitch=timeSwitch.then(()=>{proposal?.set(proposal.on,{night:timeOfDay.night,baked:lightmap.proposalBaked});reflections.capture(renderer,scene);});});
+    lightmap.sharp.then(()=>{timeSwitch=timeSwitch.then(()=>reflections.capture(renderer,scene));});
     const params=new URLSearchParams(location.search);
     if(params.get('start')==='kitchen'){
       const start=[(738-106.5)/51.53901216893343,(389-619.85)/51.53901216893343];
