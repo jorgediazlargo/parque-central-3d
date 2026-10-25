@@ -18,7 +18,10 @@
 
 const S=51.53901216893343;
 const P=(x,y)=>[(x-106.5)/S,(y-619.85)/S];
-const TAPS=[213,260];
+// G6 (J05, B01): one gooseneck at the outer side of each basin, at mid-depth (plan
+// y 504.41), its spout turned along the vanity over the basin.
+const TAPS=[[204.5,1],[268.6,-1]];
+const TOP=.90;   // J05: worktop at 0,90
 
 export async function apply(ctx){
   const {THREE,group}=ctx;
@@ -26,11 +29,6 @@ export async function apply(ctx){
 
   // --- Remove exported pieces this module replaces -------------------------------
   ctx.removeExported({material:'stone',box:[[cx-A-.08,-.1,cz-B-.08],[cx+A+.08,.7,cz+B+.08]]});
-  // C12 (proyecto de ejecución): basins centred at plan x 213 and 260, taps 2 pt off the back.
-  for(const x of TAPS){
-    const [wx]=P(x,0);
-    ctx.removeExported({material:'bronze',box:[[wx-.06,.84,-2.22],[wx+.06,1.25,-1.99]]});
-  }
 
   // --- Freestanding tub -------------------------------------------------------------
   const N=128,E=2.5;   // superellipse exponent: oval with gently flattened long sides
@@ -95,11 +93,10 @@ export async function apply(ctx){
   const resin=new THREE.MeshStandardMaterial({color:'#f4f3f0',map:tex,vertexColors:true,roughness:.5,
     envMapIntensity:.7,side:THREE.DoubleSide});
   const tub=new THREE.Mesh(geo,resin);tub.name='Banera exenta resina';
-  // Copper waste at the west end of the bowl's flat floor: from the closet, whose view
-  // looks down into the tub, it says bath at once.
+  // Copper waste at the east end of the bowl's flat floor, where B01 and F02 put it.
   {
     const drain=new THREE.Mesh(new THREE.CylinderGeometry(.034,.037,.006,32),new THREE.MeshPhysicalMaterial({color:'#c4a493',metalness:1,roughness:.36,envMapIntensity:1.6}));
-    drain.position.set(cx-.32,yb+.002,cz);drain.name='Banera desague';group.add(drain);
+    drain.position.set(cx+.55,yb+.002,cz);drain.name='Banera desague';group.add(drain);
   }
   tub.castShadow=tub.receiveShadow=true;group.add(tub);
 
@@ -187,16 +184,16 @@ export async function apply(ctx){
     const lever=cyl(.005,.06,bx-.03,.735,bz-.02,0,Math.PI/2-.2);lever.rotation.y=.6;
     contact(bx,.0035,bz,.07,.07,.7);
   }
-  // Vanity gooseneck mixers with a lever beside each, contact shadows on the stone.
-  // As in render 5 the neck turns towards screen right (west) over the basin, so it
-  // reads in profile from the bath instead of as a flat post seen spout-on.
-  for(const x of TAPS){
-    const [bx]=P(x,0),wx=bx+.05,z=-2.032,lx=bx-.13;
-    cyl(.03,.012,wx,.856,z,0,0,.032);
-    gooseneck('Grifo lavabo cuello cisne',V(wx,.85,z),1.15,V(-.6,0,-.8),.078,.045,.0155);
-    cyl(.02,.075,lx,.8875,z+.005);cyl(.0068,.065,lx,.925,z-.022,Math.PI/2+.35,0);
-    cyl(.024,.006,lx,.853,z+.005);
-    contact(wx,.8505,z,.07,.05,.7);contact(lx,.8505,z+.005,.05,.04,.6);
+  // Vanity gooseneck mixers (G6) at the outer side of each basin, the neck turned along
+  // the vanity so the spout falls 20 cm in, over the basin (B01, J05); the lever stands
+  // behind each column. Contact shadows on the stone.
+  for(const [x,s] of TAPS){
+    const [wx,z]=P(x,504.41),lz=z+.075;
+    cyl(.03,.012,wx,TOP+.006,z,0,0,.032);
+    gooseneck('Grifo lavabo cuello cisne',V(wx,TOP,z),TOP+.28,V(s,0,0),.10,.045,.0155);
+    cyl(.02,.075,wx,TOP+.0375,lz);cyl(.0068,.065,wx+s*.022,TOP+.075,lz,0,s*(Math.PI/2+.35));
+    cyl(.024,.006,wx,TOP+.003,lz);
+    contact(wx,TOP+.0005,z,.07,.05,.7);contact(wx,TOP+.0005,lz,.05,.04,.6);
   }
 
   // --- Vanity top: travertine with figure and relief -------------------------------
@@ -204,7 +201,7 @@ export async function apply(ctx){
   // slab: the kitchen's crosscut finish (world-projected colour and relief), on the
   // same baked light (split triangles keep their lightmap UVs).
   {
-    const top=ctx.splitExported({material:'stone',box:[[1.5,.59,-2.46],[3.55,.87,-1.98]]});
+    const top=ctx.splitExported({material:'stone',box:[[1.5,.64,-2.46],[3.55,.92,-1.98]]});
     const base=ctx.cloneMaterial(ctx.mats.kitchenCrosscut);base.color.set('#f4f0ea');
     // ctx.lightmap.material keeps the baked light; its program is keyed by kind-region.
     for(const piece of top)piece.material=ctx.lightmap.material(base,'crosscut','bano');
@@ -212,21 +209,21 @@ export async function apply(ctx){
     const c=document.createElement('canvas');c.width=4;c.height=64;const g=c.getContext('2d');
     const gr=g.createLinearGradient(0,0,0,64);gr.addColorStop(0,'#000');gr.addColorStop(.55,'#333');gr.addColorStop(1,'#fff');
     g.fillStyle=gr;g.fillRect(0,0,4,64);
-    contact(2.522,.8503,-2.03,.97,.04,.55,new THREE.CanvasTexture(c));
+    contact(2.522,TOP+.0003,-2.03,.97,.04,.55,new THREE.CanvasTexture(c));
   }
 
-  // Two amber bottles right of the right-hand tap (render 5; screen right is west).
+  // Two amber bottles at the east end of the vanity, beyond the right-hand tap.
   {
     const amber=new THREE.MeshPhysicalMaterial({color:'#4a2410',roughness:.12,metalness:0,clearcoat:1,clearcoatRoughness:.05,envMapIntensity:1.4});
     const label=new THREE.MeshStandardMaterial({color:'#e9e0d0',roughness:.8});
     const cap=new THREE.MeshStandardMaterial({color:'#151210',roughness:.35,metalness:.2});
     const prof=[[0,0],[.024,0],[.026,.004],[.026,.15],[.024,.162],[.012,.172],[.011,.19]].map(([r,y])=>new THREE.Vector2(r,y));
-    for(const [x,z,h] of [[1.93,-2.03,1],[1.86,-2.035,.93]]){
-      const b=new THREE.Mesh(new THREE.LatheGeometry(prof,24),amber);b.scale.set(1,h,1);b.position.set(x,.85,z);group.add(b);
-      const l=new THREE.Mesh(new THREE.CylinderGeometry(.0265,.0265,.07*h,24,1,true),label);l.position.set(x,.85+.085*h,z);group.add(l);
-      const k=new THREE.Mesh(new THREE.CylinderGeometry(.012,.013,.03,16),cap);k.position.set(x,.85+.19*h+.015,z);group.add(k);
-      const p=new THREE.Mesh(new THREE.CylinderGeometry(.004,.004,.035,8),cap);p.position.set(x,.85+.19*h+.04,z);p.rotation.z=Math.PI/2.2;p.position.x-=.01;group.add(p);
-      contact(x,.8505,z,.05,.05,.55);
+    for(const [x,z,h] of [[3.40,-2.03,1],[3.465,-2.035,.93]]){
+      const b=new THREE.Mesh(new THREE.LatheGeometry(prof,24),amber);b.scale.set(1,h,1);b.position.set(x,TOP,z);group.add(b);
+      const l=new THREE.Mesh(new THREE.CylinderGeometry(.0265,.0265,.07*h,24,1,true),label);l.position.set(x,TOP+.085*h,z);group.add(l);
+      const k=new THREE.Mesh(new THREE.CylinderGeometry(.012,.013,.03,16),cap);k.position.set(x,TOP+.19*h+.015,z);group.add(k);
+      const p=new THREE.Mesh(new THREE.CylinderGeometry(.004,.004,.035,8),cap);p.position.set(x,TOP+.19*h+.04,z);p.rotation.z=Math.PI/2.2;p.position.x-=.01;group.add(p);
+      contact(x,TOP+.0005,z,.05,.05,.55);
     }
   }
 

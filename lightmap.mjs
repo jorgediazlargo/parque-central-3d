@@ -13,14 +13,17 @@ import {probeVolume,fetchProbeData,patchLighting} from './lighting.mjs?v=65f7ecd
 // the room's ambient is scaled down so the wash grades instead of clipping to white.
 // Night: the same bake with the daylight off (data.night, same UVs). setMode('night'|'day')
 // fetches the other pages and probes once and swaps them into the same textures, so no
-// material is recompiled.
+// material is recompiled. The day bake has every artificial light on too; 'dayoff' is the
+// daylight alone (data.dayOff, same UVs), for Luces encendidas unticked.
 // RGBM needs the alpha untouched: decode without premultiplication or colour conversion.
 const bitmaps=new THREE.ImageBitmapLoader().setOptions({imageOrientation:'flipY',premultiplyAlpha:'none',colorSpaceConversion:'none'});
 const bakeVersion=data=>data.contextSha256.slice(0,10)+data.samples;
-const bakeFiles=(data,m)=>m==='night'?{pages:data.night.lightmaps,probes:data.night.probes}:{pages:data.lightmaps,probes:data.probes.file};
+// Without its own bake (an older house-light.json) 'dayoff' is the day.
+const modeOf=(data,m)=>m==='dayoff'&&!data.dayOff?'day':m;
+const bakeFiles=(data,m)=>{const v={night:data.night,dayoff:data.dayOff}[m];return v?{pages:v.lightmaps,probes:v.probes}:{pages:data.lightmaps,probes:data.probes.file};};
 // Progressive loading: the first mode shows the reduced pages (data.lowres, 1/4 of the size,
 // scripts/lightmap_lowres.py) and swaps in the full ones when they arrive.
-const lowPages=(data,m)=>data.lowres?.[m==='night'?'night':'lightmaps'];
+const lowPages=(data,m)=>data.lowres?.[{night:'night',dayoff:'dayOff'}[m]||'lightmaps'];
 const loadPages=(names,version)=>Promise.all(names.map(name=>bitmaps.loadAsync('./assets/'+name+'?v='+version)));
 // Requests the bake of `mode` now (its JSON and UVs) and its pages and probes once
 // `after` settles, so it downloads alongside the geometry; loadLightmap takes the result.
@@ -28,22 +31,22 @@ const loadPages=(names,version)=>Promise.all(names.map(name=>bitmaps.loadAsync('
 // probes by bake, so a re-denoise is revalidated (no-cache).
 export function fetchLightmap(mode='day',{after=null}={}){
   const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar la iluminación.');return read(r);});
-  const json=get('./assets/house-light.json?v=7651957a9b',r=>r.json()),uvs=get('./assets/house-light.bin?v=1b2130e255',r=>r.arrayBuffer());
+  const json=get('./assets/house-light.json?v=5e5c024a67',r=>r.json()),uvs=get('./assets/house-light.bin?v=0fbf474c4c',r=>r.arrayBuffer());
   const files=Promise.all([json,uvs]);
   const maps=Promise.all([json,after]).then(([data])=>{
     if(data.encoding!=='rgbm-sqrt-range-64')throw Error('Iluminación con un formato antiguo.');
-    const version=bakeVersion(data),{pages,probes}=bakeFiles(data,mode);
-    return Promise.all([loadPages(lowPages(data,mode)||pages,version),fetchProbeData(probes,version)]);
+    const m=modeOf(data,mode),version=bakeVersion(data),{pages,probes}=bakeFiles(data,m);
+    return Promise.all([loadPages(lowPages(data,m)||pages,version),fetchProbeData(probes,version)]);
   });
   // The full pages start once the reduced ones are in (they would share the bandwidth).
-  const full=Promise.all([json,maps]).then(([data])=>lowPages(data,mode)?loadPages(bakeFiles(data,mode).pages,bakeVersion(data)):null);
+  const full=Promise.all([json,maps]).then(([data])=>lowPages(data,modeOf(data,mode))?loadPages(bakeFiles(data,modeOf(data,mode)).pages,bakeVersion(data)):null);
   maps.catch(()=>{});full.catch(()=>{});  // reported by loadLightmap
   return {mode,files,maps,full};
 }
 // Resolves with the UVs; the pages and probes fill their textures when decoded (`loaded`),
 // so the house is built (and its programs compiled) meanwhile.
 export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],prefetched=fetchLightmap()}={}){
-  const {mode}=prefetched,[data,buffer]=await prefetched.files;
+  const [data,buffer]=await prefetched.files,mode=modeOf(data,prefetched.mode);
   if(data.sourceSha256!==await sourceHash)throw Error('La geometría y la iluminación no corresponden a la misma versión.');
   const version=bakeVersion(data),files=m=>bakeFiles(data,m);
   const pages=files(mode).pages.map(()=>new THREE.Texture()),probes=probeVolume(data.probes);
@@ -63,6 +66,7 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
     if(current===mode)show(full);
   }).catch(e=>console.warn('Iluminación en alta resolución no disponible:',e));
   async function setMode(next){
+    next=modeOf(data,next);
     if(next===current)return false;
     variants[next]??=Promise.all([loadPages(files(next).pages,version),fetchProbeData(files(next).probes,version)])
       .then(([b,p])=>({bitmaps:b,probes:p})).catch(e=>{delete variants[next];throw e;});
@@ -94,9 +98,6 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
       base.onBeforeCompile(shader);
       shader.uniforms.planarLight={value:pages[1]};
       if(region==='salon')shader.fragmentShader=shader.fragmentShader.replace('yarnCloth*.018','yarnCloth*.004');
-      if(region==='kitchen'&&kind==='kitchenOak')shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
-        diffuseColor.rgb=mix(vec3(dot(diffuseColor.rgb,vec3(.2126,.7152,.0722))),diffuseColor.rgb,.88)*.90;
-      `);
       // Coves are baked from the real ceiling geometry: drop the painted glow.
       shader.fragmentShader=shader.fragmentShader.replace(/float cove=0\.0;[\s\S]*?outgoingLight\+=vec3\([^)]*\)\*cove;/,'');
       shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_maps>',THREE.ShaderChunk.lights_fragment_maps.replace(/#ifdef USE_LIGHTMAP[\s\S]*?#endif/,''));

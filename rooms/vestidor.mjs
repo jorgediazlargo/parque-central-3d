@@ -21,9 +21,11 @@
 // Proyecto de ejecución (scripts/proyecto.py): every wardrobe's rails and clothes
 // shelves come from house.json (wardrobes.rails, wardrobes.stacks); garments hang in all
 // of them, also behind the oak doors of the other rooms (seen when a front opens).
-const STRIP_Y=1.89, TOP_STRIP_Y=2.18;   // LED strip under the top shelf of the glazed modules
-// Shelves and rails of the glazed modules (A1-A3, proyecto.py glass_module).
-const SHELF_Y=1.897,HANG_Y=.89;
+// Glazed modules (A1-A3, proyecto.py glass_module, G07): top shelf at 1,84, accessory
+// tray to 0,90; their light is the vertical sensor strips up both module sides, so the
+// light falloff from the shelf (STRIP_Y, TOP_STRIP_Y) is only a soft shading.
+const STRIP_Y=1.84, TOP_STRIP_Y=2.18;
+const SHELF_Y=1.84,HANG_Y=.90;
 // Render 6 palette (sRGB).
 const COLORS={white:'#eeeae3',ivory:'#ddd4c4',ecru:'#c3ae90',sand:'#a28a6c',greige:'#86776a',taupe:'#66553f',olive:'#59543f',brown:'#45362a',umber:'#2c241d'};
 // Per bay, in hanging order: [type, colour].
@@ -96,9 +98,9 @@ export async function apply(ctx){
   const HANG=.080,HANGER_H=.013,HANGER_D=.009;
   const hangerY=(x,W)=>-HANG-.040*Math.min(1,Math.abs(x)/(W-.012))**1.4;
 
-  const garment=(type,narrow)=>{
+  const garment=(type,narrow,maxL=9)=>{
     const T=TYPES[type],ph=rnd()*6.28,ph2=rnd()*6.28;
-    const W=T.W*(narrow?.88:1)*(.97+rnd()*.06),L=T.L[0]+rnd()*(T.L[1]-T.L[0]);
+    const W=T.W*(narrow?.88:1)*(.97+rnd()*.06),L=Math.min(maxL,T.L[0]+rnd()*(T.L[1]-T.L[0]));
     const yTop=-HANG+HANGER_H+.003,amp=type==='knit'?.004:.009;
     // Shoulder line: draped over the hanger (cloth just above its top edge), then falling
     // past its tips. The neck opening dips, deeper in front, so the middle of the hanger
@@ -271,7 +273,13 @@ export async function apply(ctx){
     const dir=V(bay.dir[0],0,bay.dir[1]),out=V(bay.out[0],0,bay.out[1]);
     const spacing=Math.min(.098,(len-.20-(bay.narrow?.12:0))/Math.max(1,bay.n-1));
     set.forEach(([type,color],k)=>{
-      const along=mid+(k-(bay.n-1)/2)*spacing*(bay.dir[0]+bay.dir[1])+(rnd()-.5)*.012;
+      // Garments stop short of what is below the rail (tray, drawers, worktop); a long one
+      // that would not fit becomes a knit, or is left out.
+      const room=t=>bay.y-.084-(bay.bottom??.10)-.015-TYPES[t].hem;
+      if(room(type)<TYPES[type].L[0])type=room('knit')>=TYPES.knit.L[0]?'knit':null;
+      if(!type)return;
+      // A single garment (laundry rail) hangs at the east end, by the machines (G14), clear of the tap.
+      const along=bay.n===1?bay.span[1]-.17:mid+(k-(bay.n-1)/2)*spacing*(bay.dir[0]+bay.dir[1])+(rnd()-.5)*.012;
       const c=bay.axis==='z'?V(bay.at,bay.y,along):V(along,bay.y,bay.at);
       const turn=THREE.MathUtils.degToRad(bay.turn+(rnd()-.5)*8);
       const front=dir.clone().multiplyScalar(Math.cos(turn)).addScaledVector(out,Math.sin(turn)).normalize();
@@ -279,7 +287,7 @@ export async function apply(ctx){
       // Garments hang a touch off vertical, and the hook swivels to the rail.
       const tilt=new THREE.Matrix4().makeRotationAxis(X,(rnd()-.5)*.03);
       const basis=new THREE.Matrix4().makeBasis(X,up,front).premultiply(tilt).setPosition(c);
-      const {parts,W}=garment(type,bay.narrow);
+      const {parts,W}=garment(type,bay.narrow,room(type));
       for(const g of parts){
         g.applyMatrix4(basis);
         paint(g,color,{front,first:k===0,last:k===bay.n-1,centre:c,out,across:X});
@@ -396,7 +404,8 @@ export async function apply(ctx){
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
     g.setIndex(idx);g.computeBoundingSphere();return g;
   };
-  const shelfShadow=multiply(falloff(.55,.55));shelfShadow.side=THREE.DoubleSide;
+  // No slope factor: seen edge-on it pushed the stack shade in front of the closed doors.
+  const shelfShadow=multiply(falloff(.55,.55));shelfShadow.side=THREE.DoubleSide;shelfShadow.polygonOffsetFactor=0;
   add('Vestidor sombra baldas',quadsGeo(shadowQuads.shelf),shelfShadow,false);
   const floorShadow=multiply(falloff(.55,.9));floorShadow.side=THREE.DoubleSide;
   add('Vestidor sombra zocalo',quadsGeo(shadowQuads.floor),floorShadow,false);
@@ -445,8 +454,9 @@ export async function apply(ctx){
       // Hanging clothes: darker, uneven vertical stripes.
       float cl=smoothstep(${f3(HANG_Y+.02)},${f3(HANG_Y+.08)},y)*(1.0-smoothstep(1.76,1.82,y));
       g*=1.0-cl*(.35+.25*sin(along*61.0)*sin(along*23.0+1.3));
-      // LED lines under the shelf and the top.
-      float led=smoothstep(.022,.004,abs(y-${f3(STRIP_Y-.008)}))+smoothstep(.022,.004,abs(y-${f3(TOP_STRIP_Y-.008)}));
+      // Vertical LED strips up both sides of each two-leaf module.
+      float um=mod(along-a0,2.0*dw);
+      float led=(smoothstep(.02,.006,abs(um-.025))+smoothstep(.02,.006,abs(2.0*dw-um-.025)))*step(.15,y)*step(y,2.15);
       // Door frames (dark bronze) at every door edge, top and bottom.
       float u=mod(along-a0,dw),fr=min(min(u,dw-u),min(y-.103,2.194-y));
       float frame=smoothstep(.014,.024,fr);
@@ -454,7 +464,7 @@ export async function apply(ctx){
     }
     vec3 vestReflect(vec3 P,vec3 R){
       float best=1e3,val=0.0,t;vec3 H;
-      t=(${f3(.723)}-P.x)/R.x;if(R.x<-.01&&t>.05&&t<best){H=P+R*t;float v=vestFront(H.y,H.z,-4.871,-2.471,.40);if(v>0.0){best=t;val=v;}}
+      t=(${f3(.723)}-P.x)/R.x;if(R.x<-.01&&t>.05&&t<best){H=P+R*t;float v=vestFront(H.y,H.z,-5.433,-1.993,.43);if(v>0.0){best=t;val=v;}}
       t=(${f3(-5.060)}-P.z)/R.z;if(R.z<-.01&&t>.05&&t<best){H=P+R*t;float v=vestFront(H.y,H.x,1.623,3.584,.4902);if(v>0.0){best=t;val=v;}}
       t=(${f3(4.334)}-P.x)/R.x;if(R.x>.01&&t>.05&&t<best){H=P+R*t;float v=vestFront(H.y,H.z,-2.730,-1.990,.37);if(v>0.0){best=t;val=v;}}
       // Nothing glazed in that direction: the room's plaster, lit like the glass itself.

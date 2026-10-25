@@ -19,6 +19,7 @@
 // travel (drawer / pocket, m), along:[x,z] and hingeY (flap), y:[bottom, top]}.
 
 const ease=t=>t*t*(3-2*t);
+const T=.019,GAP=.0025;   // proyecto.py: leaf thickness, joint between fronts
 
 export function createFronts(THREE,{data,staticMeshes,scene}){
   const specs=data.fronts||[],fronts=specs.map(s=>({...s,name:s.label,t:0,goal:0,group:null}));
@@ -39,7 +40,14 @@ export function createFronts(THREE,{data,staticMeshes,scene}){
   // Moves the triangles of front f into meshes of its own under a pivot group.
   function lift(f){
     const group=new THREE.Group();group.name='Frente '+f.id;group.userData.frontGroup=f;
-    const [px,pz]=f.pivot||[0,0],py=f.kind==='flap'?f.hingeY:0;
+    let [px,pz]=f.pivot||[0,0];const py=f.kind==='flap'?f.hingeY:0;
+    if(f.kind==='hinge'){
+      // Turn about the leaf's front edge on the hinge side (the exported pivot is on the
+      // carcass front): two leaves hinged on one divider then open side by side, each
+      // within its own module, instead of crossing.
+      const ex=f.edge[0]-px,ez=f.edge[1]-pz,L=Math.hypot(ex,ez);
+      px+=ex/L*GAP/2+f.out[0]*T;pz+=ez/L*GAP/2+f.out[1]*T;
+    }
     group.position.set(px,py,pz);scene.add(group);f.base=group.position.clone();
     for(const mesh of holders()){
       const geo=mesh.geometry,ids=geo.getAttribute('frontId'),index=geo.index,n=index?index.count:ids.count;

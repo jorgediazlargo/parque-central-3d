@@ -20,8 +20,9 @@
 // - Contact: chairs darken where they tuck under the top and on their undersides
 //   (vertex occlusion); deeper shadow under the top and at the pedestals.
 //
-// Table as in renders 2 and 2a (15 Oct): racetrack top (round ends, R 50 cm) on the
-// B01 footprint of 100 x 237 cm, honey oak less orange; the two dark B01 drum
+// Table (15 Oct, plan over renders 24 Oct): the B01 rectangle of 100 x 237 cm with
+// R 10 cm corners (not the racetrack of renders 2 and 2a), at the execution project's
+// B01 position (5 cm east of the older one, chairs with it); honey oak less orange; the two dark B01 drum
 // pedestals become oak ones, slim under the top and flaring to the floor; and the
 // small stone cylinder in the middle becomes the wide, low taupe bowl of the render.
 
@@ -29,15 +30,15 @@ import {upholstery,CHAIR_WEAVE} from './salon.mjs';
 
 // Seat centres of the six exported chairs (world metres, measured from house.bin) and
 // which side their back is on: west row backs to -x, east row to +x.
-const CHAIRS=[[11.352,-7.070,-1],[11.078,-6.440,-1],[11.352,-5.810,-1],[12.182,-7.070,1],[12.182,-6.440,1],[12.182,-5.810,1]];
-const PEDESTALS=[[11.767,-7.137],[11.767,-5.740]];
-const TABLE={x0:11.267,x1:12.267,z0:-7.625,z1:-5.255};
+const CHAIRS=[[11.403,-7.070,-1],[11.129,-6.440,-1],[11.403,-5.810,-1],[12.233,-7.070,1],[12.233,-6.440,1],[12.233,-5.810,1]];
+const PEDESTALS=[[11.818,-7.137],[11.818,-5.740]];
+const TABLE={x0:11.318,x1:12.318,z0:-7.625,z1:-5.255};
 
-const TOP={y0:.715,y1:.76,r:.50,arris:.004,edge:.02,under:.03};
+const TOP={y0:.715,y1:.76,r:.10,arris:.004,edge:.02,under:.03};
 // Pedestal radii (m): under the top, slimmest, at the floor; the waist height.
 const PEDESTAL={top:.07,waist:.05,foot:.18,neck:.56};
 // Bowl at the B01 'Cuenco comedor' point: outer radius, height, wall, foot ring.
-const BOWL={x:11.768,z:-6.555,r:.23,h:.085,wall:.011,foot:.085};
+const BOWL={x:11.819,z:-6.555,r:.23,h:.085,wall:.011,foot:.085};
 
 // Oak tint: cool, like the kitchen oak, because the coves and downlights over the table
 // are warm; the top then reads honey (R/G 1.34-1.45, G/B 1.4-1.55 on screen; renders 2

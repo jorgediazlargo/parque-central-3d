@@ -17,7 +17,7 @@ export async function apply(ctx){
   const sun=data.sunProtection,inst=data.installations;
   // I02 Schock sinks (granite composite in the worktop's colour): the bake leaves the
   // deep bowls nearly black, so they take the probes' light with the stone's finish.
-  for(const box of [[[8.64,.70,-.82],[9.26,.905,-.40]],[[15.52,.60,-.78],[16.07,.805,-.29]]]){
+  for(const box of [[[8.64,.70,-.82],[9.26,.905,-.40]],[[15.66,.70,-.775],[16.20,.897,-.305]]]){
     for(const piece of ctx.splitExported({material:'kitchenStone',box})){
       piece.material=ctx.cloneMaterial(ctx.mats.kitchenStone);delete piece.material.userData.bakedLit;
       piece.geometry.deleteAttribute('uv1');ctx.lightRuntimeObject(piece);
@@ -63,13 +63,14 @@ export async function apply(ctx){
     }
     ctx.addCurtain({name:'Cortina · salón y comedor',material:cloth,z:c.z+.055,y0:.035,y1:2.28,pitch:.13,depth:.03,seed:23,t:1,panels:leaves});
   }
-  // Exterior shutters, raised: two guides and the bottom slat under the lintel.
+  // Exterior shutters, raised: two guides over the opening's height and the bottom slat
+  // right under its head (windows 0.90-2.40, balconeras 0.10-2.30).
   {
     const parts=[];
     for(const s of sun.shutters){
-      const w=s.x1-s.x0,z=s.z-.03;
-      for(const x of [s.x0+.012,s.x1-.012])parts.push(box(THREE,.024,2.20,.04,x,1.20,z));
-      parts.push(box(THREE,w-.024,.05,.012,(s.x0+s.x1)/2,2.275,z));
+      const w=s.x1-s.x0,z=s.z-.03,sill=s.sill??.10,head=s.head??2.30;
+      for(const x of [s.x0+.012,s.x1-.012])parts.push(box(THREE,.024,head-sill,.04,x,(head+sill)/2,z));
+      parts.push(box(THREE,w-.024,.05,.012,(s.x0+s.x1)/2,head-.025,z));
     }
     const m=new THREE.Mesh(merge(THREE,parts),ctx.cloneMaterial(ctx.mats.ral9001||metal));m.name='Persianas exteriores';
     group.add(m);ctx.lightRuntimeObject(m);
@@ -127,7 +128,7 @@ export async function apply(ctx){
   {
     const frames=[],slots=[];
     for(const g of inst.grilles){
-      const len=g.kind==='supply'?.89:.50,H=.10,[ax,az]=g.a,[bx,bz]=g.b;
+      const len=g.length||(g.kind==='supply'?.89:.50),H=.10,[ax,az]=g.a,[bx,bz]=g.b;
       const cx=(ax+bx)/2,cz=(az+bz)/2,alongX=Math.abs(bx-ax)>=Math.abs(bz-az);
       if(g.where==='ceiling'){
         const f=box(THREE,alongX?len:H,.006,alongX?H:len,cx,g.y-.003,cz);frames.push(f);

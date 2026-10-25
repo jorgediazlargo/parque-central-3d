@@ -3,7 +3,7 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=65f7ecdcd5';
 import {Post} from './post.mjs?v=8fc2bec064';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=329eb3f25b';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=a1786addb3';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
@@ -12,7 +12,7 @@ import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=23a0bca5eb';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=4bcf41157e';
-import {createFronts} from './fronts.mjs?v=ad678e848d';
+import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
 
 const $=id=>document.getElementById(id),canvas=$('world');
@@ -28,15 +28,16 @@ let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,roomTimer,rayTime=0,roomTime=0;
 const mobile=matchMedia('(pointer:coarse)').matches,eye=1.6;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,fullscreen:true,closet:false};
-try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','fullscreen','closet'])if(key in saved)settings[key]=saved[key];}catch{}
-// ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved.
-{const q=new URLSearchParams(location.search).get('noche');if(q!==null)settings.night=q!=='0';}
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,closet:false};
+try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','lamps','fullscreen','closet'])if(key in saved)settings[key]=saved[key];}catch{}
+// ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved; ?luces=0 by day
+// with the artificial lights off, ?luces with them on.
+{const q=new URLSearchParams(location.search);if(q.get('noche')!==null)settings.night=q.get('noche')!=='0';if(q.get('luces')!==null)settings.lamps=q.get('luces')!=='0';}
 // ?vestidor=piedra opens with the stone and glass vestidor variant, ?vestidor=plano without it.
 {const q=new URLSearchParams(location.search).get('vestidor');if(q!==null)settings.closet=q==='piedra';}
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
-for(const key of ['sound','bob','night','fullscreen','closet']) {
-  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night')setNight(settings.night);if(key==='closet')setCloset(settings.closet);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
+for(const key of ['sound','bob','night','lamps','fullscreen','closet']) {
+  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='closet')setCloset(settings.closet);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
 }
 // Pantalla completa: Entrar fills the screen with the whole page (menu and prompts stay on
 // top) when the option is on, and F switches it while walking. Walking full screen hides the
@@ -60,9 +61,13 @@ for(const type of ['fullscreenchange','webkitfullscreenchange'])document.addEven
   // Switching screens can drop the capture (or it was refused): full screen lets it back without a click.
   if(playing&&!mobile&&!document.pointerLockElement)Promise.resolve(canvas.requestPointerLock()).catch(()=>{});
 });
-$('night').disabled=true;$('closet').disabled=true;  // until the house is lit (load)
+$('night').disabled=$('lamps').disabled=$('closet').disabled=true;  // until the house is lit (load)
+// Luces encendidas: by day only (at night they are all on), once there is a bake without them.
+const syncLampsOption=()=>{$('lamps').closest('label').hidden=settings.night||!lightmap?.data.dayOff;};syncLampsOption();
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
+// Terrace soffit (wall shader): pale by day only.
+const terraceDay={value:1};
 const porcelainMap={value:null},vestidorStone={value:0},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
 const PLASTER_TILE=.75;  // metres per plaster.webp tile (style_textures.py)
 // Clear glass: a faint tinted body, reflections (box-projected room probes) at full
@@ -151,10 +156,11 @@ function material(color,kind,roughness=.7){
           normal=normalize((viewMatrix*vec4(ccN,0.0)).xyz);}`).replace('void main() {','#define CROSSCUT_RELIEF 1.0\n#define CROSSCUT_BIAS -0.8\nvoid main() {');
       }
       if(kind==='terrace'){
-        // Terrace porcelain (photo): pale warm-grey 80 cm squares on the facade grid, fine joints,
-        // each piece a touch lighter or darker, with a soft mottle.
+        // Terrace porcelain (photo colour): pale warm-grey squares on the B01 / H01 grid
+        // (0,889 m, joints from x 378.99, y 71.12), fine joints, each piece a touch lighter
+        // or darker, with a soft mottle.
         shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
-          vec2 terraceAt=(houseWorld.xz-vec2(4.39,-10.88))/.80;
+          vec2 terraceAt=(houseWorld.xz-vec2(5.287,-10.647))/.889;
           vec2 terraceCell=floor(terraceAt),terraceF=fract(terraceAt);
           float terraceEdge=min(min(terraceF.x,1.0-terraceF.x),min(terraceF.y,1.0-terraceF.y));
           float terraceJoint=1.0-smoothstep(.0035,.0035+max(fwidth(terraceEdge),1e-4)*1.5,terraceEdge);
@@ -212,9 +218,6 @@ function material(color,kind,roughness=.7){
           // Long pale planks of natural oak, warm honey as in the renders.
           float oakValue=dot(diffuseColor.rgb,vec3(.2126,.7152,.0722));
           vec3 oakFloor=mix(vec3(oakValue),diffuseColor.rgb,.9)*vec3(1.14,1.0,.83)*1.30;
-          // Render 7: paler, less orange oak in the girls' room.
-          float girlsFloor=step(15.78,houseWorld.x)*step(houseWorld.z,-4.87);
-          oakFloor=mix(oakFloor,mix(vec3(oakValue*1.30),oakFloor,.55)*vec3(1.0,1.02,1.08),girlsFloor);
           // Porcelain module 1.20 m on the diagonal (proyecto de ejecución H01), band crossing on the H01 set-out point
           // at the entrance. Each piece is mirrored or turned at random to break repeats.
           vec2 porcelainAt=floorAt-vec2(14.086,-.218);
@@ -282,12 +285,13 @@ function material(color,kind,roughness=.7){
         `);
       }
       if(kind==='wall'){
+        shader.uniforms.terraceDay=terraceDay;shader.fragmentShader='uniform float terraceDay;\n'+shader.fragmentShader;
         let glow='float cove=0.0;';
         for(const i of data?.litCoves||[]){
           const [x0,z0,x1,z1,h]=data.coves[i];
           glow+=`{vec2 q=houseWorld.xz;vec2 lo=vec2(${x0.toFixed(5)},${z0.toFixed(5)}),hi=vec2(${x1.toFixed(5)},${z1.toFixed(5)});vec2 outer=max(max(lo-q,q-hi),vec2(0.0));float edge=min(min(abs(q.x-lo.x),abs(q.x-hi.x)),min(abs(q.y-lo.y),abs(q.y-hi.y)));cove+=exp(-edge*7.0-length(outer)*13.0-abs(houseWorld.y-${(h+.07).toFixed(3)})*6.0)*.42;}`;
         }
-        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',glow+'\noutgoingLight+=vec3(1.0,.62,.32)*cove;\n// Terrace soffit (photo): pale, lit by the sunlit floor and the sky, which the bake does not carry out there.\nfloat terraceSoffit=step(2.5,houseWorld.y)*step(houseWorld.z,-8.7)*step(4.3,houseWorld.x)*step(houseWorld.x,14.4);\noutgoingLight+=diffuseColor.rgb*vec3(1.0,.985,.95)*.85*terraceSoffit;\n#include <opaque_fragment>');
+        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',glow+'\noutgoingLight+=vec3(1.0,.62,.32)*cove;\n// Terrace soffit (photo): pale, lit by the sunlit floor and the sky, which the bake does not carry out there.\nfloat terraceSoffit=step(2.465,houseWorld.y)*step(houseWorld.y,2.48)*step(houseNormal.y,-.5)*step(houseWorld.z,-8.65)*step(4.3,houseWorld.x)*step(houseWorld.x,14.4)*terraceDay;\noutgoingLight+=diffuseColor.rgb*vec3(1.0,.985,.95)*.85*terraceSoffit;\n#include <opaque_fragment>');
       }
     };m.customProgramCacheKey=()=>kind||'plain';
   if(['fabric','linen','rug'].includes(kind))m.defines={USE_UV:''};
@@ -300,9 +304,6 @@ const mats={wall:material('#e0d3c8','wall',.92),stone:material('#ebe5dc','kitche
   sage:material('#797e59','fabric'),lacquer:material('#d8ccba','lacquer',.58),rug:material('#b8aa95','rug',.96),
   blackstone:material('#39362d','stone',.35),clay:material('#a9613f',null,.65),curtain:material('#e9e0cf','fabric')};
 Object.assign(mats,{
-  // Kitchen oak: a cool tint offsets the warm cove light so the fronts read as the
-  // muted grey-brown oak of render 9 (about 96/68/44 on screen), not orange walnut.
-  kitchenOak:material('#c0c3c8','wood',.55),
   kitchenFabric:material('#a69a89','fabric',.94),shirt:material('#8ea7c6','linen',.9),
   kitchenBronze:material('#66513a',null,.38),kitchenDark:material('#262622',null,.42),
   ovenGlass:material('#141916',null,.20),ovenWindow:material('#202820',null,.27),
@@ -329,6 +330,8 @@ mats.mirrorLeaf=new THREE.MeshStandardMaterial({color:'#e4e4de',metalness:1,roug
 mats.mirror=new THREE.MeshStandardMaterial({color:'#b9bcba',metalness:.35,roughness:.12});
 Object.assign(mats,{glossWhite:material('#f3f1ec',null,.14),nickel:material('#bdb8ae',null,.3),rawMetal:material('#93897b',null,.4),copper:material('#b39280',null,.36)});
 mats.nickel.metalness=.9;mats.rawMetal.metalness=.85;mats.copper.metalness=.9;
+// M1 (G04): «Acabado Metálico Color Cobre».
+mats.screenCopper=material('#955d4a',null,.38);mats.screenCopper.metalness=.85;
 // Wet-zone slabs share the floor: porcelain of the H01 plan.
 mats.tile=mats.floor;
 mats.curtain.transparent=true;mats.curtain.opacity=.62;mats.curtain.depthWrite=false;mats.curtain.userData.translucency=.75;
@@ -344,18 +347,19 @@ function loadSurfaceMaps(){
     // rooms/dormitorio.mjs draws mats.wood.map's image into a canvas: an upright <img>.
     Promise.all([new THREE.TextureLoader().loadAsync('./assets/polyhaven/white_oak_veneer/white_oak_veneer_diff_1k.webp?v=2fbb230119'),
       ...['nor_gl','rough'].map(m=>image(`./assets/polyhaven/white_oak_veneer/white_oak_veneer_${m}_1k.webp`))]),
-    Promise.all(['diff','nor_gl','rough'].map(m=>image(`./assets/polyhaven/mocha_oak_veneer/mocha_oak_veneer_${m}_1k.webp`))),
     image('./assets/textures/travertine.webp?v=2bc29d0cfa'),
     Promise.all(['stone_crosscut','stone_crosscut_nor'].map(n=>image(`./assets/textures/${n}.webp`))),
     Promise.all(['./assets/textures/limewash.webp?v=76a3d72611','./assets/textures/plaster.webp?v=c910d3af3d',
       './assets/textures/plaster_nor.webp?v=70c8c6dff6','./assets/textures/white_plaster_02_rough_1k.jpg?v=4ff1fe957c'].map(n=>image(n))),
-    image('./assets/cal-mask.png?v=426724678d',{flipY:false})]);
+    image('./assets/cal-mask.png?v=68aeaac54e',{flipY:false})]);
 }
 async function surfaceTextures(loading){
-  const [sets,porcelain,oak,kitchenOak,stone,[crosscut,crosscutNor],[lime,plaster,plasterNor,plasterRough],mask]=await loading;
+  const [sets,porcelain,oak,stone,[crosscut,crosscutNor],[lime,plaster,plasterNor,plasterRough],mask]=await loading;
   for(const {maps,targets,scale,strength} of sets){
     maps.forEach((t,i)=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(scale,scale);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());if(i===0)t.colorSpace=THREE.SRGBColorSpace;});
     for(const key of targets){mats[key].map=maps[0];mats[key].normalMap=maps[1];mats[key].roughnessMap=maps[2];mats[key].normalScale.set(strength,strength);mats[key].needsUpdate=true;}
+    // H01 draws the oak boards running north-south: the laminate's planks run along u.
+    if(targets.includes('floor'))maps.forEach(t=>{t.rotation=Math.PI/2;});
   }
   porcelain.colorSpace=THREE.SRGBColorSpace;porcelain.wrapS=porcelain.wrapT=THREE.RepeatWrapping;
   porcelain.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());porcelainMap.value=porcelain;
@@ -364,10 +368,6 @@ async function surfaceTextures(loading){
   // normal and roughness give the satin sheen and pores the renders show.
   oak.forEach((t,i)=>{t.colorSpace=i?THREE.NoColorSpace:THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,2);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
   {const m=mats.wood;m.map=oak[0];m.normalMap=oak[1];m.roughnessMap=oak[2];m.normalScale.set(.45,.45);m.bumpMap=null;m.needsUpdate=true;}
-  // Kitchen fronts of render 9: fine straight quarter-cut grain (Mocha Oak Veneer, CC0,
-  // 1 m tile, grain contrast raised by derive_polyhaven.py), turned to run vertically.
-  kitchenOak.forEach((t,i)=>{t.colorSpace=i?THREE.NoColorSpace:THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.rotation=Math.PI/2;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
-  {const m=mats.kitchenOak;m.map=kitchenOak[0];m.normalMap=kitchenOak[1];m.roughnessMap=kitchenOak[2];m.normalScale.set(.6,.6);m.bumpMap=null;m.needsUpdate=true;}
   stone.colorSpace=THREE.SRGBColorSpace;stone.wrapS=stone.wrapT=THREE.RepeatWrapping;stone.anisotropy=8;
   for(const key of ['kitchenStone','stone']){mats[key].map=stone;mats[key].bumpMap=stone;mats[key].bumpScale=.0012;mats[key].needsUpdate=true;}
   for(const t of [crosscut,crosscutNor]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
@@ -405,12 +405,7 @@ function studyPanel(group,width,height){
   box(group,width-.02,height-.02,.010,width/2,height/2,0,mats.glass);
   for(const x of [stile/2,width-stile/2])box(group,stile,height,depth,x,height/2,0,studyFrame);
   for(const y of [.015,...rails,height-.015])box(group,width,.032,depth,width/2,y,0,studyFrame);
-  // Sliding leaf: slim vertical pull near the meeting stile, on both faces.
-  const x=width-stile-.035;
-  for(const side of [-1,1]){
-    box(group,.014,.32,.014,x,1.02,side*(depth/2+.030),studyFrame);
-    for(const y of [.88,1.16])box(group,.012,.012,.030,x,y,side*(depth/2+.015),studyFrame);
-  }
+  // G06 draws no pull on the M3 leaves.
 }
 function leaf(width,height,glass,door){
   const group=new THREE.Group();
@@ -432,10 +427,12 @@ function leaf(width,height,glass,door){
       box(group,w,h,depth/2,x,y,room*depth/4,mats.ral9001);box(group,w,h,depth/2,x,y,-room*depth/4,mats.facadeGold);
     };
     for(const x of [.012,width-.012])profile(terrace?.05:.024,height,x,height/2);
-    // M1 (G04): double rail at 1.00 and 1.10 and a double stile 0.10 in from each edge.
-    for(const y of terrace?[.025,height-.025]:kitchen?[.012,height-.012,1.00,1.10]:[.012,height-.012,.73,height-.40])profile(width,terrace?.05:.020,width/2,y,.034);
-    if(kitchen)for(const x of [.10,width-.10])for(const dx of [-.016,.016])box(group,.012,height,.024,x+dx,height/2,0,mats.kitchenBronze);
-    if(door){
+    // M1 (G04): rails at 1,00-1,02 and 1,12-1,14 and two 2 cm bars at 0,12 and 0,24 in
+    // from each edge.
+    for(const y of terrace?[.025,height-.025]:kitchen?[.012,height-.012,1.01,1.13]:[.012,height-.012,.73,height-.40])profile(width,terrace?.05:.020,width/2,y,.034);
+    if(kitchen)for(const x of [.13,.25,width-.25,width-.13])box(group,.02,height,.024,x,height/2,0,mats.bronze);
+    // G04 draws no pull on the M1 leaves: the bars are the grip.
+    if(door&&!kitchen){
       for(const side of [-1,1]){
         // Suite leaves park inside the 10 cm wall skin: a flush pull stays within it instead of poking through the plaster.
         if(door.type==='slide'){box(group,.014,.29,.012,Math.max(.06,width-.075),1.02,side*.022,mats.bronze);continue;}
@@ -461,7 +458,7 @@ function leaf(width,height,glass,door){
   // An invisible full panel makes even thin glass easy to select.
   const hit=box(group,width,height,.055,width/2,height/2,0,new THREE.MeshBasicMaterial({visible:false}));
   hit.userData.door=door;group.traverse(o=>{if(o.isMesh)o.userData.door=door;});
-  if(door?.name==='Cocina')group.traverse(o=>{if(o.material===mats.bronze)o.material=mats.kitchenBronze;});
+  if(door?.name==='Cocina')group.traverse(o=>{if(o.material===mats.bronze)o.material=mats.screenCopper;});
   return group;
 }
 function placeDoor(d,t){
@@ -477,6 +474,16 @@ function setupDoors(){
     for(let i=0;i<n;i++){const g=leaf(w,d.height,d.glass,d);d.groups.push(g);scene.add(g);runtimeObjects.push(g);}
     placeDoor(d,t);return d;
   });
+  // E01-E03 (E02): the fixed 0.10 m frame round each terrace opening, the leaves inside it;
+  // bicolour like the leaves, RAL 9001 to the room (+z) and gold outside.
+  for(const d of doors){
+    const f=d.frame;if(!f)continue;
+    const g=new THREE.Group(),L=Math.hypot(f.b[0]-f.a[0],f.b[1]-f.a[1]),w=f.width,h=f.top-f.base,depth=.07;
+    g.position.set(f.a[0],f.base,f.a[1]);g.rotation.y=-Math.atan2(f.b[1]-f.a[1],f.b[0]-f.a[0]);
+    const piece=(bw,bh,x,y)=>{box(g,bw,bh,depth/2,x,y,depth/4,mats.ral9001);box(g,bw,bh,depth/2,x,y,-depth/4,mats.facadeGold);};
+    piece(w,h,w/2,h/2);piece(w,h,L-w/2,h/2);piece(L-2*w,w,L/2,h-w/2);piece(L-2*w,w,L/2,w/2);
+    scene.add(g);runtimeObjects.push(g);
+  }
   const [a,b]=data.fixedStudy,g=new THREE.Group(),length=Math.hypot(b[0]-a[0],b[1]-a[1]);
   g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);scene.add(g);runtimeObjects.push(g);
   const study=doors.find(d=>d.name==='Estudio'),along=p=>((p[0]-a[0])*(b[0]-a[0])+(p[1]-a[1])*(b[1]-a[1]))/length;
@@ -669,24 +676,45 @@ async function exterior(loading){
 // Terrace and facade (not baked): sun and sky by day; by night a faint cool moonlight
 // and sky, the backdrop graded for night. Indoors everything takes the bake or probes.
 function outdoorLight(night){
-  const {sky,sun}=outdoor;
+  const {sky,sun}=outdoor;terraceDay.value=night?0:1;
   sky.color.set(night?'#3a4866':'#dfe9f2');sky.groundColor.set(night?'#1a1712':'#8a7a64');sky.intensity=night?.22:.9;
   sun.color.set(night?'#a9bde0':'#ffe2bd');sun.intensity=night?.18:2.1;
   scene.background.set(night?'#06080f':'#c4d7de');
   Object.assign(composer.settings,outdoor.post[night?1:0]);
   if(outdoor.dome){outdoor.dome.map=outdoor.skies[night?1:0];for(const [m,day,dark] of outdoor.views)m.map=night?dark:day;outdoor.ground.color.set(night?'#141712':'#73826a');}
 }
+// The bake for the settings: night (every light on), day with the lights (as baked) or
+// the daylight alone (Luces encendidas unticked).
+const lightMode=()=>settings.night?'night':settings.lamps||!lightmap.data.dayOff?'day':'dayoff';
+// Unlit, the LED strips stop glowing and the curtain pockets stop washing the sheers.
+const pocketPower=[];
+function lampGlow(on){
+  scene.traverse(o=>{
+    const m=o.isMesh&&['led','ledStrip'].includes(o.userData.exported?.material)?o.material:null;if(!m)return;
+    // Switched off, globes, diffusers and strips read as their white opal, not warm and lit.
+    m.userData.lampGlow??=m.emissiveIntensity;m.emissiveIntensity=on?m.userData.lampGlow:0;
+    m.userData.lampColor??=m.color.clone();if(on)m.color.copy(m.userData.lampColor);else m.color.set('#e4e0d8');
+  });
+  lighting.uniforms.pocketB.value.forEach((v,i)=>{pocketPower[i]??=v.y;v.y=on?pocketPower[i]:0;});
+}
 let timeSwitch=Promise.resolve();
-function setNight(night){
+function setLight(){
   timeSwitch=timeSwitch.then(async()=>{
-    if(!ready||night===timeOfDay.night)return;
-    notice(night?'Encendiendo las luces…':'Amaneciendo…');
-    await lightmap.setMode(night?'night':'day');
-    timeOfDay.night=night;outdoorLight(night);
-    await Promise.all([...timeOfDay.listeners].map(fn=>fn(night)));
+    const mode=lightMode(),night=mode==='night';
+    if(!ready||mode===lightmap.mode)return;
+    notice(night?'Encendiendo las luces…':night===timeOfDay.night?(mode==='day'?'Encendiendo las luces…':'Apagando las luces…'):'Amaneciendo…');
+    await lightmap.setMode(mode);
+    lampGlow(mode!=='dayoff');
+    if(night!==timeOfDay.night){
+      timeOfDay.night=night;outdoorLight(night);
+      await Promise.all([...timeOfDay.listeners].map(fn=>fn(night)));
+    }
     reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;idle(reportShaderErrors);
-    notice(night?'Noche · todas las luces encendidas':'Día');
-  }).catch(e=>{console.error(e);notice('No se ha podido cambiar la luz.');settings.night=timeOfDay.night;$('night').checked=timeOfDay.night;savePreferences();});
+    notice(night?'Noche · todas las luces encendidas':mode==='day'?'Día':'Día · luces apagadas');
+  }).catch(e=>{
+    console.error(e);notice('No se ha podido cambiar la luz.');
+    settings.night=timeOfDay.night;settings.lamps=lightmap.mode!=='dayoff';$('night').checked=settings.night;$('lamps').checked=settings.lamps;savePreferences();
+  }).finally(syncLampsOption);
   return timeSwitch;
 }
 
@@ -805,7 +833,8 @@ addEventListener('keydown',e=>{
   if(e.code==='Escape'){pause();return;}if(!playing)return;
   if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyE','KeyN','KeyF'].includes(e.code))e.preventDefault();
   keys.add(e.code);if(e.code==='KeyE'&&!e.repeat)interact();
-  if(e.code==='KeyN'&&!e.repeat){settings.night=!timeOfDay.night;$('night').checked=settings.night;savePreferences();setNight(settings.night);}
+  if(e.code==='KeyN'&&!e.repeat){settings.night=!timeOfDay.night;$('night').checked=settings.night;savePreferences();setLight();}
+  if(e.code==='KeyL'&&!e.repeat&&!settings.night&&lightmap.data.dayOff){settings.lamps=!settings.lamps;$('lamps').checked=settings.lamps;savePreferences();setLight();}
   if(e.code==='KeyF'&&!e.repeat&&screenMode.supported){settings.fullscreen=!screenMode.on;$('fullscreen').checked=settings.fullscreen;savePreferences();if(settings.fullscreen)screenMode.enter();else screenMode.exit();}
 });
 addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',pause);
@@ -840,12 +869,12 @@ async function load(){
     // only the last room module and the captures read. Shared bandwidth would otherwise
     // deliver the geometry last.
     const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
-    const house=Promise.all([get('./assets/house.json?v=ecae400f12',r=>r.json()),get('./assets/house.bin?v=4f6fa2fd97',r=>r.arrayBuffer())]);
+    const house=Promise.all([get('./assets/house.json?v=41c8105b9e',r=>r.json()),get('./assets/house.bin?v=b5048928a5',r=>r.arrayBuffer())]);
     const surfaceMaps=loadSurfaceMaps(),views=loadViews();
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();
     for(const p of [surfaceMaps,views])p.catch(()=>{});  // reported where awaited
-    const bake=fetchLightmap(settings.night?'night':'day',{after:Promise.allSettled([house,surfaceMaps,views])});
+    const bake=fetchLightmap(settings.night?'night':settings.lamps?'day':'dayoff',{after:Promise.allSettled([house,surfaceMaps,views])});
     const [json,buffer]=await house;
     const progress=window.loadProgress;progress?.stage(.1);
     data=json;timeOfDay.night=settings.night;await initScene(buffer,bake);progress?.stage(.35);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);progress?.stage(.5);
@@ -870,7 +899,7 @@ async function load(){
     // first capture) and again when a door moves, not for every face of every capture.
     renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     reflections.capture(renderer,scene);
-    ready=true;progress?.done();$('night').disabled=false;$('closet').disabled=false;
+    ready=true;progress?.done();$('night').disabled=$('lamps').disabled=$('closet').disabled=false;syncLampsOption();lampGlow(lightmap.mode!=='dayoff');
     // The tour starts on the reduced lightmaps: reflections again once the full pages are in.
     lightmap.sharp.then(()=>{timeSwitch=timeSwitch.then(()=>reflections.capture(renderer,scene));});
     const params=new URLSearchParams(location.search);

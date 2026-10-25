@@ -16,7 +16,7 @@ import {mergeGeometries} from '../assets/jsm/utils/BufferGeometryUtils.js';
 const ZONE=[[15.78,-.2,-9.8],[18.7,3.2,-4.87]];
 // Beds (B01 'Cama secundaria 1/2'): head at the east wall, 2 m long towards -x.
 const HEAD_X=18.432,BED_L=2,WH=.45,BEDS=[{cz:-8.575,seed:51},{cz:-7.075,seed:67}];
-const HEAD_S=.05;   // upholstered headboard face (x 18.382)
+const HEAD_S=0;   // B01: no headboard, the beds reach the wall
 const BASE_TOP=.29,TOP=.50;
 
 // Seeded value noise, smooth enough for folds (as bedding.mjs).
@@ -194,10 +194,9 @@ function bed(THREE,{cz,seed},m){
   return group;
 }
 
-// B01 bedside drums [x, z, radius] (plan 1040,218 r 10 and 1040,295 r 12): same
-// centres, but the volume of render 7's drum (34-36 cm across, 45 cm high, its top
-// below the mattress) instead of the 39/47 cm footprint circles.
-const NIGHTSTANDS=[[18.1125,-7.797,.17],[18.1125,-6.303,.18]],DRUM_H=.45;
+// B01 bedside drums [x, z, radius]: the two 0,46 circles at plan (1042.16, 216.52) and
+// (1042.16, 293.83), 45 cm high.
+const NIGHTSTANDS=[[18.1544,-7.8257,.23],[18.1544,-6.3256,.23]],DRUM_H=.45;
 
 
 
@@ -230,7 +229,8 @@ function contactShadow(THREE,x,z,r){
 // Oak-framed print with a cream mount: an elephant on a crescent moon among clouds,
 // drawn on a canvas (render 7). Hung on the east wall (x 18.432).
 function print(ctx){
-  const {THREE}=ctx,W=.48,H=.68,Z=-7.836,Y=1.71,X=18.432,g=new THREE.Group();g.name='ninas:cuadro';
+  // Raised 12 cm over the F05 bedside wall light (1,20-1,37).
+  const {THREE}=ctx,W=.48,H=.68,Z=-7.836,Y=1.83,X=18.432,g=new THREE.Group();g.name='ninas:cuadro';
   // Watercolour on cold-pressed paper: soft-edged washes with pigment pooled at
   // their rims, granulation, a blotchy background wash, then the paper's tooth and
   // fibres over everything (mount included) and the bevelled window of the mount.
@@ -361,12 +361,11 @@ export async function apply(ctx){
   for(const {cz} of BEDS)bedShadows.add(rectShadow(THREE,HEAD_X-BED_L/2,cz,BED_L/2,WH,.07,.5));
   ctx.group.add(bedShadows);
 
-  // Bedside drums (B01 'Mesilla dormitorio secundario' and '... inferior'): same
-  // centres, rebuilt smaller (34/36 cm, 45 cm high) standing on the floor in greige
-  // linen with a lid seam, as the one between the beds in render 7, with a soft
-  // contact shadow.
-  ctx.removeExported({material:'wood',box:[[17.85,0,-8.05],[18.36,.6,-7.55]]});
-  ctx.removeExported({material:'wood',box:[[17.85,0,-6.6],[18.37,.6,-6.0]]});
+  // Bedside drums (B01 'Mesilla dormitorio secundario' and '... inferior'): the B01
+  // 0,46 circles, 45 cm high, standing on the floor in greige linen with a lid seam and
+  // a soft contact shadow; they replace the exported wooden cylinders.
+  ctx.removeExported({material:'wood',box:[[17.85,0,-8.10],[18.43,.6,-7.55]]});
+  ctx.removeExported({material:'wood',box:[[17.85,0,-6.6],[18.43,.6,-6.05]]});
   const drums=new THREE.Group();drums.name='ninas:mesillas';
   const drumMat=new THREE.MeshPhysicalMaterial({color:'#c9b9a6',map,normalMap,normalScale:new THREE.Vector2(.6,.6),roughness:.95,sheen:.25,sheenRoughness:.7,sheenColor:'#efe4d6'});
   for(const [x,z,r] of NIGHTSTANDS)drums.add(drum(THREE,x,z,r,drumMat));

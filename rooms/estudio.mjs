@@ -5,9 +5,9 @@
 // Render 4: the screen (built in app.js, layout unchanged) gets slimmer, rounded oak
 // profiles with a lit and a shaded edge, a deeper outer frame and shadow lines at the
 // joints, merged into one mesh per group; the glass has a faint body, reflections,
-// sheen and a glint along the profiles. The desk chairs are compact upholstered tub
-// chairs on a five-star base with a contact shadow; the desk wall between the worktop
-// and the shelf is plaster, so the oak top reads against it.
+// sheen and a glint along the profiles. The desk chairs are G15's four-legged oak
+// chairs with a contact shadow; the desk wall between the worktop and the shelf is
+// plaster, so the oak top reads against it.
 
 import {mergeGeometries} from '../assets/jsm/utils/BufferGeometryUtils.js';
 
@@ -243,111 +243,44 @@ function studyGlass(THREE,stileZ){
 }
 
 // --- Chairs ---------------------------------------------------------------------------
-// Render 4: two compact tub chairs, back just above the worktop (top 77 cm), 54 cm
-// wide, seat front at the desk edge. Fine bouclé (loops at 40 % of the shared scale),
-// vertex occlusion inside the tub and under the seat, a contact shadow under the base.
-// Per chair: one upholstery mesh, one base mesh, one shadow quad.
+// G15 (alzado): two four-legged oak chairs, seat at 0,45, the curved back rail on the
+// rear legs at 0,68-0,80, about 0,45 wide; on the B01 chair symbols, facing the desk.
 function chairs(ctx,THREE){
   // Exported chairs (small seat and back pad on a dark base): replaced.
   ctx.removeExported({material:'fabric',box:[[4.30,.37,-8.46],[4.77,.84,-7.20]]});
   ctx.removeExported({material:'dark',box:[[4.30,0,-8.43],[4.81,.74,-7.19]]});
-
-  const fabric=ctx.cloneMaterial(ctx.mats.fabric);fabric.color.set('#77716b');fabric.vertexColors=true;
-  fabric.normalScale=fabric.normalScale.clone().multiplyScalar(.55);fabric.sheen=.25;
-  const base=ctx.cloneMaterial(ctx.mats.dark);base.color.set('#1f1d1a');base.roughness=.5;
-  const upholstery=mergeGeometries([tubShell(THREE),seatCushion(THREE)]),frame=starBase(THREE);
+  const oak=ctx.cloneMaterial(ctx.mats.wood);
+  const parts=[],box=(w,h,d,x,y,z)=>parts.push(new THREE.BoxGeometry(w,h,d).translate(x,y,z).toNonIndexed());
+  const W=.45,D=.42,L=.035,seat=.45;
+  // Local frame: the chair faces +x (the desk); the back is at -x.
+  for(const sz of [-1,1]){
+    box(L,seat-.02,L,D/2-L/2,(seat-.02)/2,sz*(W/2-L/2));          // front legs
+    box(L,.80,L,-D/2+L/2,.40,sz*(W/2-L/2));                       // rear legs, up to the back rail
+  }
+  box(D,.03,W,0,seat-.015,0);                                     // seat
+  for(const sz of [-1,1])box(D-2*L,.05,.022,0,seat-.055,sz*(W/2-L/2));   // side rails
+  box(.022,.05,W-2*L,D/2-L/2,seat-.055,0);                        // front rail
+  // Back rail: a shallow curve between the rear legs, 0,68-0,80 (extruded upwards).
+  {
+    const sh=new THREE.Shape(),n=16,pt=(k,t)=>{const a=-1+2*k/n;return [-D/2+L/2-.03*(1-a*a)+t,-a*(W/2+.01)];};
+    sh.moveTo(...pt(0,0));for(let k=1;k<=n;k++)sh.lineTo(...pt(k,0));
+    for(let k=n;k>=0;k--)sh.lineTo(...pt(k,.028));
+    parts.push(new THREE.ExtrudeGeometry(sh,{depth:.12,bevelEnabled:false}).rotateX(-Math.PI/2).translate(0,.68,0));
+  }
+  const geo=mergeGeometries(parts);
   const shadowMat=contactShadow(THREE);
-  for(const [x,z,turn] of [[4.21,-8.22,.05],[4.21,-7.27,-.04]]){
+  // B01: the two chairs at y 196.8 and 236.5.
+  for(const [x,z,turn] of [[4.55,-8.208,0],[4.55,-7.438,0]]){   // pushed under the desk, square to it
     const chair=new THREE.Group();chair.position.set(x,0,z);chair.rotation.y=turn;
-    chair.add(new THREE.Mesh(upholstery,fabric),new THREE.Mesh(frame,base));
+    chair.add(new THREE.Mesh(geo,oak));
     chair.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
     ctx.lightRuntimeObject(chair);
-    const shadow=new THREE.Mesh(new THREE.PlaneGeometry(.78,.78),shadowMat);
+    const shadow=new THREE.Mesh(new THREE.PlaneGeometry(.70,.70),shadowMat);
     shadow.rotation.x=-Math.PI/2;shadow.position.set(0,.004,0);shadow.renderOrder=1;chair.add(shadow);
     ctx.group.add(chair);
   }
 }
 
-// Upholstered tub: a lathed shell, high at the back and sloping down to the arms,
-// open at the front (+x, towards the desk).
-function tubShell(THREE){
-  const ro=.272,ri=.226,y0=.40,top=.745,rr=(ro-ri)/2;
-  const pts=[];
-  pts.push(new THREE.Vector2(ri+.01,y0+.02),new THREE.Vector2(ro-.03,y0),new THREE.Vector2(ro-.005,y0+.03));
-  pts.push(new THREE.Vector2(ro+.005,y0+.13),new THREE.Vector2(ro+.003,top-.10),new THREE.Vector2(ro,top));
-  for(let i=1;i<10;i++){const a=i/10*Math.PI;pts.push(new THREE.Vector2(ri+rr+rr*Math.cos(a),top+rr*Math.sin(a)*1.1));}
-  pts.push(new THREE.Vector2(ri,top),new THREE.Vector2(ri-.004,y0+.12),new THREE.Vector2(ri+.01,y0+.02));
-  const open=2.0; // front opening, radians
-  // Lathe: x = r sin(phi), z = r cos(phi); the back faces -x (phi = -pi/2).
-  const geo=new THREE.LatheGeometry(pts,48,Math.PI/2+open/2,2*Math.PI-open);
-  const pos=geo.getAttribute('position');
-  for(let i=0;i<pos.count;i++){
-    const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
-    const fromBack=Math.abs(Math.atan2(z,-x)); // 0 at the back, pi at the front
-    const t=THREE.MathUtils.smoothstep(fromBack,.55,Math.PI-open/2);
-    const k=1-.30*t;
-    pos.setXYZ(i,x*.93,y0+(y-y0)*k,z*1.0);
-  }
-  geo.computeVertexNormals();
-  // Occlusion: the inside of the tub darkens towards the seat, the outside towards the base.
-  const c=new Float32Array(pos.count*3);
-  for(let i=0;i<pos.count;i++){
-    const x=pos.getX(i)/.93,y=pos.getY(i),z=pos.getZ(i),r=Math.hypot(x,z);
-    const inner=r<(ri+rr);
-    const k=inner?.62+.38*THREE.MathUtils.smoothstep(y,y0+.03,y0+.30):.72+.28*THREE.MathUtils.smoothstep(y,y0-.01,y0+.16);
-    c[i*3]=c[i*3+1]=c[i*3+2]=k;
-  }
-  geo.setAttribute('color',new THREE.BufferAttribute(c,3));
-  metricUv(THREE,geo);return geo.toNonIndexed();
-}
-function seatCushion(THREE){
-  const w=.44,d=.40,r=.09,s=new THREE.Shape();
-  s.moveTo(-d/2+r,-w/2);s.lineTo(d/2-r,-w/2);s.quadraticCurveTo(d/2,-w/2,d/2,-w/2+r);s.lineTo(d/2,w/2-r);s.quadraticCurveTo(d/2,w/2,d/2-r,w/2);
-  s.lineTo(-d/2+r,w/2);s.quadraticCurveTo(-d/2,w/2,-d/2,w/2-r);s.lineTo(-d/2,-w/2+r);s.quadraticCurveTo(-d/2,-w/2,-d/2+r,-w/2);
-  const geo=new THREE.ExtrudeGeometry(s,{depth:.035,bevelEnabled:true,bevelThickness:.022,bevelSize:.022,bevelSegments:4,curveSegments:8});
-  geo.rotateX(-Math.PI/2);geo.translate(.03,.425,0);geo.computeVertexNormals();
-  const pos=geo.getAttribute('position'),c=new Float32Array(pos.count*3);
-  for(let i=0;i<pos.count;i++){const k=.6+.4*THREE.MathUtils.smoothstep(pos.getY(i),.41,.48);c[i*3]=c[i*3+1]=c[i*3+2]=k;}
-  geo.setAttribute('color',new THREE.BufferAttribute(c,3));
-  metricUv(THREE,geo);return geo.index?geo.toNonIndexed():geo;
-}
-// Five-star swivel base merged into one geometry.
-function starBase(THREE){
-  const parts=[],m=new THREE.Matrix4(),e=new THREE.Euler(),q=new THREE.Quaternion(),one=new THREE.Vector3(1,1,1);
-  const add=(geo,x,y,z,rx=0,ry=0,rz=0)=>{
-    const g=geo.index?geo.toNonIndexed():geo.clone();
-    m.compose(new THREE.Vector3(x,y,z),q.setFromEuler(e.set(rx,ry,rz)),one);g.applyMatrix4(m);parts.push(g);
-  };
-  add(new THREE.CylinderGeometry(.12,.12,.022,24),0,.385,0);                   // seat plate
-  add(new THREE.CylinderGeometry(.022,.022,.27,12),0,.24,0);                   // column
-  add(new THREE.CylinderGeometry(.032,.028,.14,12),0,.17,0);                   // gas sleeve
-  add(new THREE.CylinderGeometry(.048,.052,.05,16),0,.105,0);                  // hub
-  const legLen=.28,legGeo=new THREE.BoxGeometry(legLen,.030,.040);
-  legGeo.translate(legLen/2,0,0);
-  // Twin-wheel casters (5.6 cm wheels under a hood), as in render 4.
-  const wheel=new THREE.CylinderGeometry(.028,.028,.012,16);wheel.rotateX(Math.PI/2);
-  const hub=new THREE.CylinderGeometry(.009,.009,.034,8);hub.rotateX(Math.PI/2);
-  const hood=new THREE.BoxGeometry(.036,.022,.030),fork=new THREE.CylinderGeometry(.008,.008,.02,8);
-  for(let i=0;i<5;i++){
-    const a=i/5*Math.PI*2+Math.PI/5;
-    add(legGeo,0,.10,0,0,a,-.13);
-    const ex=Math.cos(a)*legLen*.99,ez=-Math.sin(a)*legLen*.99,px=Math.sin(a),pz=Math.cos(a);
-    add(fork,ex,.068,ez);
-    const wx=ex+Math.cos(a)*.016,wz=ez-Math.sin(a)*.016;
-    add(hood,wx,.052,wz,0,a,0);add(hub,wx,.029,wz,0,a,0);
-    for(const k of [-1,1])add(wheel,wx+px*k*.0115,.029,wz+pz*k*.0115,0,a,0);
-  }
-  return mergeGeometries(parts);
-}
-// Metric UVs times `scale`: the shared bouclé tile (33 cm) shrunk to read as a fine weave.
-function metricUv(THREE,geo,scale=2.5){
-  const pos=geo.getAttribute('position'),n=geo.getAttribute('normal'),uv=new Float32Array(pos.count*2);
-  for(let i=0;i<pos.count;i++){
-    const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
-    if(Math.abs(n.getY(i))>.7){uv[i*2]=x*scale;uv[i*2+1]=z*scale;}else{uv[i*2]=Math.atan2(z,x)*.27*scale;uv[i*2+1]=y*scale;}
-  }
-  geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
-}
 function contactShadow(THREE,k=1){
   // Soft dark disc under the base (probe light casts no shadow): radial falloff in the shader.
   return new THREE.ShaderMaterial({transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,
@@ -356,10 +289,10 @@ function contactShadow(THREE,k=1){
 }
 
 // --- Desk wall ------------------------------------------------------------------------
-// The oak back panel of the desk niche (x 5.035, y 0.69-2.38) is one baked quad. Its
-// light stays; below the shelf (y < 1.84) it takes the plaster finish of render 4.
+// The oak back panel of the desk niche (x 5.035, y 0.75-2.50) is one baked quad. Its
+// light stays; below the shelf (y < 1.90, G15) it takes the plaster finish.
 function deskWall(ctx,THREE){
-  const parts=ctx.splitExported({material:'wood',box:[[5.03,.7,-8.86],[5.04,2.4,-6.72]]});
+  const parts=ctx.splitExported({material:'wood',box:[[5.03,.7,-8.86],[5.04,2.55,-6.72]]});
   const wall=ctx.mats.wall,plaster=wall.map;
   for(const piece of parts){
     const m=piece.material,prior=m.onBeforeCompile,priorKey=m.customProgramCacheKey?.bind(m);
@@ -369,12 +302,12 @@ function deskWall(ctx,THREE){
       shader.uniforms.deskPlasterColor={value:wall.color.clone()};
       shader.fragmentShader='uniform sampler2D deskPlaster;\nuniform vec3 deskPlasterColor;\n'+shader.fragmentShader
         .replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
-          bool deskIsPlaster=houseWorld.y<1.84;
+          bool deskIsPlaster=houseWorld.y<1.90;
           if(deskIsPlaster){
             vec3 lime=texture2D(deskPlaster,houseWorld.zy*.6).rgb;
             diffuseColor.rgb=deskPlasterColor*lime;roughnessFactor=.92;
           }`)
-        .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nif(houseWorld.y<1.84)normal=nonPerturbedNormal;');
+        .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nif(houseWorld.y<1.90)normal=nonPerturbedNormal;');
     };
     m.customProgramCacheKey=()=>(priorKey?priorKey():'')+'|estudio-desk-wall';
     m.needsUpdate=true;
@@ -387,15 +320,15 @@ function deskWall(ctx,THREE){
 // the shelf, a bronze mushroom lamp and a stone bowl on the desk. Replaces the
 // exported row of 13 evenly spaced books, the T lamp and the stacked-disc plant.
 // One mesh per material; contact shades under each piece.
-// C9 (proyecto de ejecución): desk at 0.70, shelves at 1.84 and 2.10 (0.025 thick),
-// bays of 0.47 / 0.94 / 0.47.
-const SHELF={front:4.648,lower:1.865,upper:2.125,desk:.70};
+// C9 (proyecto de ejecución, G15): desk top at 0.76, shelves at 1.90 and 2.185 (0.03
+// thick), bays of 0.47 / 0.94 / 0.47.
+const SHELF={front:4.648,lower:1.93,upper:2.215,desk:.76};
 const BAYS=[[-8.823,-8.353],[-8.353,-7.413],[-7.413,-6.823]];
 function decor(ctx,THREE){
-  ctx.removeExported({material:['fabric','clay'],box:[[4.70,1.86,-8.35],[4.93,2.1,-7.45]]});
-  ctx.removeExported({material:'clay',box:[[4.64,1.86,-7.10],[4.81,2.0,-6.94]]});
-  ctx.removeExported({material:'sage',box:[[4.58,1.40,-7.14],[4.82,2.03,-6.88]]});
-  ctx.removeExported({material:['dark','bronze','led'],box:[[4.49,.695,-8.43],[4.73,1.025,-8.17]]});
+  ctx.removeExported({material:['fabric','clay'],box:[[4.70,1.92,-8.35],[4.93,2.22,-7.45]]});
+  ctx.removeExported({material:'clay',box:[[4.64,1.92,-7.10],[4.81,2.10,-6.94]]});
+  ctx.removeExported({material:'sage',box:[[4.58,1.40,-7.14],[4.82,2.10,-6.88]]});
+  ctx.removeExported({material:['dark','bronze','led'],box:[[4.49,.755,-8.43],[4.73,1.09,-8.17]]});
 
   seed=4242;
   const books=[],shades=[];
@@ -488,9 +421,7 @@ function mushroomLamp(THREE){
   const dome=[[.102,.188]];for(let i=0;i<=12;i++){const a=i/12*Math.PI/2;dome.push([Math.max(.0005,Math.cos(a)*.115),.19+Math.sin(a)*.10]);}
   parts.push(lathe(THREE,dome,36));
   g.add(new THREE.Mesh(mergeGeometries(parts.map(p=>p.index?p.toNonIndexed():p)),bronze));
-  // Warm glow under the dome (seen only from low angles).
-  const glow=new THREE.Mesh(new THREE.CircleGeometry(.1,24),new THREE.MeshBasicMaterial({color:'#ffd9a6'}));
-  glow.rotation.x=Math.PI/2;glow.position.y=.188;g.add(glow);
+  // Switched off: F05 and G15 give the desk no lamp light (only the strip under the shelf).
   return g;
 }
 // Pothos-like trailing plant: a mound of leaves over the pot and strands that run to

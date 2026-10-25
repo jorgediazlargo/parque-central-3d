@@ -7,9 +7,9 @@
 // the electric blind of L01 is added by rooms/instalaciones.mjs. Here: the rug under
 // the bed (lit by the floor's own baked light), the oak and the nightstand props.
 
-// Floor rug of render 3: pale wool, 2.20 x 2.38 m, from under the nightstands to
-// about 55 cm past the foot of the bed (bed: x 0.20-2.20, z -8.71 to -6.71).
-const RUG={x0:.55,x1:2.75,z0:-8.90,z1:-6.52,h:.012};
+// Floor rug where B01 draws it: pale wool, 1.50 x 2.25 m, from 0.82 m off the
+// headboard wall to 0.33 m past the foot of the bed (bed: x 0.20-2.20, z -8.71 to -6.71).
+const RUG={x0:1.025,x1:2.526,z0:-8.833,z1:-6.584,h:.012};
 
 // The shared oak veneer map with its grain contrast raised (×1.75 around the mean).
 function oakGrain(THREE,source){

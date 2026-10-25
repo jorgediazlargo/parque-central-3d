@@ -286,7 +286,7 @@ function artCanvas(T,W,H){
   const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;t.anisotropy=8;return t;
 }
 function painting(T,ctx){
-  const z0=-7.80,z1=-6.68,y0=.78,y1=2.02,x=5.206,depth=.032,fw=.022,g=new T.Group();g.name='salon:cuadro';
+  const z0=-7.80,z1=-6.68,y0=.78,y1=2.02,x=5.186,depth=.032,fw=.022,g=new T.Group();g.name='salon:cuadro';
   const frame=new T.MeshStandardMaterial({color:'#6b5240',roughness:.62});
   const canvas=new T.MeshStandardMaterial({map:artCanvas(T,1024,Math.round(1024*(y1-y0)/(z1-z0))),roughness:.96});
   const W=z1-z0,H=y1-y0,cz=(z0+z1)/2,cy=(y0+y1)/2;
@@ -481,7 +481,7 @@ export async function apply(ctx){
   for(const m of leds){m.material.emissive.set('#ffbe86');m.material.emissiveIntensity=1.6;m.material.color.set('#f3d6b0');}
   // ---- Painting (secondary): larger canvas over the plaster/oak junction, dark lines. ----
   const removedArt=ctx.removeExported({material:'art',region:'salon',box:[[5.15,.6,-7.7],[5.3,2.1,-6.7]]})
-    +ctx.removeExported({material:'wood',region:'salon',box:[[5.201,.7,-7.6],[5.24,2.0,-6.78]]});
+    +ctx.removeExported({material:'wood',region:'salon',box:[[5.18,.7,-7.6],[5.22,2.0,-6.78]]});
   group.add(painting(T,ctx));
   console.info(`[rooms/salon] painting replaced (${removedArt})`);
   console.info(`[rooms/salon] plinth ${removedPlinth}, leds ${leds.length}`);
