@@ -8,11 +8,12 @@ import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=142d51f6bb';
-import {applyRooms,preloadRooms} from './rooms.mjs?v=23a0bca5eb';
+import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=23a0bca5eb';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=4bcf41157e';
 import {createFronts} from './fronts.mjs?v=ad678e848d';
+import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,quality,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null,fronts={list:[],at:()=>null,step:()=>false};
@@ -27,13 +28,15 @@ let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,roomTimer,rayTime=0,roomTime=0;
 const mobile=matchMedia('(pointer:coarse)').matches,eye=1.6;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,fullscreen:true};
-try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','fullscreen'])if(key in saved)settings[key]=saved[key];}catch{}
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,fullscreen:true,closet:false};
+try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','fullscreen','closet'])if(key in saved)settings[key]=saved[key];}catch{}
 // ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved.
 {const q=new URLSearchParams(location.search).get('noche');if(q!==null)settings.night=q!=='0';}
+// ?vestidor=piedra opens with the stone and glass vestidor variant, ?vestidor=plano without it.
+{const q=new URLSearchParams(location.search).get('vestidor');if(q!==null)settings.closet=q==='piedra';}
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
-for(const key of ['sound','bob','night','fullscreen']) {
-  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night')setNight(settings.night);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
+for(const key of ['sound','bob','night','fullscreen','closet']) {
+  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night')setNight(settings.night);if(key==='closet')setCloset(settings.closet);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
 }
 // Pantalla completa: Entrar fills the screen with the whole page (menu and prompts stay on
 // top) when the option is on, and F switches it while walking. Walking full screen hides the
@@ -57,10 +60,10 @@ for(const type of ['fullscreenchange','webkitfullscreenchange'])document.addEven
   // Switching screens can drop the capture (or it was refused): full screen lets it back without a click.
   if(playing&&!mobile&&!document.pointerLockElement)Promise.resolve(canvas.requestPointerLock()).catch(()=>{});
 });
-$('night').disabled=true;  // until the house is lit (load)
+$('night').disabled=true;$('closet').disabled=true;  // until the house is lit (load)
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
-const porcelainMap={value:null},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
+const porcelainMap={value:null},vestidorStone={value:0},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
 const PLASTER_TILE=.75;  // metres per plaster.webp tile (style_textures.py)
 // Clear glass: a faint tinted body, reflections (box-projected room probes) at full
 // strength and the background let through by what neither takes (Schlick Fresnel),
@@ -199,8 +202,8 @@ function material(color,kind,roughness=.7){
       if(kind==='floor'){
         // H01 pavements: oak planks (no herringbone) in bedrooms, the play room, their
         // hall and the closet beside the kitchen; 120 cm porcelain at 45° elsewhere.
-        shader.uniforms.porcelainMap=porcelainMap;
-        shader.fragmentShader='uniform sampler2D porcelainMap;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+shader.fragmentShader;
+        shader.uniforms.porcelainMap=porcelainMap;shader.uniforms.vestidorStone=vestidorStone;
+        shader.fragmentShader='uniform sampler2D porcelainMap;\nuniform float vestidorStone;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+shader.fragmentShader;
         shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
           vec2 floorAt=houseWorld.xz;
           float porcelainMask=(1.0-clamp(floorRect(floorAt,vec4(-2.0,-12.0,5.113,-5.896))+floorRect(floorAt,vec4(13.019,-12.0,20.0,-4.799))
@@ -228,6 +231,9 @@ function material(color,kind,roughness=.7){
           vec3 porcelainFloor=textureGrad(porcelainMap,porcelainF,dFdx(porcelainUv),dFdy(porcelainUv)).rgb*.96;
           // Each piece a touch lighter or darker, as fired stone is (±3.5 %).
           porcelainFloor*=1.0+.07*(porcelainB-.5);
+          // Vestidor en piedra y vitrinas (vitrinas.mjs, menu option): the vestidor interior
+          // and its passage take the porcelain of the rest of the house instead of oak.
+          porcelainMask=max(porcelainMask,vestidorStone*clamp(floorRect(floorAt,vec4(5.084,-3.674,7.295,1.0))+floorRect(floorAt,vec4(4.783,-2.791,5.113,1.0)),0.0,1.0));
           diffuseColor.rgb=mix(oakFloor,porcelainFloor,porcelainMask);
         `);
         // Honed porcelain, as in the reference: matte, no highlights. Its own pores
@@ -684,6 +690,18 @@ function setNight(night){
   return timeSwitch;
 }
 
+// Vestidor en piedra y vitrinas (vitrinas.mjs): travertine floor and glass doors in the
+// vestidor interior: porcelain floor and glass doors instead of the plan's oak.
+let closet=null;
+function setCloset(on){
+  timeSwitch=timeSwitch.then(()=>{
+    if(!ready||!closet||on===closet.on)return;
+    closet.set(on);reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;idle(reportShaderErrors);
+    notice(on?'Vestidor en piedra y vitrinas':'Vestidor según el plano');
+  }).catch(e=>{console.error(e);notice('No se ha podido cambiar el vestidor.');settings.closet=!!closet?.on;$('closet').checked=settings.closet;savePreferences();});
+  return timeSwitch;
+}
+
 // Link errors, reported as three would at first draw (renderer.debug.checkShaderErrors).
 const checkedPrograms=new Set();
 const idle=fn=>(window.requestIdleCallback||setTimeout)(fn);
@@ -839,6 +857,9 @@ async function load(){
     // synchronous part has run: their canvas read-backs would wait behind the compiles.
     setTimeout(()=>reflections.compile(renderer,scene,camera,composer.sceneRT,{wait:false}));
     roomStatus=await rooms;progress?.stage(.7);
+    // Vestidor en piedra y vitrinas (menu option): built now, shown or hidden on demand.
+    closet=createVitrinas(THREE,{data,staticMeshes,scene,mats,cloneMaterial,lightObject,lighting,floor:vestidorStone});
+    closet.set(settings.closet);
     // Doors, the study screen, the master bedding and the mirror frame are not baked:
     // they take the probes. Then each room is captured for its reflections, props included.
     for(const o of runtimeObjects)lightObject(o,lighting);
@@ -849,7 +870,7 @@ async function load(){
     // first capture) and again when a door moves, not for every face of every capture.
     renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     reflections.capture(renderer,scene);
-    ready=true;progress?.done();$('night').disabled=false;
+    ready=true;progress?.done();$('night').disabled=false;$('closet').disabled=false;
     // The tour starts on the reduced lightmaps: reflections again once the full pages are in.
     lightmap.sharp.then(()=>{timeSwitch=timeSwitch.then(()=>reflections.capture(renderer,scene));});
     const params=new URLSearchParams(location.search);
