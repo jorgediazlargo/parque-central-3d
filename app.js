@@ -3,7 +3,7 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=65f7ecdcd5';
 import {Post} from './post.mjs?v=8fc2bec064';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=dfa0ed6946';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=329eb3f25b';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
@@ -840,7 +840,7 @@ async function load(){
     // only the last room module and the captures read. Shared bandwidth would otherwise
     // deliver the geometry last.
     const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
-    const house=Promise.all([get('./assets/house.json?v=da98e82f2a',r=>r.json()),get('./assets/house.bin?v=e14ff2aa29',r=>r.arrayBuffer())]);
+    const house=Promise.all([get('./assets/house.json?v=ecae400f12',r=>r.json()),get('./assets/house.bin?v=4f6fa2fd97',r=>r.arrayBuffer())]);
     const surfaceMaps=loadSurfaceMaps(),views=loadViews();
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();

@@ -28,7 +28,7 @@ const loadPages=(names,version)=>Promise.all(names.map(name=>bitmaps.loadAsync('
 // probes by bake, so a re-denoise is revalidated (no-cache).
 export function fetchLightmap(mode='day',{after=null}={}){
   const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar la iluminación.');return read(r);});
-  const json=get('./assets/house-light.json?v=bc6bac6bea',r=>r.json()),uvs=get('./assets/house-light.bin?v=bcb5f367e8',r=>r.arrayBuffer());
+  const json=get('./assets/house-light.json?v=7651957a9b',r=>r.json()),uvs=get('./assets/house-light.bin?v=1b2130e255',r=>r.arrayBuffer());
   const files=Promise.all([json,uvs]);
   const maps=Promise.all([json,after]).then(([data])=>{
     if(data.encoding!=='rgbm-sqrt-range-64')throw Error('Iluminación con un formato antiguo.');

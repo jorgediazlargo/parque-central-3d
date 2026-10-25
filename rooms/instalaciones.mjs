@@ -23,16 +23,20 @@ export async function apply(ctx){
       piece.geometry.deleteAttribute('uv1');ctx.lightRuntimeObject(piece);
     }
   }
-  // Door reveals lined in oak, like the flush leaves (G02): two jambs and the head over
-  // the export's jamb posts, which z-fought with the plaster reveal (a jagged frame).
+  // Door reveals over the export's jamb posts, which z-fought with the plaster reveal (a
+  // jagged frame): two oak jambs as G02-G03 draw them (no head piece: the leaf reaches the
+  // false ceiling), painted at the entrance (`finish`, export_world.py).
   {
-    const parts=[],DEPTH=.124,W=.03;
-    for(const {corners:[a,b]} of data.jambs||[]){
+    const parts={wood:[],wall:[]},DEPTH=.124,W=.03;
+    for(const {corners:[a,b],finish='wood'} of data.jambs||[]){
       const dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz),tx=dx/L,tz=dz/L,yaw=Math.atan2(tx,tz),top=a[2];
-      const put=(along,w,y0,y1)=>{const g=new THREE.BoxGeometry(DEPTH,y1-y0,w);g.rotateY(yaw);g.translate(a[0]+tx*along,(y0+y1)/2,a[1]+tz*along);parts.push(g);};
-      put(W/2-.002,W,0,top);put(L-W/2+.002,W,0,top);put(L/2,L,top-.004,top+.002);
+      const put=(along,w,y0,y1)=>{const g=new THREE.BoxGeometry(DEPTH,y1-y0,w);g.rotateY(yaw);g.translate(a[0]+tx*along,(y0+y1)/2,a[1]+tz*along);parts[finish].push(g);};
+      put(W/2-.002,W,0,top);put(L-W/2+.002,W,0,top);
     }
-    if(parts.length){const m=new THREE.Mesh(merge(THREE,parts),ctx.cloneMaterial(ctx.mats.wood));m.name='Jambas de roble';group.add(m);ctx.lightRuntimeObject(m);}
+    for(const [finish,name] of [['wood','Jambas de roble'],['wall','Jambas pintadas']]){
+      if(!parts[finish].length)continue;
+      const m=new THREE.Mesh(merge(THREE,parts[finish]),ctx.cloneMaterial(ctx.mats[finish]));m.name=name;group.add(m);ctx.lightRuntimeObject(m);
+    }
   }
   const plastic=new THREE.MeshStandardMaterial({color:'#f1efea',roughness:.32});
   const metal=new THREE.MeshStandardMaterial({color:'#e7e3da',roughness:.4,metalness:.3});
