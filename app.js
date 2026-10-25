@@ -24,19 +24,41 @@ const timeOfDay={night:false,listeners:new Set()},outdoor={};
 // Probe and reflection uniforms shared by every lit material (filled in initScene).
 const lighting={uniforms:{}};
 let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last=0,walkPhase=0,bobAmount=0,stepDistance=0;
-let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,rayTime=0,roomTime=0;
+let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,roomTimer,rayTime=0,roomTime=0;
 const mobile=matchMedia('(pointer:coarse)').matches,eye=1.6;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,proposal:false};
-try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','proposal'])if(key in saved)settings[key]=saved[key];}catch{}
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,proposal:false,fullscreen:true};
+try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','proposal','fullscreen'])if(key in saved)settings[key]=saved[key];}catch{}
 // ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved.
 {const q=new URLSearchParams(location.search).get('noche');if(q!==null)settings.night=q!=='0';}
 // ?iluminacion=propuesta opens with our lighting proposal, ?iluminacion=f05 with the plan's.
 {const q=new URLSearchParams(location.search).get('iluminacion');if(q!==null)settings.proposal=q==='propuesta';}
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
-for(const key of ['sound','bob','night','proposal']) {
-  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night')setNight(settings.night);if(key==='proposal')setProposal(settings.proposal);};
+for(const key of ['sound','bob','night','proposal','fullscreen']) {
+  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night')setNight(settings.night);if(key==='proposal')setProposal(settings.proposal);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
 }
+// Pantalla completa: Entrar fills the screen with the whole page (menu and prompts stay on
+// top) when the option is on, and F switches it while walking. Walking full screen hides the
+// header and the room label (shown for a moment on each change, .immersive). The keyboard
+// lock keeps Esc for the pause; holding Esc still leaves full screen, as Chrome tells. Phones
+// without the API (iPhone) get it from the home-screen icon (manifest, display: fullscreen).
+const screenMode={
+  supported:!!(document.fullscreenEnabled||document.webkitFullscreenEnabled),
+  get on(){return !!(document.fullscreenElement||document.webkitFullscreenElement);},
+  enter(){
+    const root=document.documentElement,request=root.requestFullscreen?.bind(root)||root.webkitRequestFullscreen?.bind(root);
+    if(!this.supported||this.on||!request)return;
+    Promise.resolve(request({navigationUI:'hide'})).then(()=>navigator.keyboard?.lock?.(['Escape'])).catch(()=>{});
+  },
+  exit(){if(!this.on)return;navigator.keyboard?.unlock?.();(document.exitFullscreen||document.webkitExitFullscreen).call(document)?.catch?.(()=>{});},
+  sync(){document.body.classList.toggle('immersive',playing&&this.on);}
+};
+if(!screenMode.supported)$('fullscreen').closest('label').hidden=true;
+for(const type of ['fullscreenchange','webkitfullscreenchange'])document.addEventListener(type,()=>{
+  screenMode.sync();
+  // Switching screens can drop the capture (or it was refused): full screen lets it back without a click.
+  if(playing&&!mobile&&!document.pointerLockElement)Promise.resolve(canvas.requestPointerLock()).catch(()=>{});
+});
 $('night').disabled=true;$('proposal').disabled=true;  // until the house is lit (load)
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
@@ -703,14 +725,16 @@ function reportShaderErrors(){
 
 function pause(){
   if(!ready)return;playing=false;quality.reset();keys.clear();velocity=[0,0];touchVector=[0,0];$('joystick').firstElementChild.style.transform='';
-  $('menu').hidden=false;$('crosshair').hidden=true;$('interaction').hidden=true;$('touch').hidden=true;$('enter').textContent='Continuar recorrido';
+  $('menu').hidden=false;$('crosshair').hidden=true;$('interaction').hidden=true;$('touch').hidden=true;$('enter').textContent='Continuar recorrido';screenMode.sync();
   if(document.pointerLockElement)document.exitPointerLock();$('enter').focus();
 }
 async function enter(){
   if(!ready)return;
   playing=true;quality.reset();$('menu').hidden=true;$('reset').hidden=false;$('crosshair').hidden=false;$('touch').hidden=!mobile;
+  // Mouse capture and full screen both need the click: ask for them before any await.
+  if(!mobile)Promise.resolve(canvas.requestPointerLock()).catch(()=>notice('Arrastra el ratón para mirar. W A S D para caminar.'));
+  if(settings.fullscreen)screenMode.enter();screenMode.sync();
   if(settings.sound){try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();await audioCtx.resume();}catch{settings.sound=false;}}
-  if(!mobile){try{await canvas.requestPointerLock();}catch{notice('Arrastra el ratón para mirar. W A S D para caminar.');}}
 }
 function interact(){
   if(!playing||!target)return;
@@ -776,7 +800,7 @@ function frame(time){
       let name='Recibidor';
       if(inside(player,data.floors[3]))name='Terraza';
       else for(const r of data.rooms.slice(1)){const [a,b]=r.box;if(player[0]>=a[0]&&player[0]<=b[0]&&player[1]>=a[1]&&player[1]<=b[1]){name=r.name;break;}}
-      $('room').textContent=name;roomTime=0;
+      if($('room').textContent!==name){$('room').textContent=name;$('room').classList.add('fresh');clearTimeout(roomTimer);roomTimer=setTimeout(()=>$('room').classList.remove('fresh'),2600);}roomTime=0;
     }
   }
   renderer.info.reset();composer.render(dt||1/60);
@@ -786,9 +810,10 @@ $('enter').onclick=enter;$('pause').onclick=pause;$('interaction').onclick=inter
 $('reset').onclick=()=>{player=[...data.spawn];velocity=[0,0];yaw=.05;pitch=0;camera.position.set(player[0],eye,player[1]);camera.rotation.set(0,yaw,0);notice('Has vuelto a la entrada.');};
 addEventListener('keydown',e=>{
   if(e.code==='Escape'){pause();return;}if(!playing)return;
-  if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyE','KeyN'].includes(e.code))e.preventDefault();
+  if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyE','KeyN','KeyF'].includes(e.code))e.preventDefault();
   keys.add(e.code);if(e.code==='KeyE'&&!e.repeat)interact();
   if(e.code==='KeyN'&&!e.repeat){settings.night=!timeOfDay.night;$('night').checked=settings.night;savePreferences();setNight(settings.night);}
+  if(e.code==='KeyF'&&!e.repeat&&screenMode.supported){settings.fullscreen=!screenMode.on;$('fullscreen').checked=settings.fullscreen;savePreferences();if(settings.fullscreen)screenMode.enter();else screenMode.exit();}
 });
 addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',pause);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
