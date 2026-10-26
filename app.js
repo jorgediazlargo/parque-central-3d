@@ -28,16 +28,17 @@ let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,roomTimer,rayTime=0,roomTime=0;
 const mobile=matchMedia('(pointer:coarse)').matches,eye=1.6;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,closet:false};
-try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','lamps','fullscreen','closet'])if(key in saved)settings[key]=saved[key];}catch{}
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,closet:false,hallLime:false};
+try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime'])if(key in saved)settings[key]=saved[key];}catch{}
 // ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved; ?luces=0 by day
 // with the artificial lights off, ?luces with them on.
 {const q=new URLSearchParams(location.search);if(q.get('noche')!==null)settings.night=q.get('noche')!=='0';if(q.get('luces')!==null)settings.lamps=q.get('luces')!=='0';}
 // ?vestidor=piedra opens with the stone and glass vestidor variant, ?vestidor=plano without it.
 {const q=new URLSearchParams(location.search).get('vestidor');if(q!==null)settings.closet=q==='piedra';}
+{const q=new URLSearchParams(location.search).get('recibidor');if(q!==null)settings.hallLime=q==='cal';}
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
-for(const key of ['sound','bob','night','lamps','fullscreen','closet']) {
-  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='closet')setCloset(settings.closet);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
+for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime']) {
+  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='closet')setCloset(settings.closet);if(key==='hallLime')setHallLime(settings.hallLime);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
 }
 // Pantalla completa: Entrar fills the screen with the whole page (menu and prompts stay on
 // top) when the option is on, and F switches it while walking. Walking full screen hides the
@@ -61,14 +62,14 @@ for(const type of ['fullscreenchange','webkitfullscreenchange'])document.addEven
   // Switching screens can drop the capture (or it was refused): full screen lets it back without a click.
   if(playing&&!mobile&&!document.pointerLockElement)Promise.resolve(canvas.requestPointerLock()).catch(()=>{});
 });
-$('night').disabled=$('lamps').disabled=$('closet').disabled=true;  // until the house is lit (load)
+$('night').disabled=$('lamps').disabled=$('closet').disabled=$('hallLime').disabled=true;  // until the house is lit (load)
 // Luces encendidas: by day only (at night they are all on), once there is a bake without them.
 const syncLampsOption=()=>{$('lamps').closest('label').hidden=settings.night||!lightmap?.data.dayOff;};syncLampsOption();
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
 // Terrace soffit (wall shader): pale by day only.
 const terraceDay={value:1};
-const porcelainMap={value:null},vestidorStone={value:0},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
+const porcelainMap={value:null},vestidorStone={value:0},recibidorCal={value:0},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
 const PLASTER_TILE=.75;  // metres per plaster.webp tile (style_textures.py)
 // Clear glass: a faint tinted body, reflections (box-projected room probes) at full
 // strength and the background let through by what neither takes (Schlick Fresnel),
@@ -254,11 +255,28 @@ function material(color,kind,roughness=.7){
             normal=normalize(mix(normal,normalize(abs(porcelainDet)*normal-porcelainGrad),porcelainMask));
           }`);
       }
-      if(kind==='wood')shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
+      if(kind==='wood'){
+        // Recibidor en cal (menu option, owner's variant of 26/10/2026): the oak panelling
+        // between the recibidor doors (G13 C5, H03) and the strip over them read as lime
+        // plaster, like the walls; doors, coat cupboard and niche stay oak. Same triangles
+        // and baked light (the bake stores light, not colour), so nothing to rebake.
+        const lime=new THREE.Color('#e0d3c8');
+        shader.uniforms.recibidorCal=recibidorCal;shader.uniforms.plasterMap=plasterMap;
+        shader.fragmentShader='uniform float recibidorCal;\nuniform sampler2D plasterMap;\nfloat calSpan(float z,float a,float b){return step(a-.002,z)*step(z,b+.002);}\n'+shader.fragmentShader.replace('void main() {',`void main() {
+          vec3 calW=houseWorld,calN=houseNormal;
+          float calPanel=step(14.983,calW.x)*step(calW.x,15.004)*step(calW.y,2.205)*step(.5,max(-calN.x,abs(calN.z)))
+            *clamp(calSpan(calW.z,-4.7499,-4.6398)+calSpan(calW.z,-3.84,-3.2498)+calSpan(calW.z,-2.45,-2.3499)+calSpan(calW.z,-1.7893,-1.6892)+calSpan(calW.z,-.8894,-.22),0.0,1.0);
+          float calStrip=step(14.983,calW.x)*step(calW.x,15.004)*step(2.195,calW.y)*step(calW.y,2.305)*step(.5,-calN.x)*calSpan(calW.z,-4.7499,-.22);
+          float cal=recibidorCal*max(calPanel,calStrip);`).replace('#include <map_fragment>',`#include <map_fragment>
         // Natural oak veneer of the renders (photographed white oak): sandy, muted, never orange.
         float veneerValue=dot(diffuseColor.rgb,vec3(.28,.59,.13));
         diffuseColor.rgb=mix(diffuseColor.rgb,vec3(veneerValue),.12)*vec3(1.0,.975,.95);
-      `);
+        {vec2 calAt=vec2(-calW.z,calW.y)/${PLASTER_TILE.toFixed(2)};
+        vec3 calColour=vec3(${[lime.r,lime.g,lime.b].map(v=>v.toFixed(4))})*(1.0+(texture2D(plasterMap,calAt).rgb*1.9922-1.0));
+        diffuseColor.rgb=mix(diffuseColor.rgb,calColour,cal);}
+      `).replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.92,cal);')
+        .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nnormal=normalize(mix(normal,nonPerturbedNormal,cal));');
+      }
       if(kind==='wallTile'){
         // H03 wall porcelain (baths and showers): the floor's porcelain in 120 cm squares
         // laid square on the wall, fine joints, each piece turned or toned a little.
@@ -730,6 +748,17 @@ function setCloset(on){
   return timeSwitch;
 }
 
+// Recibidor en cal (wood shader, recibidorCal): the panelling between the recibidor doors
+// in lime plaster instead of the plan's oak.
+function setHallLime(on){
+  timeSwitch=timeSwitch.then(()=>{
+    if(!ready||!!recibidorCal.value===on)return;
+    recibidorCal.value=on?1:0;reflections.capture(renderer,scene);
+    notice(on?'Recibidor en cal':'Recibidor según el plano');
+  }).catch(e=>{console.error(e);notice('No se ha podido cambiar el recibidor.');settings.hallLime=!!recibidorCal.value;$('hallLime').checked=settings.hallLime;savePreferences();});
+  return timeSwitch;
+}
+
 // Link errors, reported as three would at first draw (renderer.debug.checkShaderErrors).
 const checkedPrograms=new Set();
 const idle=fn=>(window.requestIdleCallback||setTimeout)(fn);
@@ -889,6 +918,7 @@ async function load(){
     // Vestidor en piedra y vitrinas (menu option): built now, shown or hidden on demand.
     closet=createVitrinas(THREE,{data,staticMeshes,scene,mats,cloneMaterial,lightObject,lighting,floor:vestidorStone});
     closet.set(settings.closet);
+    recibidorCal.value=settings.hallLime?1:0;
     // Doors, the study screen, the master bedding and the mirror frame are not baked:
     // they take the probes. Then each room is captured for its reflections, props included.
     for(const o of runtimeObjects)lightObject(o,lighting);
@@ -899,7 +929,7 @@ async function load(){
     // first capture) and again when a door moves, not for every face of every capture.
     renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     reflections.capture(renderer,scene);
-    ready=true;progress?.done();$('night').disabled=$('lamps').disabled=$('closet').disabled=false;syncLampsOption();lampGlow(lightmap.mode!=='dayoff');
+    ready=true;progress?.done();$('night').disabled=$('lamps').disabled=$('closet').disabled=$('hallLime').disabled=false;syncLampsOption();lampGlow(lightmap.mode!=='dayoff');
     // The tour starts on the reduced lightmaps: reflections again once the full pages are in.
     lightmap.sharp.then(()=>{timeSwitch=timeSwitch.then(()=>reflections.capture(renderer,scene));});
     const params=new URLSearchParams(location.search);
