@@ -26,10 +26,10 @@ const timeOfDay={night:false,listeners:new Set()},outdoor={};
 const lighting={uniforms:{}};
 let playing=false,ready=false,yaw=.05,pitch=0,velocity=[0,0],keys=new Set(),last=0,walkPhase=0,bobAmount=0,stepDistance=0;
 let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,roomTimer,rayTime=0,roomTime=0;
-const mobile=matchMedia('(pointer:coarse)').matches,eyeHeights=[1.6,1.2,.95];
-let eye=1.6;
+const mobile=matchMedia('(pointer:coarse)').matches,eyeHeights=[1.69,1.2,.95];
+let eye=1.69;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,closet:false,hallLime:false,eye:1.6};
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,closet:false,hallLime:false,eye:1.69};
 try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime','eye'])if(key in saved)settings[key]=saved[key];}catch{}
 // ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved; ?luces=0 by day
 // with the artificial lights off, ?luces with them on.
@@ -37,9 +37,10 @@ try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for
 // ?vestidor=piedra opens with the stone and glass vestidor variant, ?vestidor=plano without it.
 {const q=new URLSearchParams(location.search).get('vestidor');if(q!==null)settings.closet=q==='piedra';}
 {const q=new URLSearchParams(location.search).get('recibidor');if(q!==null)settings.hallLime=q==='cal';}
-// Altura de vista (menu): eyes at 1.60 m, 1.20 m or 0.95 m (the girls' view). ?altura=120 / ?altura=95
-// (centimetres) forces it. Only the camera moves: collisions are 2D, the floor is flat.
-{const q=new URLSearchParams(location.search).get('altura');if(eyeHeights.includes(+q/100))settings.eye=+q/100;if(!eyeHeights.includes(settings.eye))settings.eye=1.6;eye=settings.eye;}
+// Altura de vista (menu): an adult 1.80 m tall (eyes at 1.69 m), or eyes at 1.20 m or 0.95 m (the girls'
+// view). ?altura=120 / ?altura=95 (centimetres of eye height; ?altura=180 the adult) forces it; a value saved
+// before (1.60, the old adult eyes) falls back to the adult. Only the camera moves: collisions are 2D, the floor is flat.
+{const q=new URLSearchParams(location.search).get('altura'),h=q==='180'?1.69:+q/100;if(eyeHeights.includes(h))settings.eye=h;if(!eyeHeights.includes(settings.eye))settings.eye=1.69;eye=settings.eye;}
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
 for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime']) {
   $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='closet')setCloset(settings.closet);if(key==='hallLime')setHallLime(settings.hallLime);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
@@ -659,7 +660,8 @@ const loadViews=()=>Promise.all([loadImageTexture('./assets/vista-terraza.webp?v
 // the far city. Beyond TERRACE_RANGE the surface is pulled radially onto a sphere (the sky is at
 // 5000 m in the data, past the far plane): the view from the origin does not change.
 // The photo looks ~6.4° down: TERRACE_PITCH levels it so the far horizon sits at eye height.
-// The panorama was taken at an adult eye height: its origin stays at 1.60 m whatever the Altura de vista.
+// The panorama was taken at an adult eye height: its origin stays at 1.60 m (where its horizon
+// was levelled) whatever the Altura de vista.
 const TERRACE_ORIGIN=[9.4,1.6,-10.7],TERRACE_YAW=-.03,TERRACE_PITCH=-.112,TERRACE_RANGE=145;
 function terraceGeometry(buffer){
   const head=new DataView(buffer),[tanHalf,aspect,minDepth,maxDepth]=[0,4,8,12].map(o=>head.getFloat32(o,true)),cols=head.getUint16(16,true),rows=head.getUint16(18,true);
