@@ -1,6 +1,6 @@
 import * as THREE from './assets/three.module.js';
 import {textile,textileNormal,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
-import {probeVolume,fetchProbeData,patchLighting} from './lighting.mjs?v=65f7ecdcd5';
+import {probeVolume,fetchProbeData,patchLighting} from './lighting.mjs?v=344884d358';
 
 // Irradiance baked for the whole dwelling in one Cycles solution (scripts/bake_house.py).
 // Each house.bin vertex gets a lightmap UV: (page + u) / 2 and v, with 1,1 for surfaces

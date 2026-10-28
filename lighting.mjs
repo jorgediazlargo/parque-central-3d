@@ -62,9 +62,15 @@ export function pocketUniforms(data){
 }
 
 const MAX_ROOMS=16,CAPTURE_SIZE=128;
+// Capture size per room: 256 px on a desktop GPU that holds the wider atlas (13 rooms ×
+// 768 px), so satin oak, bronze, glass and the honed floor reflect the room crisply;
+// 128 px on phones and small GPUs (a quarter of the memory and of the capture time).
+export function captureSize(renderer,mobile){
+  return !mobile&&renderer.capabilities.maxTextureSize>=16384?256:CAPTURE_SIZE;
+}
 export class ReflectionProbes{
-  constructor(rooms){
-    this.rooms=rooms.slice(0,MAX_ROOMS);
+  constructor(rooms,size=CAPTURE_SIZE){
+    this.rooms=rooms.slice(0,MAX_ROOMS);this.size=size;
     const pad=(list,v)=>[...list,...Array(MAX_ROOMS-list.length).fill(v)];
     this.uniforms={
       reflCount:{value:this.rooms.length},
@@ -78,7 +84,7 @@ export class ReflectionProbes{
     // part of the atlas that enters a program). The captures see it, with reflEnabled 0:
     // no reflection reaches them, as without an environment, but every material compiles
     // to the very program the tour draws with.
-    const height=4*CAPTURE_SIZE;
+    const height=4*size;
     this.blank=new THREE.DataTexture(new Uint16Array(4*height),1,height,THREE.RGBAFormat,THREE.HalfFloatType);
     this.blank.mapping=THREE.CubeUVReflectionMapping;this.blank.needsUpdate=true;
   }
@@ -94,7 +100,7 @@ export class ReflectionProbes{
     return ready;
   }
   // Captures every room (6 x size² HDR) and builds the atlas used as scene.environment.
-  capture(renderer,scene,size=CAPTURE_SIZE){
+  capture(renderer,scene,size=this.size){
     const cubeRT=new THREE.WebGLCubeRenderTarget(size,{type:THREE.HalfFloatType,generateMipmaps:false});
     const cam=new THREE.CubeCamera(.05,60,cubeRT);scene.add(cam);
     const pmrem=new THREE.PMREMGenerator(renderer);

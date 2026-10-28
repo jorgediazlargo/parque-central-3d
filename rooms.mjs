@@ -1,8 +1,9 @@
 import * as THREE from './assets/three.module.js';
 import {GLTFLoader} from './assets/jsm/loaders/GLTFLoader.js';
-import {lightObject} from './lighting.mjs?v=65f7ecdcd5';
+import {lightObject} from './lighting.mjs?v=344884d358';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {clothMaps} from './bedding.mjs?v=322afdf762';
+import {cropReflection} from './mirrors.mjs?v=ffbe3ce218';
 import {createCurtain,createBlind} from './curtains.mjs?v=023dd6f85e';
 
 // Per-room modules (rooms/<id>.mjs), each exporting `async function apply(ctx)`.
@@ -62,7 +63,7 @@ export function makeContext({id,scene,camera,renderer,mats,staticMeshes,lightmap
   const group=new THREE.Group();group.name='room:'+id;scene.add(group);
   const gltf=new GLTFLoader();
   return {
-    id,THREE,scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,curtains,group,plan,cloneMaterial,
+    id,THREE,scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,curtains,group,plan,cloneMaterial,cropReflection,
     // Cloth colour + normal maps computed in workers (cloth-maps.mjs): {map, normalMap}.
     clothMaps,
     // glTF/glb; resolves to the parsed gltf ({scene, ...}). URLs relative to index.html.

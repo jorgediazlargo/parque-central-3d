@@ -23,6 +23,15 @@ export async function apply(ctx){
       piece.geometry.deleteAttribute('uv1');ctx.lightRuntimeObject(piece);
     }
   }
+  // J03-J04 vanity tops of the aseo (C14, 158 × 40) and the secondary bath (C13, 110 × 45):
+  // «porcelánico/mármol a elegir», so until it is chosen top, basin, faldon and free end
+  // take the same plain honed warm white as the master bath's J04 (rooms/bano.mjs), not
+  // the kitchen's quartzite. Same triangles and baked light.
+  {
+    const base=ctx.cloneMaterial(ctx.mats.white);base.color.set('#e3dcd1');base.roughness=.5;
+    for(const box of [[[17.77,.74,-4.78],[18.30,.905,-3.58]],[[15.07,.74,-3.70],[16.75,.905,-3.20]]])
+      for(const piece of ctx.splitExported({material:'stone',box}))piece.material=ctx.lightmap.material(base,'neutralTop','aseos');
+  }
   // Door reveals over the export's jamb posts, which z-fought with the plaster reveal (a
   // jagged frame): two oak jambs as G02-G03 draw them (no head piece: the leaf reaches the
   // false ceiling), painted at the entrance (`finish`, export_world.py).

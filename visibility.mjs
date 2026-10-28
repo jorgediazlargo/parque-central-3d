@@ -1,4 +1,4 @@
-// Is the vanity mirror in sight? The mirror re-renders the whole house, so it only does
+// Is a mirror in sight? A mirror re-renders the house, so it only does
 // when a line from the camera to some point of the mirror crosses no wall or closed door.
 // Plan view only (walls and doors run floor to ceiling); furniture is ignored, so this
 // can only say "visible" when it is not: never the other way round.
@@ -23,10 +23,12 @@ function blocked(p,q,boxes){
   return false;
 }
 
-// mirror: data.vanityMirror ({center:[x,z], width}, lying along x); walls: polygons.
+// mirror: data.vanityMirror ({center:[x,z], width}, lying along x), or any wall mirror
+// as the ends of its plan line ({a:[x,z], b:[x,z]}, mirrors.mjs); walls: polygons.
 export function mirrorSight(mirror,walls,{samples=9,inset=.08}={}){
-  const boxes=walls.map(bounds),[cx,cz]=mirror.center;
-  const points=Array.from({length:samples},(_,i)=>[cx+(i/(samples-1)-.5)*mirror.width,cz]);
+  const boxes=walls.map(bounds);
+  const [a,b]=mirror.a?[mirror.a,mirror.b]:[[mirror.center[0]-mirror.width/2,mirror.center[1]],[mirror.center[0]+mirror.width/2,mirror.center[1]]];
+  const points=Array.from({length:samples},(_,i)=>{const t=i/(samples-1);return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];});
   return {
     // eye: [x, z] of the camera; doors: extra polygons (the doors that are in the way).
     visible(eye,doors=[]){

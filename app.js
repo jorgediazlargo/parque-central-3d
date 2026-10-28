@@ -1,23 +1,24 @@
 import * as THREE from './assets/three.module.js';
 import {Reflector} from './assets/Reflector.js';
-import {ReflectionProbes,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=65f7ecdcd5';
+import {ReflectionProbes,captureSize,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=344884d358';
 import {Post} from './post.mjs?v=8fc2bec064';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=a1786addb3';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=24bb8a8dd5';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=142d51f6bb';
-import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=23a0bca5eb';
+import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=c992d6fdf6';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
-import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=4bcf41157e';
+import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
+import {createMirrors} from './mirrors.mjs?v=ffbe3ce218';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,quality,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null,fronts={list:[],at:()=>null,step:()=>false};
-let lightmap,roomStatus={},reflections,mirrorSpan=()=>{};const runtimeObjects=[];
+let lightmap,roomStatus={},reflections,mirrorSpan=()=>{},wallMirrors=null;const runtimeObjects=[];
 // Día / Noche: the night bake (artificial light only, same UVs) swapped into the same
 // lightmap and probe textures, the outdoor lights and backdrop, and the room modules'
 // daylight effects (ctx.onTimeOfDay). Reflections are captured again after each switch.
@@ -77,7 +78,7 @@ function notice(text){$('notice').textContent=text;$('notice').classList.add('vi
 
 // Terrace soffit (wall shader): pale by day only.
 const terraceDay={value:1};
-const porcelainMap={value:null},vestidorStone={value:0},recibidorCal={value:0},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
+const porcelainMap={value:null},porcelainRough={value:null},vestidorStone={value:0},recibidorCal={value:0},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
 const PLASTER_TILE=.75;  // metres per plaster.webp tile (style_textures.py)
 // Clear glass: a faint tinted body, reflections (box-projected room probes) at full
 // strength and the background let through by what neither takes (Schlick Fresnel),
@@ -217,8 +218,8 @@ function material(color,kind,roughness=.7){
       if(kind==='floor'){
         // H01 pavements: oak planks (no herringbone) in bedrooms, the play room, their
         // hall and the closet beside the kitchen; 120 cm porcelain at 45° elsewhere.
-        shader.uniforms.porcelainMap=porcelainMap;shader.uniforms.vestidorStone=vestidorStone;
-        shader.fragmentShader='uniform sampler2D porcelainMap;\nuniform float vestidorStone;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+shader.fragmentShader;
+        shader.uniforms.porcelainMap=porcelainMap;shader.uniforms.vestidorStone=vestidorStone;shader.uniforms.porcelainRough=porcelainRough;
+        shader.fragmentShader='uniform sampler2D porcelainMap,porcelainRough;\nuniform float vestidorStone;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+shader.fragmentShader;
         shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
           vec2 floorAt=houseWorld.xz;
           float porcelainMask=(1.0-clamp(floorRect(floorAt,vec4(-2.0,-12.0,5.113,-5.896))+floorRect(floorAt,vec4(13.019,-12.0,20.0,-4.799))
@@ -246,16 +247,23 @@ function material(color,kind,roughness=.7){
           // Vestidor en piedra y vitrinas (vitrinas.mjs, menu option): the vestidor interior
           // and its passage take the porcelain of the rest of the house instead of oak.
           porcelainMask=max(porcelainMask,vestidorStone*clamp(floorRect(floorAt,vec4(5.084,-3.674,7.295,1.0))+floorRect(floorAt,vec4(4.783,-2.791,5.113,1.0)),0.0,1.0));
+          // H01 joints (replanteo from the set-out point): 2 mm grout lines on every piece edge, the
+          // 1.20 m squares and the band strips alike, filtered by their screen footprint.
+          vec2 jointAt=fract(porcelainUv)*1.20,jointW=max(fwidth(porcelainUv)*1.20,vec2(1e-4));
+          vec2 jointD=min(min(jointAt,1.20-jointAt),abs(jointAt-porcelainBand*1.20));
+          vec2 jointLine=1.0-smoothstep(vec2(.001),.001+jointW*1.2,jointD);
+          float porcelainJoint=max(jointLine.x,jointLine.y)*(1.0-smoothstep(.004,.012,max(jointW.x,jointW.y)));
+          porcelainFloor=mix(porcelainFloor,porcelainFloor*vec3(.70,.68,.66),porcelainJoint);
           diffuseColor.rgb=mix(oakFloor,porcelainFloor,porcelainMask);
         `);
         // Honed porcelain, as in the reference: matte, no highlights. Its own pores
         // and joints (darker is lower) give the relief the plank normals would fake.
-        shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.82,porcelainMask);')
+        shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,clamp(.82+(texture2D(porcelainRough,floorAt*.42).g-.5)*.16+porcelainJoint*.1,0.0,1.0),porcelainMask);')
           .replace('#include <normal_fragment_maps>',THREE.ShaderChunk.normal_fragment_maps.replace('mapN.xy *= normalScale;','mapN.xy *= normalScale*(1.0-porcelainMask);')+`
           if(porcelainMask>0.0){
             // The darker band is a tone, not a step down: as relief it read as a wide joint.
             float porcelainBandM=1.0-step(porcelainBand,porcelainF.x)*step(porcelainBand,porcelainF.y);
-            float porcelainH=(dot(porcelainFloor,vec3(.3333))+porcelainBandM*.17)*.0009;
+            float porcelainH=(dot(porcelainFloor,vec3(.3333))+porcelainBandM*.17)*.0009-porcelainJoint*.0012;
             vec3 porcelainDx=dFdx(-vViewPosition),porcelainDy=dFdy(-vViewPosition);
             vec3 porcelainR1=cross(porcelainDy,normal),porcelainR2=cross(normal,porcelainDx);
             float porcelainDet=dot(porcelainDx,porcelainR1)*faceDirection;
@@ -308,7 +316,18 @@ function material(color,kind,roughness=.7){
           float playRoom=step(13.0,houseWorld.x)*(1.0-step(15.78,houseWorld.x))*step(houseWorld.z,-4.70);
           diffuseColor.rgb=mix(diffuseColor.rgb,vec3(${[cream.r,cream.g,cream.b].map(v=>v.toFixed(4))}),playRoom);
           diffuseColor.rgb=mix(diffuseColor.rgb,vec3(${[sage.r,sage.g,sage.b].map(v=>v.toFixed(4))}),girlsRoom);
-        `);
+        `).replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+          // Sprayed lacquer (colour not in the plan, satin kept neutral): a faint orange peel,
+          // ~3 mm cells in world space, that breaks the probe reflection like a real panel. Faded
+          // out once a cell is under two pixels, where it would only shimmer.
+          {vec3 peelP=houseWorld*330.0,peelI=floor(peelP),peelF=fract(peelP);peelF=peelF*peelF*(3.0-2.0*peelF);
+          float peel=mix(mix(mix(hashHouse(peelI.xy+peelI.z*7.1),hashHouse(peelI.xy+vec2(1.0,0.0)+peelI.z*7.1),peelF.x),
+            mix(hashHouse(peelI.xy+vec2(0.0,1.0)+peelI.z*7.1),hashHouse(peelI.xy+vec2(1.0)+peelI.z*7.1),peelF.x),peelF.y),
+            mix(mix(hashHouse(peelI.xy+(peelI.z+1.0)*7.1),hashHouse(peelI.xy+vec2(1.0,0.0)+(peelI.z+1.0)*7.1),peelF.x),
+            mix(hashHouse(peelI.xy+vec2(0.0,1.0)+(peelI.z+1.0)*7.1),hashHouse(peelI.xy+vec2(1.0)+(peelI.z+1.0)*7.1),peelF.x),peelF.y),peelF.z);
+          float peelFade=1.0-smoothstep(.5,1.0,length(fwidth(peelP)));
+          vec3 peelGrad=vec3(dFdx(peel),dFdy(peel),0.0)*peelFade*.35;
+          normal=normalize(normal-peelGrad);}`).replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=.46;');
       }
       if(kind==='wall'){
         shader.uniforms.terraceDay=terraceDay;shader.fragmentShader='uniform float terraceDay;\n'+shader.fragmentShader;
@@ -386,6 +405,9 @@ async function surfaceTextures(loading){
     for(const key of targets){mats[key].map=maps[0];mats[key].normalMap=maps[1];mats[key].roughnessMap=maps[2];mats[key].normalScale.set(strength,strength);mats[key].needsUpdate=true;}
     // H01 draws the oak boards running north-south: the laminate's planks run along u.
     if(targets.includes('floor'))maps.forEach(t=>{t.rotation=Math.PI/2;});
+    // Honed porcelain: Marble 01's roughness (already loaded for the black stone) as a faint
+    // world-space mottle of its sheen, so the probe reflection breaks up as on real stone.
+    if(targets.includes('blackstone'))porcelainRough.value=maps[2];
   }
   porcelain.colorSpace=THREE.SRGBColorSpace;porcelain.wrapS=porcelain.wrapT=THREE.RepeatWrapping;
   porcelain.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());porcelainMap.value=porcelain;
@@ -575,7 +597,7 @@ async function initScene(buffer,bake){
   sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-16,right:16,top:13,bottom:-13,near:1,far:65});sun.shadow.normalBias=.024;sun.shadow.bias=-.0001;scene.add(sun,sun.target);
   const hash=crypto.subtle.digest('SHA-256',buffer).then(h=>Array.from(new Uint8Array(h),v=>v.toString(16).padStart(2,'0')).join(''));
   lightmap=await loadLightmap(renderer,hash,lighting,{upCoves:(data.litCoves||[]).map(i=>data.coves[i]),prefetched:bake});
-  reflections=new ReflectionProbes(probeRooms(data));
+  reflections=new ReflectionProbes(probeRooms(data),captureSize(renderer,mobile));
   lighting.uniforms={...lightmap.probes.uniforms,...reflections.uniforms,...pocketUniforms(data)};
   mats.art=artwork();const sheer=curtainMaterial(mats.curtain);sheer.userData.translucency=.75;
   for(const [sourceIndex,spec] of data.meshes.entries()){
@@ -863,6 +885,7 @@ function frame(time){
       if($('room').textContent!==name){$('room').textContent=name;$('room').classList.add('fresh');clearTimeout(roomTimer);roomTimer=setTimeout(()=>$('room').classList.remove('fresh'),2600);}roomTime=0;
     }
   }
+  wallMirrors?.update(camera);
   renderer.info.reset();composer.render(dt||1/60);
 }
 function look(dx,dy){yaw-=dx*.0021;pitch=THREE.MathUtils.clamp(pitch-dy*.0021,-1.3,1.3);}
@@ -929,6 +952,10 @@ async function load(){
     closet=createVitrinas(THREE,{data,staticMeshes,scene,mats,cloneMaterial,lightObject,lighting,floor:vestidorStone});
     closet.set(settings.closet);
     recibidorCal.value=settings.hallLime?1:0;
+    // K01-K02 mirrors C01-C03 reflect the room for real at the two best quality levels on a
+    // computer; on phones and lower levels they keep the probe-lit silvered pane.
+    wallMirrors=createMirrors(THREE,Reflector,{scene,walls:kitchenColliders(data).filter(c=>WALL_NAMES.test(c.name)).map(c=>c.poly),
+      doors:opaqueDoorPolys,mirrorSight,enabled:()=>!mobile&&quality.index<=1});
     // Doors, the study screen, the master bedding and the mirror frame are not baked:
     // they take the probes. Then each room is captured for its reflections, props included.
     for(const o of runtimeObjects)lightObject(o,lighting);
