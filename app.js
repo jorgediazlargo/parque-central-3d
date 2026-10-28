@@ -1,7 +1,7 @@
 import * as THREE from './assets/three.module.js';
 import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,captureSize,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=344884d358';
-import {Post} from './post.mjs?v=8fc2bec064';
+import {Post} from './post.mjs?v=ec59b189c9';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
 import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=24bb8a8dd5';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
@@ -14,11 +14,12 @@ import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
+import {createPhotoMode} from './photo.mjs?v=263f1130b7';
 import {createMirrors} from './mirrors.mjs?v=ffbe3ce218';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,quality,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null,fronts={list:[],at:()=>null,step:()=>false};
-let lightmap,roomStatus={},reflections,mirrorSpan=()=>{},wallMirrors=null;const runtimeObjects=[];
+let lightmap,roomStatus={},reflections,mirrorSpan=()=>{},wallMirrors=null,photo=null,photoSave=false;const runtimeObjects=[];
 // Día / Noche: the night bake (artificial light only, same UVs) swapped into the same
 // lightmap and probe textures, the outdoor lights and backdrop, and the room modules'
 // daylight effects (ctx.onTimeOfDay). Reflections are captured again after each switch.
@@ -886,7 +887,16 @@ function frame(time){
     }
   }
   wallMirrors?.update(camera);
-  renderer.info.reset();composer.render(dt||1/60);
+  renderer.info.reset();
+  if(!photo?.frame(dt||1/60))composer.render(dt||1/60);
+  if(photoSave){photoSave=false;savePhoto();}
+}
+function setPhoto(on){photo.set(on);$('photo').checked=photo.active;$('photoSave').hidden=!photo.active;}
+// The canvas is read in the frame that drew it (no preserved drawing buffer).
+function savePhoto(){
+  const n=Math.floor(photo.samples),name=$('room').textContent.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-');
+  canvas.toBlob(blob=>{if(!blob)return;const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`parque-central-${name}-${n}m.png`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);},'image/png');
+  notice(n?`Foto guardada (${n} muestras)`:'Foto guardada (sin trazado aún: quédate quieto un momento)');
 }
 function look(dx,dy){yaw-=dx*.0021;pitch=THREE.MathUtils.clamp(pitch-dy*.0021,-1.3,1.3);}
 $('enter').onclick=enter;$('pause').onclick=pause;$('interaction').onclick=interact;$('touchDoor').onclick=interact;
@@ -897,6 +907,8 @@ addEventListener('keydown',e=>{
   keys.add(e.code);if(e.code==='KeyE'&&!e.repeat)interact();
   if(e.code==='KeyN'&&!e.repeat){settings.night=!timeOfDay.night;$('night').checked=settings.night;savePreferences();setLight();}
   if(e.code==='KeyL'&&!e.repeat&&!settings.night&&lightmap.data.dayOff){settings.lamps=!settings.lamps;$('lamps').checked=settings.lamps;savePreferences();setLight();}
+  if(e.code==='KeyP'&&!e.repeat&&photo?.supported)setPhoto(!photo.active);
+  if(e.code==='KeyG'&&!e.repeat&&photo?.active)photoSave=true;
   if(e.code==='KeyF'&&!e.repeat&&screenMode.supported){settings.fullscreen=!screenMode.on;$('fullscreen').checked=settings.fullscreen;savePreferences();if(settings.fullscreen)screenMode.enter();else screenMode.exit();}
 });
 addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',pause);
@@ -974,6 +986,15 @@ async function load(){
       const start=[(738-106.5)/51.53901216893343,(389-619.85)/51.53901216893343];
       if(!physics.blocked(start,activeDoorPolys())){player=start;yaw=Math.PI;pitch=0;camera.position.set(player[0],eye,player[1]);camera.rotation.set(0,yaw,0);}
     }
+    // Modo foto (photo.mjs): path tracing while the camera stands still; ?foto opens with it on.
+    photo=createPhotoMode(THREE,{renderer,scene,camera,composer,mobile,mats,data,porcelainMap,limeMask,limeBox,vestidorStone,cleanSamples:256,
+      night:()=>timeOfDay.night,lamps:()=>lightmap.mode!=='dayoff',
+      signature:()=>[doors.map(d=>(d.t??0).toFixed(2)).join(),fronts.list.map(f=>(f.t??0).toFixed?.(2)).join(),curtains.map(c=>(c.t??0).toFixed?.(2)).join(),settings.closet,settings.hallLime,timeOfDay.night,lightmap.mode].join('|'),
+      onStatus:text=>{$('photoHud').textContent=text;$('photoHud').hidden=!text;}});
+    $('photo').disabled=!photo.supported;$('photo').closest('label').title=photo.supported?'':'No disponible en móvil ni en GPU sin coma flotante';
+    $('photo').onchange=()=>setPhoto($('photo').checked);
+    $('photoSave').onclick=()=>{photoSave=true;};
+    if(params.get('foto')!==null&&params.get('foto')!=='0')setPhoto(true);
     $('enter').disabled=false;$('enter').textContent='Entrar en casa';requestAnimationFrame(frame);
     idle(reportShaderErrors);
   }catch(e){

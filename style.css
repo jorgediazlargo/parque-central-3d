@@ -3,3 +3,4 @@
 [hidden]{display:none!important}#touchDoor:disabled{opacity:.45}
 #loadbar{height:6px;border-radius:3px;background:#ffffff1f;overflow:hidden;margin-bottom:8px}#loadbar[hidden],#loadtext[hidden]{display:none}#loadbar i{display:block;height:100%;background:#dbc397;transform:scaleX(0);transform-origin:left;border-radius:3px}#loadtext{font-size:13px;color:#b9c4ba;margin-bottom:12px;font-variant-numeric:tabular-nums}
 .immersive .brand{display:none}.immersive header{background:none}.immersive #room{opacity:0;transition:opacity .6s}.immersive #room.fresh{opacity:1}@media(pointer:fine){.immersive header{display:none}}
+#photoHud{position:fixed;right:30px;bottom:26px;padding:10px 14px;background:#152019d9;border:1px solid #dfc59555;border-radius:6px;font-size:14px;pointer-events:none;z-index:2}#photoHud[hidden]{display:none}@media(max-width:600px){#photoHud{right:18px;bottom:150px}}
