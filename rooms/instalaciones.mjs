@@ -12,26 +12,29 @@
 // - Terrace (F05): its wall lights and soffit points are exported fixtures; at night
 //   they throw soft pools on the walls and floor (the terrace is not baked).
 
+import {laminam} from './slab.mjs?v=tm1';
+
 export async function apply(ctx){
   const {THREE,data,group}=ctx;
   const sun=data.sunProtection,inst=data.installations;
-  // I02 Schock sinks (granite composite in the worktop's colour): the bake leaves the
-  // deep bowls nearly black, so they take the probes' light with the stone's finish.
-  for(const box of [[[8.64,.70,-.82],[9.26,.905,-.40]],[[15.66,.70,-.775],[16.20,.897,-.305]]]){
-    for(const piece of ctx.splitExported({material:'kitchenStone',box})){
-      piece.material=ctx.cloneMaterial(ctx.mats.kitchenStone);delete piece.material.userData.bakedLit;
-      piece.geometry.deleteAttribute('uv1');ctx.lightRuntimeObject(piece);
+  // I02 Schock sinks (kitchen and lavadero): granite composite, one plain matte colour
+  // (no veins: that is the stone around them), a warm cream like the Taj Mahal. The bake
+  // leaves the deep bowls nearly black, so they take the probes' light.
+  {
+    const schock=ctx.cloneMaterial(ctx.mats.white);schock.color.set('#d3cabb');schock.roughness=.6;
+    for(const box of [[[8.64,.70,-.82],[9.26,.905,-.40]],[[15.66,.70,-.775],[16.20,.897,-.305]]]){
+      for(const piece of ctx.splitExported({material:'kitchenStone',box})){
+        piece.material=schock;
+        piece.geometry.deleteAttribute('uv1');ctx.lightRuntimeObject(piece);
+      }
     }
   }
   // J03-J04 vanity tops of the aseo (C14, 158 × 40) and the secondary bath (C13, 110 × 45):
-  // «porcelánico/mármol a elegir», so until it is chosen top, basin, faldon and free end
-  // take the same plain honed warm white as the master bath's J04 (rooms/bano.mjs), not
-  // the kitchen's quartzite. Same triangles and baked light.
-  {
-    const base=ctx.cloneMaterial(ctx.mats.white);base.color.set('#e3dcd1');base.roughness=.5;
-    for(const box of [[[17.77,.74,-4.78],[18.30,.905,-3.58]],[[15.07,.74,-3.70],[16.75,.905,-3.20]]])
-      for(const piece of ctx.splitExported({material:'stone',box}))piece.material=ctx.lightmap.material(base,'neutralTop','aseos');
-  }
+  // Laminam «Taj Mahal», DNA finish (chosen 13/11/2026; rooms/slab.mjs), the same as the
+  // master bath's J04 (rooms/bano.mjs) and the lavadero. Top, basin carved in the
+  // counter, faldon and free end; same triangles and baked light.
+  await laminam(ctx,[[[17.77,.74,-4.78],[18.30,.905,-3.58]],[[15.07,.74,-3.70],[16.75,.905,-3.20]]]
+    .flatMap(box=>ctx.splitExported({material:'stone',box})),'aseos','tm1');
   // Door reveals over the export's jamb posts, which z-fought with the plaster reveal (a
   // jagged frame): two oak jambs as G02-G03 draw them (no head piece: the leaf reaches the
   // false ceiling), painted at the entrance (`finish`, export_world.py).

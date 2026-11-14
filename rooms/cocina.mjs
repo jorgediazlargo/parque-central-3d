@@ -42,15 +42,19 @@
 // of a whole 320 x 195 cm slab. Every piece is cut from inside one slab, lying or
 // standing, whichever fits; the tall wall panel (3.4 m) is two bookmatched halves.
 // No cloud: the slab has its own.
+// Taj Mahal (13/11/2026, owner's choice): worktops, island, desayunador and wall linings
+// are natural Taj Mahal quartzite, 2 cm, polished (roughness .14, the room's reflections),
+// in the photo's own warm cream; the photo is one 320 x 240 cm slab. The lavadero
+// is Laminam «Taj Mahal» porcelain (DNA finish: matte, slightly textured), as are the
+// vanity tops of the three baths. Slab layout shared with them in rooms/slab.mjs.
 
 import {mergeGeometries} from '../assets/jsm/utils/BufferGeometryUtils.js';
+import {QUARTZITE,STONE_WHITE,pieceSeeds,slabLayout,slabStone,laminam} from './slab.mjs?v=tm1';
 
 const ZONE=[[7.3,-.2,-3.66],[13.4,3.2,-.2]];
 // Lavadero worktop, front, upstands and splashback (G14 / J06).
 const LAUNDRY=[[15.4,.7,-.95],[16.45,2.3,-.18]];
-const VERSION='r9';
-// Designer's slab (m): length, width.
-const SLAB=[3.2,1.95],CEILING=2.2;
+const VERSION='tm1';
 // B01 stool footprints (plan x ranges) on the island's north side, their centre at plan
 // y 476.98 (back band 467.7-471.4).
 const STOOLS=[[581.64,603.30],[612.99,634.65],[644.34,666],[675.69,697.32]];
@@ -67,67 +71,6 @@ const ISLAND={cheeks:[[563.12,576.58],[702.41,715.87]],y0:481.5,y1:524.58,front:
 const WALL_GAIN=[[.95,1.7],[1.3,1.48],[1.5,1.3],[1.65,1.02],[1.75,.78],[1.85,.56],[1.95,.4],[2.03,.32],[2.12,.34],[2.17,.42]];
 const curve=(pts,v)=>pts.slice(1).reduce((s,[x,g],i)=>`mix(${s},${g.toFixed(3)},smoothstep(${pts[i][0].toFixed(3)},${x.toFixed(3)},${v}))`,pts[0][1].toFixed(3));
 
-const hash=r=>{const x=Math.sin(r*12.9898+78.233)*43758.5453;return x-Math.floor(x);};
-// One random number per connected piece (front, slab, cheek) of a non-indexed geometry,
-// as a vertex attribute: per-piece texture cuts and tones.
-function pieceSeeds(THREE,geo){
-  const pos=geo.getAttribute('position'),n=pos.count,parent=new Int32Array(n).map((_,i)=>i);
-  const find=i=>{while(parent[i]!==i)i=parent[i]=parent[parent[i]];return i;};
-  const join=(a,b)=>{a=find(a);b=find(b);if(a!==b)parent[a]=b;};
-  const at=new Map();
-  for(let i=0;i<n;i++){
-    const k=`${Math.round(pos.getX(i)*4000)},${Math.round(pos.getY(i)*4000)},${Math.round(pos.getZ(i)*4000)}`;
-    const j=at.get(k);if(j===undefined)at.set(k,i);else join(i,j);
-    if(i%3)join(i,i-1);
-  }
-  const seed=new Float32Array(n);
-  const root=Int32Array.from({length:n},(_,i)=>find(i));
-  for(let i=0;i<n;i++)seed[i]=hash(root[i]);
-  geo.setAttribute('pieceSeed',new THREE.BufferAttribute(seed,1));
-  return root;
-}
-const seedVertex=shader=>{
-  shader.vertexShader='attribute float pieceSeed;\nvarying float vPieceSeed;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvPieceSeed=pieceSeed;');
-  shader.fragmentShader='varying float vPieceSeed;\n'+shader.fragmentShader;
-};
-// Where each stone piece sits in the slab, per vertex: origin, a 2x2 map from the piece's
-// own plane (metres from the origin, horizontal first) to slab UV, and offset + bookmatch
-// flag. Lying (slab length horizontal) or standing, whichever fits, at a random place
-// inside the slab. Wider than both: two mirrored halves, meeting at one of the lining's
-// joints if both sides fit (a bookmatch needs a joint), else at the centre; a piece taller
-// than the slab keeps the slab's top edge at the ceiling (the joint goes low, behind the
-// island). Planes: x-facing (z,y), y-facing (x,z), z-facing (x,y).
-function slabLayout(THREE,geo,root,joints){
-  const pos=geo.getAttribute('position'),n=pos.count,box=new Map();
-  for(let i=0;i<n;i++){
-    let b=box.get(root[i]);if(!b)box.set(root[i],b={lo:[1e9,1e9,1e9],hi:[-1e9,-1e9,-1e9]});
-    for(let a=0;a<3;a++){const v=pos.getComponent(i,a);b.lo[a]=Math.min(b.lo[a],v);b.hi[a]=Math.max(b.hi[a],v);}
-  }
-  const [L,W]=SLAB,lay=new Map();
-  for(const [r,b] of box){
-    // Facing: the piece's thinnest extent (slabs, worktops; the island's round ends face x).
-    const size=b.hi.map((x,a)=>x-b.lo[a]),axis=size.indexOf(Math.min(...size)),[h,v]=[[2,1],[0,2],[0,1]][axis];
-    const lo=b.lo[h],hi=b.hi[h],w=hi-lo,t=b.hi[v]-b.lo[v],c=b.lo.map((x,a)=>(x+b.hi[a])/2);
-    // [standing, mirror at, widest side (m), may overflow the slab's height]
-    const cand=[[0,null,w,0],[1,null,w,0],
-      ...joints.filter(j=>j.facing===axis&&lo<j.at&&j.at<hi).sort((p,q)=>Math.abs(p.at-c[h])-Math.abs(q.at-c[h]))
-        .flatMap(j=>[1,0].map(st=>[st,j.at,Math.max(j.at-lo,hi-j.at),1])),
-      [1,c[h],w/2,0],[0,c[h],w/2,0]];
-    const [stand,mirror,side]=cand.find(([st,,e,tall])=>e<=(st?W:L)&&(tall||t<=(st?L:W)))||[1,c[h],w/2];
-    if(mirror!==null)c[h]=mirror;
-    // Extent of the piece in slab UV along its horizontal (uw) and vertical (ut) axes.
-    const uw=side/(stand?W:L),ut=t/(stand?L:W),r1=hash(r),r2=hash(r*7+3);
-    const ph=mirror!==null?r1*Math.max(0,1-uw):.5+(r1-.5)*Math.max(0,1-uw);
-    const pv=ut>1&&v===1?1-(Math.min(b.hi[v],CEILING)-c[v])/(stand?L:W):.5+(r2-.5)*Math.max(0,1-ut);
-    lay.set(r,{c,A:stand?[0,1/W,1/L,0]:[1/L,0,0,1/W],B:stand?[pv,ph,+(mirror!==null)]:[ph,pv,+(mirror!==null)]});
-  }
-  const c=new Float32Array(n*3),A=new Float32Array(n*4),B=new Float32Array(n*3);
-  for(let i=0;i<n;i++){const l=lay.get(root[i]);c.set(l.c,i*3);A.set(l.A,i*4);B.set(l.B,i*3);}
-  geo.setAttribute('slabCentre',new THREE.BufferAttribute(c,3));
-  geo.setAttribute('slabA',new THREE.BufferAttribute(A,4));
-  geo.setAttribute('slabB',new THREE.BufferAttribute(B,3));
-}
-
 export async function apply(ctx){
   const {THREE,mats}=ctx;
   const stoneMap=await ctx.loadTexture(`./assets/rooms/cocina/stone.webp?v=${VERSION}`);
@@ -139,41 +82,14 @@ export async function apply(ctx){
   const joints=[640,735].map(x=>({facing:2,at:ctx.plan(x,0)[0]}));
   // Mirrored repeat: a piece larger than the slab meets the slab's own edge, no seam.
   stoneMap.wrapS=stoneMap.wrapT=THREE.MirroredRepeatWrapping;
-  // The designer's slab laid out over each piece (honed, no relief); `shade` is GLSL run
-  // where the normal maps are read.
-  const slabStone=(m,shade,key)=>{
-    const prior=m.onBeforeCompile;
-    m.map=stoneMap;
-    m.onBeforeCompile=(shader,r)=>{
-      prior.call(m,shader,r);
-      seedVertex(shader);
-      shader.vertexShader='attribute vec3 slabCentre,slabB;\nattribute vec4 slabA;\nvarying vec3 vSlabCentre,vSlabB;\nvarying vec4 vSlabA;\n'
-        +shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvSlabCentre=slabCentre;vSlabA=slabA;vSlabB=slabB;');
-      shader.fragmentShader=shader.fragmentShader.replace('void main() {',`varying vec3 vSlabCentre,vSlabB;
-        varying vec4 vSlabA;
-        vec2 slabUv(vec2 p){return mat2(vSlabA.xy,vSlabA.zw)*vec2(mix(p.x,abs(p.x),vSlabB.z),p.y)+vSlabB.xy;}
-        void main() {`);
-      // Flat (honed): no relief.
-      shader.fragmentShader=shader.fragmentShader.replace('#define CROSSCUT_RELIEF 1.0','#define CROSSCUT_RELIEF 0.0')
-        .replace('vec2 ccX=houseWorld.zy*1.1,ccY=houseWorld.xz*1.1,ccZ=houseWorld.xy*1.1;',`
-          vec3 slabP=houseWorld-vSlabCentre;
-          vec2 ccX=slabUv(slabP.zy),ccY=slabUv(slabP.xz),ccZ=slabUv(slabP.xy);`)
-        // Slab tone: pieces of one lot differ a little.
-        .replace('#include <normal_fragment_maps>',`
-        diffuseColor.rgb*=1.0+.04*(fract(vPieceSeed*41.7)-.5);
-        ${shade}
-        #include <normal_fragment_maps>`);
-    };
-    m.customProgramCacheKey=()=>key;
-    m.needsUpdate=true;
-  };
   for(const piece of ctx.splitExported({material:'kitchenStone',region:'kitchen',box:ZONE})){
     const m=piece.material;
-    slabLayout(THREE,piece.geometry,pieceSeeds(THREE,piece.geometry),joints);
+    slabLayout(THREE,piece.geometry,pieceSeeds(THREE,piece.geometry),joints,QUARTZITE.slab);
     const island=piece.userData.exported.layer==='island';
-    // The kitchen's warm baked light over-saturates the stone: a slightly cooler tint.
-    m.color.multiply(new THREE.Color().setRGB(.97,1.0,1.06));
-    slabStone(m,`{float vert=1.0-smoothstep(.5,.8,abs(houseNormal.y));
+    // The photo's own cream, at the luminance the bluish crosscut base had; polished. The
+    // kitchen's warm baked light over-saturates it (tan, not cream): a slightly cooler tint.
+    m.color.setScalar(STONE_WHITE).multiply(new THREE.Color().setRGB(.96,1.0,1.07));m.roughness=QUARTZITE.roughness;
+    slabStone(m,{map:stoneMap,shade:`{float vert=1.0-smoothstep(.5,.8,abs(houseNormal.y));
         ${island?`
         // Island in the shade of its worktop: the cheeks (x outside the recess) keep the
         // bake's light; the recessed front keeps the bake's own shade under the 36 cm
@@ -185,24 +101,12 @@ export async function apply(ctx){
         diffuseColor.rgb*=mix(1.5,${curve(WALL_GAIN,'houseWorld.y')},vert);
         // Warm golden band under the slot, a calmer cream below (render 9).
         diffuseColor.rgb*=mix(vec3(1.0),mix(vec3(1.0),vec3(1.05,.98,.86),smoothstep(1.8,2.1,houseWorld.y)),vert);`}}`,
-      'cocina-stone-'+VERSION+(island?'-island':''));
+      key:'cocina-stone-'+VERSION+(island?'-island':'')});
   }
-  // Lavadero (G14 / J06): the same stone. It is exported outside the kitchen region, so it
-  // takes the kitchen's crosscut program here, on its own baked light.
-  {
-    const base=ctx.cloneMaterial(ctx.mats.kitchenCrosscut);
-    for(const piece of ctx.splitExported({material:'kitchenStone',region:'shared',box:LAUNDRY})){
-      // The sink bowl is probe-lit (rooms/instalaciones.mjs dropped its lightmap UVs): it
-      // keeps that finish, whichever module ran first.
-      if(!piece.geometry.getAttribute('uv1')){
-        piece.material=ctx.cloneMaterial(ctx.mats.kitchenStone);delete piece.material.userData.bakedLit;
-        ctx.lightRuntimeObject(piece);continue;
-      }
-      slabLayout(THREE,piece.geometry,pieceSeeds(THREE,piece.geometry),[]);
-      piece.material=ctx.cloneMaterial(ctx.lightmap.material(base,'crosscut','lavadero'));
-      slabStone(piece.material,'','lavadero-stone-'+VERSION);
-    }
-  }
+  // Lavadero (G14 / J06): Laminam «Taj Mahal» (front, upstand, splashback, worktop), on
+  // its own baked light. The sink bowl is probe-lit granite composite (I02 Schock,
+  // rooms/instalaciones.mjs dropped its lightmap UVs): it is left to that module.
+  await laminam(ctx,ctx.splitExported({material:'kitchenStone',region:'shared',box:LAUNDRY}).filter(p=>p.geometry.getAttribute('uv1')),'lavadero',VERSION);
 
   // The kitchen fronts are «rechapado de roble natural» (G10-G12), the same oak as every
   // other piece of joinery: export_world.py gives them the shared 'wood' material.

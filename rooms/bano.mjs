@@ -23,6 +23,8 @@ const P=(x,y)=>[(x-106.5)/S,(y-619.85)/S];
 const TAPS=[[204.5,1],[268.6,-1]];
 const TOP=.90;   // J05: worktop at 0,90
 
+import {laminam} from './slab.mjs?v=tm1';
+
 export async function apply(ctx){
   const {THREE,group}=ctx;
   const [cx,cz]=P(240.675,431.735),A=41.235/S,B=20.625/S;
@@ -196,16 +198,13 @@ export async function apply(ctx){
     contact(wx,TOP+.0005,z,.07,.05,.7);contact(wx,TOP+.0005,lz,.05,.04,.6);
   }
 
-  // --- Vanity top: neutral, as the plan leaves it ----------------------------------
-  // J04 (Marmolería, encimeras de lavabo): «porcelánico/mármol a elegir», 200 × 45 cm,
-  // faldón 25 cm. Until it is chosen the slab is a plain honed warm white, with no
-  // figure: the cross-cut travertine of render 5 was the studio's image, not the plan.
-  // Same baked light (split triangles keep their lightmap UVs).
+  // --- Vanity top: Laminam «Taj Mahal» ------------------------------------------------
+  // J04 (Marmolería, encimeras de lavabo), 200 × 45 cm, faldón 25 cm: Laminam porcelain
+  // «Taj Mahal», DNA finish, matte and slightly textured (chosen 13/11/2026; rooms/slab.mjs),
+  // the same as the aseo, the secondary bath and the lavadero. Same triangles and baked
+  // light (split triangles keep their lightmap UVs).
   {
-    const top=ctx.splitExported({material:'stone',box:[[1.5,.64,-2.46],[3.55,.92,-1.98]]});
-    const base=ctx.cloneMaterial(ctx.mats.white);base.color.set('#e3dcd1');base.roughness=.5;
-    // ctx.lightmap.material keeps the baked light; its program is keyed by kind-region.
-    for(const piece of top)piece.material=ctx.lightmap.material(base,'neutralTop','bano');
+    await laminam(ctx,ctx.splitExported({material:'stone',box:[[1.5,.64,-2.46],[3.55,.92,-1.98]]}),'bano','tm1');
     // Shade where the slab meets the mirror: the counter stands off its reflection.
     const c=document.createElement('canvas');c.width=4;c.height=64;const g=c.getContext('2d');
     const gr=g.createLinearGradient(0,0,0,64);gr.addColorStop(0,'#000');gr.addColorStop(.55,'#333');gr.addColorStop(1,'#fff');
