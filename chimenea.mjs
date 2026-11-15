@@ -4,13 +4,13 @@
 //
 // The column grows into a lime-plaster block from the floor to the ceiling, 1,70 m along
 // the salón-comedor line and as thick as the column plus its plaster (44,6 cm, Jorge 15/11/2026),
-// standing on a low pale-stone plinth that runs on past its north end as a bench. At
+// standing on a low pale-stone plinth as long as the block (Jorge 15/11/2026: no bench past it). At
 // 40-98 cm a band in black steel holds, as in 2a, a three-sided glass gas fireplace (front
 // to the salón, back to the comedor and the side, so it is seen through) and a log store
 // open to both rooms, split by a steel pier.
 // Mirrored against the render: the fire cannot pass through the structural column, which
 // sits in the block's south half and fills its whole thickness, so the fire takes the north
-// end (by the windows) with the bench past it, and the logs the 31 cm between the fire and
+// end (by the windows), and the logs the 31 cm between the fire and
 // the column. The south end stays 1,15 m clear of the wall for the way between salón and
 // comedor.
 //
@@ -22,7 +22,7 @@ import {mergeGeometries} from './assets/jsm/utils/BufferGeometryUtils.js';
 
 // World metres (x east, y up, z south).
 const X0=10.125,X1=10.571,Z0=-7.60,Z1=-5.90;             // block: the column (10.129-10.567) + 4 mm of plaster, so the bake never shows through
-const PLINTH={x0:10.10,x1:10.60,z0:-8.04,z1:-5.90,y:.40};  // bench past the north end
+const PLINTH={x0:10.10,x1:10.60,z0:-7.60,z1:-5.90,y:.40};  // plinth, the block's length
 const BAND={y0:.40,y1:.98};                                 // fire and logs opening
 const FIRE={z0:-7.56,z1:-7.10};                             // glass on west, north and east
 const PIER={z0:-7.10,z1:-7.04};                             // steel between fire and logs
@@ -56,7 +56,7 @@ export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,pl
   // ---- Lime-plaster block: everything but the band, plus jambs at the south end. ----
   lists.plaster.push(box(X0,X1,BAND.y1,ceiling-.002,Z0,Z1));
   lists.plaster.push(box(X0,X1,BAND.y0,BAND.y1,LOGS.z1,Z1));          // south of the logs (column)
-  // ---- Pale stone plinth (bench). ----
+  // ---- Pale stone plinth. ----
   lists.stone.push(box(PLINTH.x0,PLINTH.x1,0,PLINTH.y,PLINTH.z0,PLINTH.z1));
 
   // ---- Black steel: soffit, pier, the log niche lining, the fire's bed and lintel. ----
@@ -184,7 +184,7 @@ export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,pl
   }
 
   scene.add(group);
-  // Collision footprint (block and bench), as physics polygons [x, z].
+  // Collision footprint (block and plinth), as physics polygons [x, z].
   const rect=(x0,x1,z0,z1)=>[[x0,z0],[x1,z0],[x1,z1],[x0,z1]];
   const polys=[rect(PLINTH.x0,PLINTH.x1,PLINTH.z0,PLINTH.z1),rect(X0,X1,Z0,Z1)];
   const state={on:false,polys,group,

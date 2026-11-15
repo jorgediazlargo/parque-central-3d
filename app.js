@@ -14,7 +14,7 @@ import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
-import {createChimenea} from './chimenea.mjs?v=150cd137f8';
+import {createChimenea} from './chimenea.mjs?v=c05602ded0';
 import {createPhotoMode} from './photo.mjs?v=263f1130b7';
 import {createMirrors} from './mirrors.mjs?v=ffbe3ce218';
 
