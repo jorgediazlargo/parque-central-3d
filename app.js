@@ -652,6 +652,9 @@ async function initScene(buffer,bake){
       mirror.scale.x=(x1-x0)/m.width;mirror.position.x=(x0+x1)/2;
     };
     mirrorSpan();
+    // The stretched mirror sits a few cm in front of the closed leaves and would catch the
+    // aiming ray: a hit on it over a closed leaf targets that leaf (updateTarget).
+    mirror.userData.leafAt=p=>leaves.find(d=>d.active!==false&&d.t<=.01&&p.x>=Math.min(d.a[0],d.b[0])&&p.x<=Math.max(d.a[0],d.b[0]))||null;
   }
   if(physics.blocked(player,activeDoorPolys()))throw Error('El punto de entrada no está libre.');
   camera.position.set(player[0],eye,player[1]);
@@ -855,7 +858,7 @@ function updateTarget(){
   scene.updateMatrixWorld(true);camera.updateMatrixWorld(true);raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
   const hits=raycaster.intersectObjects([...staticMeshes.filter(shown),...doors.filter(d=>d.active!==false).flatMap(d=>d.groups)],true);
   // The closest surface must be an actual door or curtain, preventing interaction through walls.
-  target=hits[0]?.object.userData.door||hits[0]?.object.userData.curtain||fronts.at(hits[0])||null;
+  target=hits[0]?.object.userData.door||hits[0]?.object.userData.curtain||hits[0]?.object.userData.leafAt?.(hits[0].point)||fronts.at(hits[0])||null;
   $('interaction').hidden=!target||!playing;
   if(target)$('interaction').querySelector('span').textContent=(target.goal>.5?'Cerrar · ':'Abrir · ')+label(target.name);
   $('touchDoor').disabled=!target;
