@@ -5,8 +5,8 @@
 // Render 4: the screen (built in app.js, layout unchanged) gets slimmer, rounded oak
 // profiles with a lit and a shaded edge, a deeper outer frame and shadow lines at the
 // joints, merged into one mesh per group; the glass has a faint body, reflections,
-// sheen and a glint along the profiles. The desk chairs are G15's four-legged oak
-// chairs with a contact shadow; the desk wall between the worktop and the shelf is
+// sheen and a glint along the profiles. The desk chairs follow render 4: upholstered
+// tub swivel chairs on a dark five-star base; the desk wall between the worktop and the shelf is
 // plaster, so the oak top reads against it.
 
 import {mergeGeometries} from '../assets/jsm/utils/BufferGeometryUtils.js';
@@ -243,39 +243,25 @@ function studyGlass(THREE,stileZ){
 }
 
 // --- Chairs ---------------------------------------------------------------------------
-// G15 (alzado): two four-legged oak chairs, seat at 0,45, the curved back rail on the
-// rear legs at 0,68-0,80, about 0,45 wide; on the B01 chair symbols, facing the desk.
+// Render 4 (Jorge, 2026-11-15: "mejora las sillas del despacho"): two upholstered tub
+// swivel chairs in grey-beige fabric (shell wrapping into low arms, loose seat pad) on a
+// dark five-star base with casters, on the B01 chair symbols, tucked under the desk
+// (arms 0,645 < worktop underside 0,70). Runtime meshes, no rebake.
 function chairs(ctx,THREE){
   // Exported chairs (small seat and back pad on a dark base): replaced.
   ctx.removeExported({material:'fabric',box:[[4.30,.37,-8.46],[4.77,.84,-7.20]]});
   ctx.removeExported({material:'dark',box:[[4.30,0,-8.43],[4.81,.74,-7.19]]});
-  const oak=ctx.cloneMaterial(ctx.mats.wood);
-  const parts=[],box=(w,h,d,x,y,z)=>parts.push(new THREE.BoxGeometry(w,h,d).translate(x,y,z).toNonIndexed());
-  const W=.45,D=.42,L=.035,seat=.45;
-  // Local frame: the chair faces +x (the desk); the back is at -x.
-  for(const sz of [-1,1]){
-    box(L,seat-.02,L,D/2-L/2,(seat-.02)/2,sz*(W/2-L/2));          // front legs
-    box(L,.80,L,-D/2+L/2,.40,sz*(W/2-L/2));                       // rear legs, up to the back rail
-  }
-  box(D,.03,W,0,seat-.015,0);                                     // seat
-  for(const sz of [-1,1])box(D-2*L,.05,.022,0,seat-.055,sz*(W/2-L/2));   // side rails
-  box(.022,.05,W-2*L,D/2-L/2,seat-.055,0);                        // front rail
-  // Back rail: a shallow curve between the rear legs, 0,68-0,80 (extruded upwards).
-  {
-    const sh=new THREE.Shape(),n=16,pt=(k,t)=>{const a=-1+2*k/n;return [-D/2+L/2-.03*(1-a*a)+t,-a*(W/2+.01)];};
-    sh.moveTo(...pt(0,0));for(let k=1;k<=n;k++)sh.lineTo(...pt(k,0));
-    for(let k=n;k>=0;k--)sh.lineTo(...pt(k,.028));
-    parts.push(new THREE.ExtrudeGeometry(sh,{depth:.12,bevelEnabled:false}).rotateX(-Math.PI/2).translate(0,.68,0));
-  }
-  const geo=mergeGeometries(parts);
+  const fabric=ctx.cloneMaterial(ctx.mats.fabric);fabric.color.set('#a39c92');
+  const dark=ctx.cloneMaterial(ctx.mats.dark);dark.color.set('#262422');dark.roughness=.45;
+  const geo=tubChairGeometry(THREE);
   const shadowMat=contactShadow(THREE);
-  // B01: the two chairs at y 196.8 and 236.5.
-  for(const [x,z,turn] of [[4.55,-8.208,0],[4.55,-7.438,0]]){   // pushed under the desk, square to it
+  // B01: the two chairs at y 196.8 and 236.5, facing the desk, each swivelled a little.
+  for(const [x,z,turn] of [[4.30,-8.208,.07],[4.30,-7.438,-.05]]){
     const chair=new THREE.Group();chair.position.set(x,0,z);chair.rotation.y=turn;
-    chair.add(new THREE.Mesh(geo,oak));
+    chair.add(new THREE.Mesh(geo.fabric,fabric),new THREE.Mesh(geo.dark,dark));
     chair.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
     ctx.lightRuntimeObject(chair);
-    const shadow=new THREE.Mesh(new THREE.PlaneGeometry(.70,.70),shadowMat);
+    const shadow=new THREE.Mesh(new THREE.PlaneGeometry(.78,.78),shadowMat);
     shadow.rotation.x=-Math.PI/2;shadow.position.set(0,.004,0);shadow.renderOrder=1;chair.add(shadow);
     ctx.group.add(chair);
   }
@@ -459,4 +445,118 @@ function trailingPlant(THREE,px,py,pz){
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   g.computeVertexNormals();return g;
+}
+
+// Render 4 desk chair: upholstered tub shell (grey-beige), loose seat cushion, swivel
+// column and a dark five-star base on casters. Local frame: faces +x, back at -x, y up.
+// Returns two geometries (fabric, dark), non-indexed, with normals and uvs.
+function tubChairGeometry(THREE){
+  const fabric=[],dark=[];
+  const flat=g=>(g.index?g.toNonIndexed():g);
+
+  // --- Shell: an elliptic band around the back that becomes the arms. ---------------
+  // s in [-1,1] runs from one arm end round the back (s=0) to the other.
+  const A=.235,B=.255,CX=.005;        // inner radii at the seat (depth, width), centre
+  const PHI=.60*Math.PI;              // arm ends a little forward of the sides
+  const Y0=.36,TOP=.79,ARM=.645,T=.065;
+  const NS=72;
+  const height=s=>{
+    const a=Math.abs(s);
+    let h=ARM+(TOP-ARM)*Math.pow(Math.cos(Math.min(a,1)*Math.PI/2),1.4);
+    if(a>.80){const k=(a-.80)/.20;h=Y0+.10+(h-Y0-.10)*Math.sqrt(Math.max(0,1-k*k));}  // rounded arm front
+    return h;
+  };
+  // Cross-section loop (u = outward from the inner ellipse, y), inner bottom ->
+  // inner face up -> rounded top -> outer face down -> under the shell.
+  const section=s=>{
+    const H=height(s),pts=[],lean=.045*(H-Y0)/(TOP-Y0);
+    const nIn=8,nTop=9,nOut=8;
+    for(let i=0;i<nIn;i++){const t=i/nIn;const y=Y0+(H-T/2-Y0)*t;pts.push([lean*Math.pow(t,1.6),y]);}
+    const cu=lean+T/2,cy=H-T/2;
+    for(let i=0;i<=nTop;i++){const a=Math.PI-Math.PI*i/nTop;pts.push([cu+T/2*Math.cos(a),cy+T/2*Math.sin(a)]);}
+    for(let i=1;i<=nOut;i++){const t=i/nOut;const y=cy-(cy-Y0+.01)*t;
+      // the outer face tucks in under the seat
+      const u=lean+T-(lean+T*.55)*Math.pow(t,3)+T*.12*Math.sin(Math.PI*t);pts.push([u,y]);}
+    pts.push([.0,Y0-.012]);
+    return pts;
+  };
+  {
+    const loops=[];
+    for(let i=0;i<=NS;i++){
+      const s=-1+2*i/NS,phi=s*PHI;
+      loops.push(section(s).map(([u,y])=>new THREE.Vector3(CX-(A+u)*Math.cos(phi),y,(B+u)*Math.sin(phi))));
+    }
+    const M=loops[0].length,pos=[],uv=[],idx=[];
+    for(let i=0;i<=NS;i++){
+      let v=0;
+      for(let j=0;j<M;j++){
+        const p=loops[i][j];pos.push(p.x,p.y,p.z);
+        if(j)v+=p.distanceTo(loops[i][j-1]);
+        uv.push(i/NS*1.6,v);
+      }
+    }
+    for(let i=0;i<NS;i++)for(let j=0;j<M-1;j++){
+      const a=i*M+j,b=(i+1)*M+j,c=(i+1)*M+j+1,d=i*M+j+1;
+      idx.push(a,b,d,b,c,d);
+    }
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+    g.setIndex(idx);g.computeVertexNormals();
+    // Facing check: the loop winds so the normals point out; flip if not.
+    const n=g.attributes.normal,p0=new THREE.Vector3().fromBufferAttribute(g.attributes.position,Math.round(NS/2)*M+M-4);
+    const n0=new THREE.Vector3().fromBufferAttribute(n,Math.round(NS/2)*M+M-4);
+    if(n0.x>0&&p0.x<0){for(let k=0;k<idx.length;k+=3){const t=idx[k];idx[k]=idx[k+1];idx[k+1]=t;}g.setIndex(idx);g.computeVertexNormals();}
+    fabric.push(flat(g));
+    // Arm-end caps (small after the rounding): fans from the section centroid.
+    for(const i of [0,NS]){
+      const L=loops[i],c=L.reduce((a,p)=>a.add(p),new THREE.Vector3()).multiplyScalar(1/L.length);
+      const cp=[];for(let j=0;j<M-1;j++){const a=L[j],b=L[j+1];cp.push(c.x,c.y,c.z,a.x,a.y,a.z,b.x,b.y,b.z);}
+      const cg=new THREE.BufferGeometry();cg.setAttribute('position',new THREE.Float32BufferAttribute(cp,3));
+      cg.setAttribute('uv',new THREE.Float32BufferAttribute(new Array(cp.length/3*2).fill(0),2));
+      cg.computeVertexNormals();
+      const nn=new THREE.Vector3().fromBufferAttribute(cg.attributes.normal,0);
+      if(nn.z*Math.sign(L[0].z)<0){const P=cg.attributes.position.array;for(let k=0;k<P.length;k+=9)for(let q=0;q<3;q++){const t=P[k+3+q];P[k+3+q]=P[k+6+q];P[k+6+q]=t;}cg.computeVertexNormals();}
+      fabric.push(cg);
+    }
+  }
+
+  // --- Seat cushion: a soft superelliptic pad, front just past the arms. -------------
+  {
+    const sh=new THREE.Shape(),n=48,ax=.245,az=.235,cx=.035,e=2/4.2;
+    for(let k=0;k<n;k++){
+      const t=k/n*Math.PI*2,c=Math.cos(t),s=Math.sin(t);
+      const x=cx+ax*Math.sign(c)*Math.pow(Math.abs(c),e),y=az*Math.sign(s)*Math.pow(Math.abs(s),e);
+      k?sh.lineTo(x,y):sh.moveTo(x,y);
+    }
+    const g=new THREE.ExtrudeGeometry(sh,{depth:.045,bevelEnabled:true,bevelThickness:.022,bevelSize:.022,bevelSegments:4,curveSegments:8});
+    g.rotateX(-Math.PI/2).translate(0,.405,0);   // y .383-.472
+    g.computeVertexNormals();
+    fabric.push(flat(g));
+  }
+
+  // --- Swivel and five-star base (dark, satin). ---------------------------------------
+  const cyl=(rt,rb,h,y,seg=20)=>new THREE.CylinderGeometry(rt,rb,h,seg).translate(0,y,0);
+  dark.push(flat(new THREE.BoxGeometry(.24,.03,.26).translate(.02,.355,0)));   // seat plate
+  dark.push(flat(new THREE.BoxGeometry(.12,.05,.16).translate(.02,.318,0)));   // tilt mechanism
+  dark.push(flat(cyl(.026,.026,.20,.21)));                                     // gas column
+  dark.push(flat(cyl(.034,.046,.12,.135)));                                    // column shroud
+  dark.push(flat(cyl(.052,.058,.05,.092)));                                    // hub
+  for(let k=0;k<5;k++){
+    const a=k/5*Math.PI*2+Math.PI/10;
+    // Leg: tapered, falling slightly to the caster.
+    const leg=new THREE.BoxGeometry(.29,.032,.042,4,1,1);
+    const P=leg.attributes.position;
+    for(let i=0;i<P.count;i++){const x=P.getX(i),t=(x+.145)/.29;P.setZ(i,P.getZ(i)*(1-.35*t));P.setY(i,P.getY(i)*(1-.25*t)-.022*t);}
+    leg.computeVertexNormals();
+    leg.translate(.035+.145,.098,0).rotateY(a);
+    dark.push(flat(leg));
+    const r=.315,x=Math.cos(a)*r,z=-Math.sin(a)*r;
+    // Caster: housing and a twin wheel.
+    dark.push(flat(cyl(.016,.02,.03,.068,12).translate(x,0,z)));
+    const wheel=new THREE.CylinderGeometry(.026,.026,.034,16).rotateX(Math.PI/2).rotateY(a+Math.PI/2).translate(x+Math.cos(a)*.012,.027,z-Math.sin(a)*.012);
+    dark.push(flat(wheel));
+  }
+  const clean=gs=>gs.map(g=>{for(const k of Object.keys(g.attributes))if(!['position','normal','uv'].includes(k))g.deleteAttribute(k);return g;});
+  return {fabric:mergeGeometries(clean(fabric)),dark:mergeGeometries(clean(dark))};
 }
