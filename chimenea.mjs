@@ -14,23 +14,45 @@
 // the column. The south end stays 1,15 m clear of the wall for the way between salón and
 // comedor.
 //
+// «Chimenea corta» (Jorge 15/11/2026): as if the column were doubled, not stretched: the
+// column plus a copy of itself to the north (1,08 m), the fire in the new half and no log
+// store (no room for it beside the fire).
+//
 // Runtime geometry, lit by the room probes like the furniture (lightObject); nothing is
 // baked, so the bake still sees the bare column: the floor carries no baked shadow of the
 // block (a soft contact decal stands in) and the flames light nothing (they glow through
 // bloom). Hidden until the option is on; it then also blocks the way (polys, physics).
 import {mergeGeometries} from './assets/jsm/utils/BufferGeometryUtils.js';
 
-// World metres (x east, y up, z south).
-const X0=10.125,X1=10.571,Z0=-7.60,Z1=-5.90;             // block: the column (10.129-10.567) + 4 mm of plaster, so the bake never shows through
-const PLINTH={x0:10.10,x1:10.60,z0:-7.60,z1:-5.90,y:.40};  // plinth, the block's length
+// World metres (x east, y up, z south). The column is 10.129-10.567 x -6.71/-6.17; the
+// block wraps it in 4 mm of plaster, so the bake never shows through.
+const X0=10.125,X1=10.571;
 const BAND={y0:.40,y1:.98};                                 // fire and logs opening
-const FIRE={z0:-7.56,z1:-7.10};                             // glass on west, north and east
-const PIER={z0:-7.10,z1:-7.04};                             // steel between fire and logs
-const LOGS={z0:-7.04,z1:-6.73};                             // through niche, north of the column (-6.71)
 const STEEL=.012;                                           // lining thickness
+export const VARIANTS={
+  // Block z -7.60/-5.90; fire, pier and a through log niche north of the column (-6.71).
+  larga:{Z0:-7.60,Z1:-5.90,FIRE:{z0:-7.56,z1:-7.10},PIER:{z0:-7.10,z1:-7.04},LOGS:{z0:-7.04,z1:-6.73}},
+  // The column twice (2 x 0,54 m) + plaster: fire in the northern copy, plaster jamb before the column.
+  corta:{Z0:-7.254,Z1:-6.166,FIRE:{z0:-7.214,z1:-6.754},PIER:null,LOGS:null},
+};
 
-export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,plaster,plasterNormal}){
-  const group=new THREE.Group();group.name='Salón con chimenea';
+// Both variants, one shown at a time: set('' | 'larga' | 'corta').
+export function createChimeneas(THREE,ctx){
+  const all=Object.fromEntries(Object.keys(VARIANTS).map(k=>[k,createChimenea(THREE,ctx,k)]));
+  const f={variant:'',
+    get on(){return !!f.variant;},
+    get polys(){return f.variant?all[f.variant].polys:[];},
+    polysOf:v=>v?all[v].polys:[],
+    set(v){v=v in all?v:'';for(const [k,c] of Object.entries(all))c.set(k===v);f.variant=v;},
+    tick(t){if(f.variant)all[f.variant].tick(t);}};
+  return f;
+}
+
+export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,plaster,plasterNormal},variant='larga'){
+  const {Z0,Z1,FIRE,PIER,LOGS}=VARIANTS[variant];
+  const PLINTH={x0:10.10,x1:10.60,z0:Z0,z1:Z1,y:.40};          // plinth, the block's length
+  const BACK=LOGS?LOGS.z1:FIRE.z1;                              // south end of the steel band
+  const group=new THREE.Group();group.name='Salón con chimenea '+variant;
   // Ceiling over the block (D02 says 2,55 in the salón; the cove sits by the walls).
   let ceiling=2.55;
   {
@@ -55,23 +77,25 @@ export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,pl
 
   // ---- Lime-plaster block: everything but the band, plus jambs at the south end. ----
   lists.plaster.push(box(X0,X1,BAND.y1,ceiling-.002,Z0,Z1));
-  lists.plaster.push(box(X0,X1,BAND.y0,BAND.y1,LOGS.z1,Z1));          // south of the logs (column)
+  lists.plaster.push(box(X0,X1,BAND.y0,BAND.y1,BACK,Z1));             // south of the band (column)
   // ---- Pale stone plinth. ----
   lists.stone.push(box(PLINTH.x0,PLINTH.x1,0,PLINTH.y,PLINTH.z0,PLINTH.z1));
 
   // ---- Black steel: soffit, pier, the log niche lining, the fire's bed and lintel. ----
-  lists.steel.push(box(X0-.004,X1+.004,BAND.y1-STEEL,BAND.y1,Z0-.004,LOGS.z1)); // soffit/lintel
-  lists.steel.push(box(X0-.004,X1+.004,BAND.y0,BAND.y1,PIER.z0,PIER.z1));        // pier
-  lists.steel.push(box(X0,X1,BAND.y0,BAND.y0+STEEL,PIER.z1,LOGS.z1));         // niche floor
-  lists.steel.push(box(X0,X1,BAND.y0,BAND.y1,LOGS.z1-STEEL,LOGS.z1));         // niche side (no back: open to both rooms)
-  lists.steel.push(box(X0-.004,X1+.004,BAND.y0,BAND.y0+.07,Z0-.004,PIER.z0));   // fire bed and front rail
+  lists.steel.push(box(X0-.004,X1+.004,BAND.y1-STEEL,BAND.y1,Z0-.004,BACK)); // soffit/lintel
+  if(PIER)lists.steel.push(box(X0-.004,X1+.004,BAND.y0,BAND.y1,PIER.z0,PIER.z1)); // pier
+  if(LOGS){
+    lists.steel.push(box(X0,X1,BAND.y0,BAND.y0+STEEL,PIER.z1,LOGS.z1));       // niche floor
+    lists.steel.push(box(X0,X1,BAND.y0,BAND.y1,LOGS.z1-STEEL,LOGS.z1));       // niche side (no back: open to both rooms)
+  }else lists.steel.push(box(X0,X1,BAND.y0,BAND.y1,FIRE.z1-STEEL,FIRE.z1)); // back of the firebox
+  lists.steel.push(box(X0-.004,X1+.004,BAND.y0,BAND.y0+.07,Z0-.004,FIRE.z1));   // fire bed and front rail
   // Corner posts of the glass box (slim), so the three panes read as one firebox.
   for(const x of [X0-.004,X1-.012])lists.steel.push(box(x,x+.016,BAND.y0+.07,BAND.y1,Z0-.004,Z0+.012));
 
   // ---- Glass: west, east and north panes. ----
   const gy0=BAND.y0+.07,gy1=BAND.y1-STEEL;
-  lists.glass.push(box(X0-.003,X0+.003,gy0,gy1,Z0+.012,PIER.z0));
-  lists.glass.push(box(X1-.003,X1+.003,gy0,gy1,Z0+.012,PIER.z0));
+  lists.glass.push(box(X0-.003,X0+.003,gy0,gy1,Z0+.012,FIRE.z1));
+  lists.glass.push(box(X1-.003,X1+.003,gy0,gy1,Z0+.012,FIRE.z1));
   lists.glass.push(box(X0+.012,X1-.012,gy0,gy1,Z0-.003,Z0+.003));
 
   // ---- Ceramic logs on the burner (char) and the stacked logs of the niche. ----
@@ -89,9 +113,9 @@ export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,pl
   // Logs: rows packed like render 2a, through the block, ends to the salón and the comedor;
   // slight jitter in size and depth.
   let seed=7;const rnd=()=>((seed=(seed*16807)%2147483647)/2147483647);
-  const nz0=LOGS.z0+.006,nz1=LOGS.z1-STEEL-.004,ny0=BAND.y0+STEEL,top=BAND.y1-STEEL-.03;
+  const nz0=LOGS?LOGS.z0+.006:0,nz1=LOGS?LOGS.z1-STEEL-.004:0,ny0=BAND.y0+STEEL,top=BAND.y1-STEEL-.03;
   const r0=.052,dz=r0*2.02,dy=r0*1.75;
-  for(let row=0;;row++){
+  for(let row=0;LOGS;row++){
     const y=ny0+r0+row*dy;if(y+r0>top)break;
     const off=row%2?r0:0,count=Math.floor((nz1-nz0-off)/dz);
     const z0=nz0+off+(nz1-nz0-off-count*dz)/2;

@@ -14,7 +14,7 @@ import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
-import {createChimenea} from './chimenea.mjs?v=c05602ded0';
+import {createChimeneas} from './chimenea.mjs?v=d59d2ae682';
 import {createPhotoMode} from './photo.mjs?v=263f1130b7';
 import {createMirrors} from './mirrors.mjs?v=ffbe3ce218';
 
@@ -32,24 +32,29 @@ let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,roomTime
 const mobile=matchMedia('(pointer:coarse)').matches,eyeHeights=[1.69,1.2,.95];
 let eye=1.69;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,closet:false,hallLime:false,fireplace:false,eye:1.69};
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,closet:false,hallLime:false,fireplace:'',eye:1.69};
 try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime','fireplace','eye'])if(key in saved)settings[key]=saved[key];}catch{}
+// Salón: '' (the plan), 'larga' or 'corta'; a saved true (the old checkbox) is the long one.
+settings.fireplace=settings.fireplace===true?'larga':['larga','corta'].includes(settings.fireplace)?settings.fireplace:'';
 // ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved; ?luces=0 by day
 // with the artificial lights off, ?luces with them on.
 {const q=new URLSearchParams(location.search);if(q.get('noche')!==null)settings.night=q.get('noche')!=='0';if(q.get('luces')!==null)settings.lamps=q.get('luces')!=='0';}
 // ?vestidor=piedra opens with the stone and glass vestidor variant, ?vestidor=plano without it.
 {const q=new URLSearchParams(location.search).get('vestidor');if(q!==null)settings.closet=q==='piedra';}
 {const q=new URLSearchParams(location.search).get('recibidor');if(q!==null)settings.hallLime=q==='cal';}
-{const q=new URLSearchParams(location.search).get('chimenea');if(q!==null)settings.fireplace=q!=='0';}
+// ?chimenea=1 (or =larga) opens with the long fireplace, ?chimenea=corta (or =2) the short one, ?chimenea=0 without.
+{const q=new URLSearchParams(location.search).get('chimenea');if(q!==null)settings.fireplace=q==='0'?'':q==='corta'||q==='2'?'corta':'larga';}
 // Altura de vista (menu): an adult 1.80 m tall (eyes at 1.69 m), or eyes at 1.20 m or 0.95 m (the girls'
 // view). ?altura=120 / ?altura=95 (centimetres of eye height; ?altura=180 the adult) forces it; a value saved
 // before (1.60, the old adult eyes) falls back to the adult. Only the camera moves: collisions are 2D, the floor is flat.
 {const q=new URLSearchParams(location.search).get('altura'),h=q==='180'?1.69:+q/100;if(eyeHeights.includes(h))settings.eye=h;if(!eyeHeights.includes(settings.eye))settings.eye=1.69;eye=settings.eye;}
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
-for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime','fireplace']) {
-  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='closet')setCloset(settings.closet);if(key==='hallLime')setHallLime(settings.hallLime);if(key==='fireplace')setFireplace(settings.fireplace);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
+for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime']) {
+  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='closet')setCloset(settings.closet);if(key==='hallLime')setHallLime(settings.hallLime);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
 }
 $('eye').value=String(eye);$('eyeMeta').textContent=eyeMeta();
+$('fireplace').value=settings.fireplace;
+$('fireplace').onchange=()=>{settings.fireplace=$('fireplace').value;savePreferences();setFireplace(settings.fireplace);};
 $('eye').onchange=()=>{eye=settings.eye=+$('eye').value;savePreferences();if(camera)camera.position.y=eye;$('eyeMeta').textContent=eyeMeta();};
 function eyeMeta(){return 'Ojos a '+eye.toFixed(2).replace('.',',')+' m';}
 // Pantalla completa: Entrar fills the screen with the whole page (menu and prompts stay on
@@ -798,16 +803,16 @@ function setHallLime(on){
 }
 
 // Salón con chimenea (chimenea.mjs): the salón column grown into a plaster block with a
-// see-through fireplace and a log store, after the studio's render 2a.
+// see-through fireplace, after the studio's render 2a: long (with a log store) or short (the column doubled).
 let fireplace=null;
-function setFireplace(on){
+function setFireplace(variant){
   timeSwitch=timeSwitch.then(()=>{
-    if(!ready||!fireplace||on===fireplace.on)return;
+    if(!ready||!fireplace||variant===fireplace.variant)return;
     // Never close the block round the visitor: step them out to the salón side first.
-    if(on&&fireplace.polys.some(p=>overlaps(player,physics.radius,p))){player=[9.3,-6.9];camera.position.set(player[0],eye,player[1]);}
-    fireplace.set(on);reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;idle(reportShaderErrors);
-    notice(on?'Salón con chimenea':'Salón según el plano');
-  }).catch(e=>{console.error(e);notice('No se ha podido cambiar el salón.');settings.fireplace=!!fireplace?.on;$('fireplace').checked=settings.fireplace;savePreferences();});
+    if(fireplace.polysOf(variant).some(p=>overlaps(player,physics.radius,p))){player=[9.3,-6.9];camera.position.set(player[0],eye,player[1]);}
+    fireplace.set(variant);reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;idle(reportShaderErrors);
+    notice({larga:'Salón con chimenea larga',corta:'Salón con chimenea corta'}[variant]||'Salón según el plano');
+  }).catch(e=>{console.error(e);notice('No se ha podido cambiar el salón.');settings.fireplace=fireplace?.variant||'';$('fireplace').value=settings.fireplace;savePreferences();});
   return timeSwitch;
 }
 
@@ -985,7 +990,7 @@ async function load(){
     closet.set(settings.closet);
     recibidorCal.value=settings.hallLime?1:0;
     // Salón con chimenea (menu option): built now, shown or hidden on demand.
-    fireplace=createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,plaster:plasterMap.value,plasterNormal:plasterNormal.value});
+    fireplace=createChimeneas(THREE,{scene,staticMeshes,lightObject,lighting,plaster:plasterMap.value,plasterNormal:plasterNormal.value});
     fireplace.set(settings.fireplace);
     // K01-K02 mirrors C01-C03 reflect the room for real at the two best quality levels on a
     // computer; on phones and lower levels they keep the probe-lit silvered pane.
