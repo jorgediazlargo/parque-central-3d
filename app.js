@@ -975,8 +975,9 @@ async function load(){
     for(const p of [surfaceMaps,views])p.catch(()=>{});  // reported where awaited
     const bake=fetchLightmap(settings.night?'night':settings.lamps?'day':'dayoff',{after:Promise.allSettled([house,surfaceMaps,views])});
     const [json,buffer]=await house;
+    // The bench at the foot of the master bed is gone (rooms/dormitorio.mjs): so is its collider.
     const progress=window.loadProgress;progress?.stage(.1);
-    data=json;timeOfDay.night=settings.night;await initScene(buffer,bake);progress?.stage(.35);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);progress?.stage(.5);
+    data=json;data.colliders=data.colliders.filter(c=>c.name!=='Banco principal cuerpo');timeOfDay.night=settings.night;await initScene(buffer,bake);progress?.stage(.35);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);progress?.stage(.5);
     lightmap.syncTextures();
     // Per-room refinements (rooms/<id>.mjs); a failing module is logged and skipped.
     const rooms=applyRooms({scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,curtains,lighting,timeOfDay});

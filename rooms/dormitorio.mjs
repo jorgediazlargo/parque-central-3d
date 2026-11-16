@@ -120,6 +120,11 @@ function lathe(THREE,profile,segments){
 export async function apply(ctx){
   const {THREE}=ctx;
 
+  // 1. No bench at the foot of the bed (Jorge 15/11/2026). It is still in the bake
+  // (model_source.py «Banco principal», B01/G06): its fabric cushion and plinth go here,
+  // its collider in app.js; the next bake should drop it from the source.
+  ctx.removeExported({material:'fabric',box:[[2.23,-.01,-8.42],[2.72,.62,-6.99]]});
+
   // 2. Rug: its top samples the floor's baked page (planar UVs, so the bed's contact
   // shadow and the window light fall on it as on the oak around it).
   const floors=ctx.staticMeshes.filter(m=>m.userData.exported?.material==='floor'&&m.geometry.getAttribute('uv1'));
