@@ -14,6 +14,9 @@
 // the column. The south end stays 1,15 m clear of the wall for the way between salón and
 // comedor.
 //
+// «Chimenea baja» (Jorge 15/11/2026): the fire is not real, so it can stand on its own:
+// the short one's northern half only, 1,05 m high (a 7 cm plaster cap over the fire band),
+// against the bare structural column, which stays as in the plan.
 // «Chimenea corta» (Jorge 15/11/2026): as if the column were doubled, not stretched: the
 // column plus a copy of itself to the north (1,08 m), the fire in the new half and no log
 // store (no room for it beside the fire).
@@ -34,6 +37,8 @@ export const VARIANTS={
   larga:{Z0:-7.60,Z1:-5.90,FIRE:{z0:-7.56,z1:-7.10},PIER:{z0:-7.10,z1:-7.04},LOGS:{z0:-7.04,z1:-6.73}},
   // The column twice (2 x 0,54 m) + plaster: fire in the northern copy, plaster jamb before the column.
   corta:{Z0:-7.254,Z1:-6.166,FIRE:{z0:-7.214,z1:-6.754},PIER:null,LOGS:null},
+  // The short one's fire half, to the column's north face, capped at 1,05 m.
+  baja:{Z0:-7.254,Z1:-6.71,FIRE:{z0:-7.214,z1:-6.754},PIER:null,LOGS:null,TOP:1.05},
 };
 
 // Both variants, one shown at a time: set('' | 'larga' | 'corta').
@@ -49,7 +54,7 @@ export function createChimeneas(THREE,ctx){
 }
 
 export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,plaster,plasterNormal},variant='larga'){
-  const {Z0,Z1,FIRE,PIER,LOGS}=VARIANTS[variant];
+  const {Z0,Z1,FIRE,PIER,LOGS,TOP}=VARIANTS[variant];
   const PLINTH={x0:10.10,x1:10.60,z0:Z0,z1:Z1,y:.40};          // plinth, the block's length
   const BACK=LOGS?LOGS.z1:FIRE.z1;                              // south end of the steel band
   const group=new THREE.Group();group.name='Salón con chimenea '+variant;
@@ -76,7 +81,7 @@ export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,pl
   const lists={plaster:[],stone:[],steel:[],glass:[],char:[],bark:[],ends:[],decal:[]};
 
   // ---- Lime-plaster block: everything but the band, plus jambs at the south end. ----
-  lists.plaster.push(box(X0,X1,BAND.y1,ceiling-.002,Z0,Z1));
+  lists.plaster.push(box(X0,X1,BAND.y1,TOP??ceiling-.002,Z0,Z1));
   lists.plaster.push(box(X0,X1,BAND.y0,BAND.y1,BACK,Z1));             // south of the band (column)
   // ---- Pale stone plinth. ----
   lists.stone.push(box(PLINTH.x0,PLINTH.x1,0,PLINTH.y,PLINTH.z0,PLINTH.z1));
