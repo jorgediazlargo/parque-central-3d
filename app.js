@@ -15,8 +15,8 @@ import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
 import {createChimeneas} from './chimenea.mjs?v=b0e1e453e0';
-import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=de38d920b1';
-import {createPhotoMode} from './photo.mjs?v=798829aec2';
+import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=293261e12f';
+import {createPhotoMode} from './photo.mjs?v=722859cd2d';
 import {createMirrors} from './mirrors.mjs?v=ffbe3ce218';
 
 const $=id=>document.getElementById(id),canvas=$('world');
@@ -92,7 +92,7 @@ function notice(text){$('notice').textContent=text;$('notice').classList.add('vi
 const terraceDay={value:1};
 // Dormitorio abierto al baño (suite-abierta.mjs): oak to the palillería, and the floor's baked
 // light where the central block stood taken from charts fitted at load (floorBakedFix).
-const suiteOpen={value:0},floorFix={value:0},floorFixA={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixB={value:[new THREE.Vector3(),new THREE.Vector3()]};
+const suiteOpen={value:0},floorFix={value:0},floorFixA={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixB={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixC={value:[new THREE.Vector3(),new THREE.Vector3()]};
 const porcelainMap={value:null},porcelainRough={value:null},vestidorStone={value:0},recibidorCal={value:0},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
 const PLASTER_TILE=.75;  // metres per plaster.webp tile (style_textures.py)
 // Clear glass: a faint tinted body, reflections (box-projected room probes) at full
@@ -117,17 +117,27 @@ function glassMaterial(){
 // Called by the lightmap shader (lightmap.mjs) on the floor's baked texel. With the bedroom open to
 // the bath, the old block's footprint (x 1,523-3,684, z -5,91/-5,06) and the bedroom floor 19 cm
 // past it read dark (the wall stood there in the bake): they take the vestidor floor in front of
-// the palillería, mirrored about it (A), blending into the bedroom floor at z -6,12 (B).
-const FLOOR_FIX=`uniform float suiteOpen,floorFix;uniform vec3 floorFixA[2],floorFixB[2];
+// the palillería, mirrored about it (A), blending into the bedroom floor at z -6,12 (B). The tub's old
+// place (x 1,80-3,40, z -4,05/-3,25) kept its baked shadow: there the floor takes the light of the rows
+// 30 cm clear of it, north and south (C), faded in at the edges.
+const FLOOR_FIX=`uniform float suiteOpen,floorFix;uniform vec3 floorFixA[2],floorFixB[2],floorFixC[2];
 vec4 floorBakedSample(sampler2D page0,sampler2D page1,vec3 c[2],vec2 p){
   vec2 uv=vec2(dot(c[0],vec3(p,1.0)),dot(c[1],vec3(p,1.0)));
   vec4 s=uv.x<1.0?texture2D(page0,uv):texture2D(page1,uv-vec2(1.0,0.0));return vec4(s.rgb*s.a,1.0);
 }
 vec4 floorBakedFix(vec4 rgbm,sampler2D page0,sampler2D page1,vec2 p){
-  if(suiteOpen*floorFix<.5||p.x<1.523||p.x>3.684||p.y<-6.10||p.y>-5.06)return rgbm;
+  if(suiteOpen*floorFix<.5)return rgbm;
+  if(p.x>1.45&&p.x<3.75&&p.y>-4.35&&p.y<-2.95){
+    vec4 n=floorBakedSample(page0,page1,floorFixC,vec2(p.x,-4.35)),s=floorBakedSample(page0,page1,floorFixC,vec2(p.x,-2.95));
+    float w=smoothstep(1.45,1.65,p.x)*(1.0-smoothstep(3.55,3.75,p.x))*smoothstep(-4.35,-4.2,p.y)*(1.0-smoothstep(-3.1,-2.95,p.y));
+    return mix(vec4(rgbm.rgb*rgbm.a,1.0),mix(n,s,(p.y+4.35)/1.4),w);
+  }
+  // The block's end faces shaded the floor of the two doorways too: 12 cm either side, faded out.
+  if(p.x<1.40||p.x>3.81||p.y<-6.10||p.y>-5.06)return rgbm;
   vec4 a=floorBakedSample(page0,page1,floorFixA,vec2(p.x,-10.12-p.y));
   vec4 b=floorBakedSample(page0,page1,floorFixB,vec2(p.x,-6.12));
-  return mix(a,b,smoothstep(-5.45,-6.08,p.y));
+  float w=smoothstep(1.40,1.523,p.x)*(1.0-smoothstep(3.684,3.81,p.x));
+  return mix(vec4(rgbm.rgb*rgbm.a,1.0),mix(a,b,smoothstep(-5.45,-6.08,p.y)),w);
 }
 `;
 function material(color,kind,roughness=.7){
@@ -250,7 +260,7 @@ function material(color,kind,roughness=.7){
         // H01 pavements: oak planks (no herringbone) in bedrooms, the play room, their
         // hall and the closet beside the kitchen; 120 cm porcelain at 45° elsewhere.
         shader.uniforms.porcelainMap=porcelainMap;shader.uniforms.vestidorStone=vestidorStone;shader.uniforms.porcelainRough=porcelainRough;
-        Object.assign(shader.uniforms,{suiteOpen,floorFix,floorFixA,floorFixB});
+        Object.assign(shader.uniforms,{suiteOpen,floorFix,floorFixA,floorFixB,floorFixC});
         shader.fragmentShader='uniform sampler2D porcelainMap,porcelainRough;\nuniform float vestidorStone;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+FLOOR_FIX+shader.fragmentShader;
         shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
           vec2 floorAt=houseWorld.xz;
@@ -287,7 +297,9 @@ function material(color,kind,roughness=.7){
           float porcelainJoint=max(jointLine.x,jointLine.y)*(1.0-smoothstep(.004,.012,max(jointW.x,jointW.y)));
           porcelainFloor=mix(porcelainFloor,porcelainFloor*vec3(.70,.68,.66),porcelainJoint);
           // Dormitorio abierto al baño (suite-abierta.mjs): the bedroom's oak runs on to the palillería.
-          porcelainMask*=1.0-suiteOpen*floorRect(floorAt,vec4(1.523,-5.92,3.684,-5.06));
+          // Wood over the whole dry vestidor y baño, to the vanity's front (z -2,46): stone stays in the
+          // shower, the WC, under the vanity and in the two strips before their doors.
+          porcelainMask*=1.0-suiteOpen*floorRect(floorAt,vec4(0.0,-5.92,5.113,-2.46));
           diffuseColor.rgb=mix(oakFloor,porcelainFloor,porcelainMask);
         `);
         // Honed porcelain, as in the reference: matte, no highlights. Its own pores
@@ -566,7 +578,7 @@ function setupDoors(){
     piece(w,h,w/2,h/2);piece(w,h,L-w/2,h/2);piece(L-2*w,w,L/2,h-w/2);piece(L-2*w,w,L/2,w/2);
     scene.add(g);runtimeObjects.push(g);
   }
-  const [a,b]=data.fixedStudy,g=new THREE.Group(),length=Math.hypot(b[0]-a[0],b[1]-a[1]);
+  const [a,b]=data.fixedStudy,g=new THREE.Group(),length=Math.hypot(b[0]-a[0],b[1]-a[1]);g.name='Mampara estudio';
   g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);scene.add(g);runtimeObjects.push(g);
   const study=doors.find(d=>d.name==='Estudio'),along=p=>((p[0]-a[0])*(b[0]-a[0])+(p[1]-a[1])*(b[1]-a[1]))/length;
   const {frame:f,stile,depth,rails,height:h,side,radius:r}=STUDY,doorFrom=along(study.a),doorTo=along(study.b);
@@ -1037,8 +1049,8 @@ async function load(){
     // Dormitorio abierto al baño (menu option): built now, shown or hidden on demand.
     suite=createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,colliders:kitchenColliders(data),lightObject,lighting,mats,cloneMaterial,floor:suiteOpen});
     {const ground=staticMeshes.find(m=>m.userData.exported?.material==='floor'&&m.userData.exported.region==='shared'&&!m.userData.exported.split);
-      const a=ground&&fitChart(THREE,ground,[1.55,-5.04,3.66,-4.0]),b=ground&&fitChart(THREE,ground,[1.55,-6.3,3.66,-5.94]);
-      if(a&&b){floorFixA.value[0].set(...a.u);floorFixA.value[1].set(...a.v);floorFixB.value[0].set(...b.u);floorFixB.value[1].set(...b.v);floorFix.value=1;}
+      const a=ground&&fitChart(THREE,ground,[1.55,-5.04,3.66,-4.0]),b=ground&&fitChart(THREE,ground,[1.55,-6.3,3.66,-5.94]),c=ground&&fitChart(THREE,ground,[1.45,-4.4,3.75,-2.9]);
+      if(a&&b&&c){for(const [u,f] of [[floorFixA,a],[floorFixB,b],[floorFixC,c]]){u.value[0].set(...f.u);u.value[1].set(...f.v);}floorFix.value=1;}
       else console.warn('[suite-abierta] the floor bake is not one chart here: its old shade stays');}
     suite.set(settings.suiteOpen);
     // K01-K02 mirrors C01-C03 reflect the room for real at the two best quality levels on a

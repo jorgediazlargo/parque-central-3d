@@ -33,7 +33,7 @@ const JOINT=.002;                                  // H01 joints, metres
 // Porcelain rects of the floor shader (app.js 'floor'): oak inside these, porcelain out.
 const OAK=[[-2.0,-12.0,5.113,-5.896],[13.019,-12.0,20.0,-4.799],[15.008,-5.0,16.774,-3.664],[5.084,-3.674,7.295,1.0],[4.783,-2.791,5.113,1.0]];
 const CLOSET=[[5.084,-3.674,7.295,1.0],[4.783,-2.791,5.113,1.0]];   // porcelain with the vestidor option
-const SUITE=[1.523,-5.92,3.684,-5.06];   // oak with the bedroom open to the bath (suite-abierta.mjs)
+const SUITE=[0.0,-5.92,5.113,-2.46];   // oak with the bedroom open to the bath (suite-abierta.mjs)
 const inRect=(x,z,r)=>x>=r[0]&&x<=r[2]&&z>=r[1]&&z<=r[3];
 // K01-K02 mirrors (light_layout.MIRRORS) widened by 4 cm, as light_layout.mirror_led: x0, x1, z0, z1, y0, y1.
 const MIRROR_LEDS=[[15.078,16.74,-3.678,-3.598,1.06,2.0],[18.21,18.29,-4.777,-3.596,1.06,2.0],[5.54,6.55,-3.67,-3.59,.11,2.04]];

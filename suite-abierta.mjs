@@ -13,18 +13,22 @@
 //   with 52 mm gaps over the block's 2,161 m (z -5,10/-5,06, 2,20 m to the vestidor's false
 //   ceiling), so the bath is seen from the bed and back; above the old wall line a plaster
 //   bulkhead (2,20-2,55) closes the bedroom's higher ceiling, as over the doors;
-// - P9 and the oak fascia over it go: the way is open (no collider); P8 stays and, opened,
-//   now slides behind the palillería, where its pocket was;
-// - the bedroom's oak floor runs on to the palillería (floor shader, uniform suiteOpen);
+// - P8 and P9 go, with the oak fascias over them: both ways are open (no colliders);
+// - so does the study's glass screen (M3, arched dark frame at x 3,124, z -9,21/-6,21: fixed
+//   panes and the French pair, app.js 'Mampara estudio'): the study is open to the bedroom;
+// - oak from the bedroom over the whole dry vestidor y baño, to the vanity's front (z -2,46;
+//   floor shader, uniform suiteOpen): stone stays in the shower, the WC, under the vanity and in
+//   the strips before the shower and WC doors (z -2,46/-1,93);
 // - the freestanding tub moves 92,85 cm north, its rim 8 cm from the palillería, turned half a
 //   turn so its floor-standing mixer (which stood on the north side, now 8 cm from the laths)
-//   goes with it to the bath side.
-// Nothing is baked: the bake still sees the block. Where it stood the floor's light is taken
-// from the vestidor floor in front of the palillería (mirrored) blending into the bedroom's
-// floor 20 cm clear of the old wall (floorBakedFix in app.js, uniforms from fitChart below);
-// the false ceiling over A2 keeps its baked shade (darker than the rest of the ceiling); the
-// bake's light still stops at the block line (no light through the laths in the lightmaps),
-// the tub keeps lighting from the probes.
+//   goes with it to the bath side, with a soft contact shadow of its own.
+// Nothing is baked: the bake still sees the block, the doors' fascias and the old tub. Where the
+// block stood (and 12 cm into each doorway) the floor's light is taken from the vestidor floor in
+// front of the palillería (mirrored) blending into the bedroom's floor 20 cm clear of the old
+// wall; the tub's old baked shadow is replaced by the rows 30 cm north and south of it
+// (floorBakedFix in app.js, charts from fitChart below); the false ceiling over A2 is covered by
+// the bulkhead's soffit; the bake's light still stops at the block line (no light through the
+// laths in the lightmaps), the new pieces take the probes.
 
 const BLOCK={x0:1.523,x1:3.684,z0:-5.91,z1:-5.06};            // pocket wall + cheeks + A2
 const LATTICE={z0:-5.10,z1:-5.06,y1:2.20,lath:.04,count:24};   // oak laths, floor to the false ceiling
@@ -46,6 +50,7 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
   const BOXES=[
     [BLOCK.x0-.02,-.01,BLOCK.z0-.02,BLOCK.x1+.015,BULKHEAD.y1,BLOCK.z1+.015],   // switches stand 9 mm proud, skirtings 12 mm
     [3.684,2.19,-5.945,4.484,2.51,-5.92],                                       // oak fascia over P9
+    [0.723,2.19,-5.945,1.523,2.51,-5.92],                                       // and over P8
   ];
   // The bedroom/estudio partition (x 3,091-3,192) ends against the block: its end face stays.
   const keepFace=(a,b,c,n)=>Math.abs(n.z)>.9&&[a,b,c].every(p=>p.x>3.088&&p.x<3.195&&Math.abs(p.z+5.91)<.004);
@@ -93,7 +98,9 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
   const a2=fronts.list.filter(f=>{const [x,z]=f.pivot||[0,0];return x>BLOCK.x0&&x<BLOCK.x1&&z>BLOCK.z0&&z<BLOCK.z1+.02;});
   for(const f of a2)fronts.set(f,0);
   const frontGroups=a2.map(f=>f.group).filter(Boolean);
-  const p9=doors.find(d=>d.name==='Suite derecha');
+  const gone=doors.filter(d=>['Suite derecha','Suite izquierda','Estudio'].includes(d.name));
+  const screen=scene.getObjectByName('Mampara estudio');
+  const screenColliders=colliders.filter(c=>c.name==='Vidrio fijo estudio');
   const blockColliders=colliders.filter(inBlock);
   const tubCollider=colliders.find(c=>c.name==='Banera exenta piedra crema');
 
@@ -142,6 +149,17 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
       if(take){pivot.attach(o);moved.push(o);}
     }
   }
+  // A soft contact shadow of its own under the tub (the moved decal of rooms/bano.mjs is faint on oak).
+  {
+    const w=256,h=128,cv=document.createElement('canvas');cv.width=w;cv.height=h;const g=cv.getContext('2d');
+    const grad=g.createRadialGradient(w/2,h/2,0,w/2,h/2,w/2);
+    grad.addColorStop(0,'rgba(255,255,255,.75)');grad.addColorStop(.62,'rgba(255,255,255,.6)');grad.addColorStop(.8,'rgba(255,255,255,.22)');grad.addColorStop(1,'rgba(255,255,255,0)');
+    g.fillStyle=grad;g.fillRect(0,0,w,h);
+    const img=g.getImageData(0,0,w,h);for(let i=0;i<img.data.length;i+=4){const a=img.data[i+3];img.data[i]=img.data[i+1]=img.data[i+2]=a;img.data[i+3]=255;}g.putImageData(img,0,0);
+    const shadow=new THREE.Mesh(new THREE.PlaneGeometry(1.60+.5,.80+.5).rotateX(-Math.PI/2),
+      new THREE.MeshBasicMaterial({color:0x000000,alphaMap:new THREE.CanvasTexture(cv),transparent:true,opacity:.42,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3}));
+    shadow.position.set(TUB.x,.004,TUB.z+TUB_DZ);shadow.renderOrder=1;shadow.name='Bañera sombra de contacto (dormitorio abierto)';group.add(shadow);
+  }
   const polys=[];
   for(let i=0;i<LATTICE.count;i++){const x=BLOCK.x0+i*(LATTICE.lath+gap);polys.push([[x,LATTICE.z0],[x+LATTICE.lath,LATTICE.z0],[x+LATTICE.lath,LATTICE.z1],[x,LATTICE.z1]]);}
   // One rectangle for the whole palillería (the gaps are far narrower than the walker).
@@ -152,7 +170,7 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
     polys:[latticePoly,...(tubPoly.length?[tubPoly]:[])],
     // Where the visitor must not stand when the option changes: the new pieces when it turns
     // on, the block and the tub's own place when it turns off.
-    blockedBy(on){return on?state.polys:[[[BLOCK.x0,BLOCK.z0],[BLOCK.x1,BLOCK.z0],[BLOCK.x1,BLOCK.z1],[BLOCK.x0,BLOCK.z1]],...(tubCollider?[tubCollider.poly]:[])];},
+    blockedBy(on){return on?state.polys:[[[BLOCK.x0,BLOCK.z0],[BLOCK.x1,BLOCK.z0],[BLOCK.x1,BLOCK.z1],[BLOCK.x0,BLOCK.z1]],[[3.09,-9.21],[3.16,-9.21],[3.16,-6.21],[3.09,-6.21]],...(tubCollider?[tubCollider.poly]:[])];},
     set(on){
       state.on=on;group.visible=on;floor.value=on?1:0;
       for(const m of hidden)m.visible=!on;
@@ -160,7 +178,9 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
       if(on)for(const f of a2){f.t=f.goal=0;fronts.set(f,0);}
       for(const c of blockColliders)c.off=on;
       if(tubCollider)tubCollider.off=on;
-      if(p9){p9.active=!on;for(const g of p9.groups)g.visible=!on;if(on){p9.t=p9.goal=0;}}
+      for(const d of gone){d.active=!on;for(const g of d.groups)g.visible=!on;if(on)d.t=d.goal=0;}
+      if(screen)screen.visible=!on;
+      for(const c of screenColliders)c.off=on;
       pivot.rotation.y=on?Math.PI:0;pivot.position.z=TUB.z+(on?TUB_DZ:0);pivot.updateMatrixWorld(true);
     }};
   state.set(false);
