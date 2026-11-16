@@ -33,6 +33,7 @@ const JOINT=.002;                                  // H01 joints, metres
 // Porcelain rects of the floor shader (app.js 'floor'): oak inside these, porcelain out.
 const OAK=[[-2.0,-12.0,5.113,-5.896],[13.019,-12.0,20.0,-4.799],[15.008,-5.0,16.774,-3.664],[5.084,-3.674,7.295,1.0],[4.783,-2.791,5.113,1.0]];
 const CLOSET=[[5.084,-3.674,7.295,1.0],[4.783,-2.791,5.113,1.0]];   // porcelain with the vestidor option
+const SUITE=[1.523,-5.92,3.684,-5.06];   // oak with the bedroom open to the bath (suite-abierta.mjs)
 const inRect=(x,z,r)=>x>=r[0]&&x<=r[2]&&z>=r[1]&&z<=r[3];
 // K01-K02 mirrors (light_layout.MIRRORS) widened by 4 cm, as light_layout.mirror_led: x0, x1, z0, z1, y0, y1.
 const MIRROR_LEDS=[[15.078,16.74,-3.678,-3.598,1.06,2.0],[18.21,18.29,-4.777,-3.596,1.06,2.0],[5.54,6.55,-3.67,-3.59,.11,2.04]];
@@ -137,7 +138,7 @@ export function createPhotoMode(THREE,ctx){
 
   function hidden(o){for(let n=o;n;n=n.parent)if(!n.visible)return true;return false;}
   function buildScene(){
-    const out=new THREE.Scene(),S=materials(),lime=maskReader(),closet=ctx.vestidorStone.value>0;
+    const out=new THREE.Scene(),S=materials(),lime=maskReader(),closet=ctx.vestidorStone.value>0,suite=ctx.suiteOpen?.value>0;
     const add=(geo,mat)=>{if(geo)out.add(new THREE.Mesh(geo,mat));};
     scene.updateMatrixWorld(true);
     scene.traverse(o=>{
@@ -169,7 +170,7 @@ export function createPhotoMode(THREE,ctx){
       if(kind==='glass'||m.customProgramCacheKey?.()==='glass'){add(worldTriangles(o,{keep:p=>p.z>FACADE_Z}),S.glass);return;}
       if(kind==='mirror'||m===ctx.mats.mirror){add(worldTriangles(o),S.mirror);return;}
       if(kind==='floor'){
-        const porcelain=(p)=>!OAK.some(r=>inRect(p.x,p.z,r))||closet&&CLOSET.some(r=>inRect(p.x,p.z,r));
+        const porcelain=(p)=>!(OAK.some(r=>inRect(p.x,p.z,r))||suite&&inRect(p.x,p.z,SUITE))||closet&&CLOSET.some(r=>inRect(p.x,p.z,r));
         add(worldTriangles(o,{keep:(p,n)=>!(n.y>.5&&porcelain(p))}),physical(m));
         add(worldTriangles(o,{keep:(p,n)=>n.y>.5&&porcelain(p),uvOf:p=>{const x=p.x-14.086,z=p.z+.218,k=.70710678/1.2;return [(x+z)*k+.098,(x-z)*k+.098];}}),S.porcelain);
         return;

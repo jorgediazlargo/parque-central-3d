@@ -104,7 +104,7 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
       shader.fragmentShader='uniform sampler2D planarLight;\n'+shader.fragmentShader.replace('#include <lights_fragment_end>',`
         {vec2 bakedUv=vec2(vLightMapUv.x*2.0,vLightMapUv.y);
         float baked=step(bakedUv.x,1.999);
-        vec4 rgbm=bakedUv.x<1.0?texture2D(lightMap,bakedUv):texture2D(planarLight,bakedUv-vec2(1.0,0.0));
+        vec4 rgbm=bakedUv.x<1.0?texture2D(lightMap,bakedUv):texture2D(planarLight,bakedUv-vec2(1.0,0.0));${kind==='floor'?'\n        rgbm=floorBakedFix(rgbm,lightMap,planarLight,houseWorld.xz);':''}
         vec3 bakedSqrt=rgbm.rgb*rgbm.a;
         vec3 bakedE=bakedSqrt*bakedSqrt*${(RANGE*Math.PI).toFixed(4)};
         ${kind==='wall'?upCoves.map(([x0,z0,x1,z1,h])=>`if(houseWorld.y>${(h+.01).toFixed(3)}&&all(greaterThan(houseWorld.xz,vec2(${(x0-.06).toFixed(3)},${(z0-.06).toFixed(3)})))&&all(lessThan(houseWorld.xz,vec2(${(x1+.06).toFixed(3)},${(z1+.06).toFixed(3)})))){float coveL=dot(bakedE,vec3(.2126,.7152,.0722));bakedE*=coveL>2.0?(2.0+.3*(coveL-2.0))/coveL:1.0;}`).join('\n'):''}

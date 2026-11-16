@@ -3,11 +3,11 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,captureSize,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=344884d358';
 import {Post} from './post.mjs?v=ec59b189c9';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=24bb8a8dd5';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=fa953237f9';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
-import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=142d51f6bb';
+import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=eb3fb85d6a';
 import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=c992d6fdf6';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
@@ -15,7 +15,8 @@ import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
 import {createChimeneas} from './chimenea.mjs?v=b0e1e453e0';
-import {createPhotoMode} from './photo.mjs?v=263f1130b7';
+import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=de38d920b1';
+import {createPhotoMode} from './photo.mjs?v=798829aec2';
 import {createMirrors} from './mirrors.mjs?v=ffbe3ce218';
 
 const $=id=>document.getElementById(id),canvas=$('world');
@@ -32,8 +33,8 @@ let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,roomTime
 const mobile=matchMedia('(pointer:coarse)').matches,eyeHeights=[1.69,1.2,.95];
 let eye=1.69;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,closet:false,hallLime:false,fireplace:'',eye:1.69};
-try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime','fireplace','eye'])if(key in saved)settings[key]=saved[key];}catch{}
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,closet:false,hallLime:false,fireplace:'',suiteOpen:false,eye:1.69};
+try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime','fireplace','suiteOpen','eye'])if(key in saved)settings[key]=saved[key];}catch{}
 // Salón: '' (the plan), 'larga' or 'corta'; a saved true (the old checkbox) is the long one.
 settings.fireplace=settings.fireplace===true?'larga':['larga','corta','baja'].includes(settings.fireplace)?settings.fireplace:'';
 // ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved; ?luces=0 by day
@@ -42,6 +43,8 @@ settings.fireplace=settings.fireplace===true?'larga':['larga','corta','baja'].in
 // ?vestidor=piedra opens with the stone and glass vestidor variant, ?vestidor=plano without it.
 {const q=new URLSearchParams(location.search).get('vestidor');if(q!==null)settings.closet=q==='piedra';}
 {const q=new URLSearchParams(location.search).get('recibidor');if(q!==null)settings.hallLime=q==='cal';}
+// ?abierto=1 opens with the master bedroom open to the bath (suite-abierta.mjs), ?abierto=0 as in the plan.
+{const q=new URLSearchParams(location.search).get('abierto');if(q!==null)settings.suiteOpen=q!=='0';}
 // ?chimenea=1 (or =larga) opens with the long fireplace, ?chimenea=corta (or =2) the short one, ?chimenea=baja (or =3)
 // the low one, ?chimenea=0 without.
 {const q=new URLSearchParams(location.search).get('chimenea');if(q!==null)settings.fireplace=q==='0'?'':q==='corta'||q==='2'?'corta':q==='baja'||q==='3'?'baja':'larga';}
@@ -50,8 +53,8 @@ settings.fireplace=settings.fireplace===true?'larga':['larga','corta','baja'].in
 // before (1.60, the old adult eyes) falls back to the adult. Only the camera moves: collisions are 2D, the floor is flat.
 {const q=new URLSearchParams(location.search).get('altura'),h=q==='180'?1.69:+q/100;if(eyeHeights.includes(h))settings.eye=h;if(!eyeHeights.includes(settings.eye))settings.eye=1.69;eye=settings.eye;}
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
-for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime']) {
-  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='closet')setCloset(settings.closet);if(key==='hallLime')setHallLime(settings.hallLime);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
+for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime','suiteOpen']) {
+  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='closet')setCloset(settings.closet);if(key==='suiteOpen')setSuiteOpen(settings.suiteOpen);if(key==='hallLime')setHallLime(settings.hallLime);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
 }
 $('eye').value=String(eye);$('eyeMeta').textContent=eyeMeta();
 $('fireplace').value=settings.fireplace;
@@ -80,13 +83,16 @@ for(const type of ['fullscreenchange','webkitfullscreenchange'])document.addEven
   // Switching screens can drop the capture (or it was refused): full screen lets it back without a click.
   if(playing&&!mobile&&!document.pointerLockElement)Promise.resolve(canvas.requestPointerLock()).catch(()=>{});
 });
-$('night').disabled=$('lamps').disabled=$('closet').disabled=$('hallLime').disabled=$('fireplace').disabled=true;  // until the house is lit (load)
+$('night').disabled=$('lamps').disabled=$('closet').disabled=$('hallLime').disabled=$('fireplace').disabled=$('suiteOpen').disabled=true;  // until the house is lit (load)
 // Luces encendidas: by day only (at night they are all on), once there is a bake without them.
 const syncLampsOption=()=>{$('lamps').closest('label').hidden=settings.night||!lightmap?.data.dayOff;};syncLampsOption();
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
 
 // Terrace soffit (wall shader): pale by day only.
 const terraceDay={value:1};
+// Dormitorio abierto al baño (suite-abierta.mjs): oak to the palillería, and the floor's baked
+// light where the central block stood taken from charts fitted at load (floorBakedFix).
+const suiteOpen={value:0},floorFix={value:0},floorFixA={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixB={value:[new THREE.Vector3(),new THREE.Vector3()]};
 const porcelainMap={value:null},porcelainRough={value:null},vestidorStone={value:0},recibidorCal={value:0},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
 const PLASTER_TILE=.75;  // metres per plaster.webp tile (style_textures.py)
 // Clear glass: a faint tinted body, reflections (box-projected room probes) at full
@@ -108,6 +114,22 @@ function glassMaterial(){
   m.customProgramCacheKey=()=>'glass';
   return m;
 }
+// Called by the lightmap shader (lightmap.mjs) on the floor's baked texel. With the bedroom open to
+// the bath, the old block's footprint (x 1,523-3,684, z -5,91/-5,06) and the bedroom floor 19 cm
+// past it read dark (the wall stood there in the bake): they take the vestidor floor in front of
+// the palillería, mirrored about it (A), blending into the bedroom floor at z -6,12 (B).
+const FLOOR_FIX=`uniform float suiteOpen,floorFix;uniform vec3 floorFixA[2],floorFixB[2];
+vec4 floorBakedSample(sampler2D page0,sampler2D page1,vec3 c[2],vec2 p){
+  vec2 uv=vec2(dot(c[0],vec3(p,1.0)),dot(c[1],vec3(p,1.0)));
+  vec4 s=uv.x<1.0?texture2D(page0,uv):texture2D(page1,uv-vec2(1.0,0.0));return vec4(s.rgb*s.a,1.0);
+}
+vec4 floorBakedFix(vec4 rgbm,sampler2D page0,sampler2D page1,vec2 p){
+  if(suiteOpen*floorFix<.5||p.x<1.523||p.x>3.684||p.y<-6.10||p.y>-5.06)return rgbm;
+  vec4 a=floorBakedSample(page0,page1,floorFixA,vec2(p.x,-10.12-p.y));
+  vec4 b=floorBakedSample(page0,page1,floorFixB,vec2(p.x,-6.12));
+  return mix(a,b,smoothstep(-5.45,-6.08,p.y));
+}
+`;
 function material(color,kind,roughness=.7){
   const m=kind==='fabric'||kind==='linen'||kind==='rug'?new THREE.MeshPhysicalMaterial({color,roughness,sheen:.38,sheenRoughness:.85,sheenColor:'#e8dfd0',side:THREE.DoubleSide}):new THREE.MeshStandardMaterial({color,roughness,side:THREE.DoubleSide});
   m.onBeforeCompile=shader=>{
@@ -228,7 +250,8 @@ function material(color,kind,roughness=.7){
         // H01 pavements: oak planks (no herringbone) in bedrooms, the play room, their
         // hall and the closet beside the kitchen; 120 cm porcelain at 45° elsewhere.
         shader.uniforms.porcelainMap=porcelainMap;shader.uniforms.vestidorStone=vestidorStone;shader.uniforms.porcelainRough=porcelainRough;
-        shader.fragmentShader='uniform sampler2D porcelainMap,porcelainRough;\nuniform float vestidorStone;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+shader.fragmentShader;
+        Object.assign(shader.uniforms,{suiteOpen,floorFix,floorFixA,floorFixB});
+        shader.fragmentShader='uniform sampler2D porcelainMap,porcelainRough;\nuniform float vestidorStone;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+FLOOR_FIX+shader.fragmentShader;
         shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
           vec2 floorAt=houseWorld.xz;
           float porcelainMask=(1.0-clamp(floorRect(floorAt,vec4(-2.0,-12.0,5.113,-5.896))+floorRect(floorAt,vec4(13.019,-12.0,20.0,-4.799))
@@ -263,6 +286,8 @@ function material(color,kind,roughness=.7){
           vec2 jointLine=1.0-smoothstep(vec2(.001),.001+jointW*1.2,jointD);
           float porcelainJoint=max(jointLine.x,jointLine.y)*(1.0-smoothstep(.004,.012,max(jointW.x,jointW.y)));
           porcelainFloor=mix(porcelainFloor,porcelainFloor*vec3(.70,.68,.66),porcelainJoint);
+          // Dormitorio abierto al baño (suite-abierta.mjs): the bedroom's oak runs on to the palillería.
+          porcelainMask*=1.0-suiteOpen*floorRect(floorAt,vec4(1.523,-5.92,3.684,-5.06));
           diffuseColor.rgb=mix(oakFloor,porcelainFloor,porcelainMask);
         `);
         // Honed porcelain, as in the reference: matte, no highlights. Its own pores
@@ -585,7 +610,7 @@ function uploadTextures(){
     }
   });
 }
-function activeDoorPolys(){const polys=doors.filter(d=>d.active!==false).flatMap(d=>d.polys);return fireplace?.on?polys.concat(fireplace.polys):polys;}
+function activeDoorPolys(){let polys=doors.filter(d=>d.active!==false).flatMap(d=>d.polys);if(fireplace?.on)polys=polys.concat(fireplace.polys);return suite?.on?polys.concat(suite.polys):polys;}
 // Glass doors (the shower's) do not hide the mirror.
 function opaqueDoorPolys(){return doors.filter(d=>d.active!==false&&!d.glass).flatMap(d=>d.polys);}
 function shown(o){for(let n=o;n;n=n.parent)if(!n.visible)return false;return true;}
@@ -642,8 +667,9 @@ async function initScene(buffer,bake){
     mirror.position.set(m.center[0],(m.top+m.bottom)/2,m.center[1]);mirror.rotation.y=Math.PI;
     scene.add(mirror);staticMeshes.push(mirror);
     // The mirror draws the house a second time (rooms/bano.mjs): only while a line of sight reaches it.
-    const sight=mirrorSight(m,kitchenColliders(data).filter(c=>WALL_NAMES.test(c.name)).map(c=>c.poly));
-    mirror.userData.inSight=cam=>{const e=cam.matrixWorld.elements;return sight.visible([e[12],e[14]],opaqueDoorPolys());};
+    // With the bedroom open to the bath (suite-abierta.mjs) the central block is not in the way.
+    const walls=kitchenColliders(data).filter(c=>WALL_NAMES.test(c.name)),sight=mirrorSight(m,walls.map(c=>c.poly)),openSight=mirrorSight(m,walls.filter(c=>!inBlock(c)).map(c=>c.poly));
+    mirror.userData.inSight=cam=>{const e=cam.matrixWorld.elements;return (suite?.on?openSight:sight).visible([e[12],e[14]],opaqueDoorPolys());};
     // M2: the mirror leaves on either side of the vanity are coplanar with its mirror. A
     // closed leaf joins the reflection (the probes alone left them a dark grey); an
     // opening one leaves it and keeps its own probe reflection.
@@ -814,6 +840,20 @@ function setFireplace(variant){
     fireplace.set(variant);reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;idle(reportShaderErrors);
     notice({larga:'Salón con chimenea larga',corta:'Salón con chimenea corta',baja:'Salón con chimenea baja'}[variant]||'Salón según el plano');
   }).catch(e=>{console.error(e);notice('No se ha podido cambiar el salón.');settings.fireplace=fireplace?.variant||'';$('fireplace').value=settings.fireplace;savePreferences();});
+  return timeSwitch;
+}
+
+// Dormitorio abierto al baño (suite-abierta.mjs): no central block between the master bedroom and
+// the vestidor y baño, an oak palillería on its line, P9 gone and the tub against the laths.
+let suite=null;
+function setSuiteOpen(on){
+  timeSwitch=timeSwitch.then(()=>{
+    if(!ready||!suite||on===suite.on)return;
+    // Never close the new pieces (or the block, back) round the visitor: step them clear first.
+    if(suite.blockedBy(on).some(p=>overlaps(player,physics.radius,p))){player=player[1]>-5.08?[2.6,on?-3.55:-4.55]:[2.6,-6.35];camera.position.set(player[0],eye,player[1]);}
+    suite.set(on);reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;idle(reportShaderErrors);
+    notice(on?'Dormitorio abierto al baño':'Dormitorio según el plano');
+  }).catch(e=>{console.error(e);notice('No se ha podido cambiar el dormitorio.');settings.suiteOpen=!!suite?.on;$('suiteOpen').checked=settings.suiteOpen;savePreferences();});
   return timeSwitch;
 }
 
@@ -994,6 +1034,13 @@ async function load(){
     // Salón con chimenea (menu option): built now, shown or hidden on demand.
     fireplace=createChimeneas(THREE,{scene,staticMeshes,lightObject,lighting,plaster:plasterMap.value,plasterNormal:plasterNormal.value});
     fireplace.set(settings.fireplace);
+    // Dormitorio abierto al baño (menu option): built now, shown or hidden on demand.
+    suite=createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,colliders:kitchenColliders(data),lightObject,lighting,mats,cloneMaterial,floor:suiteOpen});
+    {const ground=staticMeshes.find(m=>m.userData.exported?.material==='floor'&&m.userData.exported.region==='shared'&&!m.userData.exported.split);
+      const a=ground&&fitChart(THREE,ground,[1.55,-5.04,3.66,-4.0]),b=ground&&fitChart(THREE,ground,[1.55,-6.3,3.66,-5.94]);
+      if(a&&b){floorFixA.value[0].set(...a.u);floorFixA.value[1].set(...a.v);floorFixB.value[0].set(...b.u);floorFixB.value[1].set(...b.v);floorFix.value=1;}
+      else console.warn('[suite-abierta] the floor bake is not one chart here: its old shade stays');}
+    suite.set(settings.suiteOpen);
     // K01-K02 mirrors C01-C03 reflect the room for real at the two best quality levels on a
     // computer; on phones and lower levels they keep the probe-lit silvered pane.
     wallMirrors=createMirrors(THREE,Reflector,{scene,walls:kitchenColliders(data).filter(c=>WALL_NAMES.test(c.name)).map(c=>c.poly),
@@ -1008,7 +1055,7 @@ async function load(){
     // first capture) and again when a door moves, not for every face of every capture.
     renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     reflections.capture(renderer,scene);
-    ready=true;progress?.done();$('night').disabled=$('lamps').disabled=$('closet').disabled=$('hallLime').disabled=$('fireplace').disabled=false;syncLampsOption();lampGlow(lightmap.mode!=='dayoff');
+    ready=true;progress?.done();$('night').disabled=$('lamps').disabled=$('closet').disabled=$('hallLime').disabled=$('fireplace').disabled=$('suiteOpen').disabled=false;syncLampsOption();lampGlow(lightmap.mode!=='dayoff');
     // The tour starts on the reduced lightmaps: reflections again once the full pages are in.
     lightmap.sharp.then(()=>{timeSwitch=timeSwitch.then(()=>reflections.capture(renderer,scene));});
     const params=new URLSearchParams(location.search);
@@ -1017,9 +1064,9 @@ async function load(){
       if(!physics.blocked(start,activeDoorPolys())){player=start;yaw=Math.PI;pitch=0;camera.position.set(player[0],eye,player[1]);camera.rotation.set(0,yaw,0);}
     }
     // Modo foto (photo.mjs): path tracing while the camera stands still; ?foto opens with it on.
-    photo=createPhotoMode(THREE,{renderer,scene,camera,composer,mobile,mats,data,porcelainMap,limeMask,limeBox,vestidorStone,cleanSamples:256,
+    photo=createPhotoMode(THREE,{renderer,scene,camera,composer,mobile,mats,data,porcelainMap,limeMask,limeBox,vestidorStone,suiteOpen,cleanSamples:256,
       night:()=>timeOfDay.night,lamps:()=>lightmap.mode!=='dayoff',
-      signature:()=>[doors.map(d=>(d.t??0).toFixed(2)).join(),fronts.list.map(f=>(f.t??0).toFixed?.(2)).join(),curtains.map(c=>(c.t??0).toFixed?.(2)).join(),settings.closet,settings.hallLime,settings.fireplace,timeOfDay.night,lightmap.mode].join('|'),
+      signature:()=>[doors.map(d=>(d.t??0).toFixed(2)).join(),fronts.list.map(f=>(f.t??0).toFixed?.(2)).join(),curtains.map(c=>(c.t??0).toFixed?.(2)).join(),settings.closet,settings.hallLime,settings.fireplace,settings.suiteOpen,timeOfDay.night,lightmap.mode].join('|'),
       onStatus:text=>{$('photoHud').textContent=text;$('photoHud').hidden=!text;}});
     $('photo').disabled=!photo.supported;$('photo').closest('label').title=photo.supported?'':'No disponible en móvil ni en GPU sin coma flotante';
     $('photo').onchange=()=>setPhoto($('photo').checked);

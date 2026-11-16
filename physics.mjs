@@ -75,7 +75,7 @@ export class WorldPhysics {
       if(!this.floors.some(f=>inside(q,f)))return true;
     }
     const nearby=this.grid.get(Math.floor(p[0])+','+Math.floor(p[1]))||[];
-    return nearby.some(c=>overlaps(p,r,c.poly))||dynamic.some(poly=>overlaps(p,r,poly));
+    return nearby.some(c=>!c.off&&overlaps(p,r,c.poly))||dynamic.some(poly=>overlaps(p,r,poly));
   }
   move(p,dx,dz,dynamic=[]) {
     const n=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.035));dx/=n;dz/=n;
