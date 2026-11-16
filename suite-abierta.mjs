@@ -15,10 +15,11 @@
 //   bulkhead (2,20-2,55) closes the bedroom's higher ceiling, as over the doors;
 // - P8 and P9 go, with the oak fascias over them: both ways are open (no colliders);
 // - so does the study's glass screen (M3, arched dark frame at x 3,124, z -9,21/-6,21: fixed
-//   panes and the French pair, app.js 'Mampara estudio'): the study is open to the bedroom;
-// - oak from the bedroom over the whole dry vestidor y baño, to the vanity's front (z -2,46;
-//   floor shader, uniform suiteOpen): stone stays in the shower, the WC, under the vanity and in
-//   the strips before the shower and WC doors (z -2,46/-1,93);
+//   panes and the French pair, app.js 'Mampara estudio') with the partition round it (its two
+//   stubs, z -9,51/-9,21 and -6,21/-5,91, and the lintel): the study is open to the bedroom; only
+//   the façade pillar (Estructura, x 2,927-3,191, z -9,73/-9,51) stays;
+// - the bedroom's oak runs on to the palillería's line, z -5,06, wall to wall through both doorways
+//   (floor shader, uniform suiteOpen); the vestidor y baño keeps its stone (Jorge, 16/11);
 // - the freestanding tub moves 92,85 cm north, its rim 8 cm from the palillería, turned half a
 //   turn so its floor-standing mixer (which stood on the north side, now 8 cm from the laths)
 //   goes with it to the bath side, with a soft contact shadow of its own.
@@ -51,9 +52,10 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
     [BLOCK.x0-.02,-.01,BLOCK.z0-.02,BLOCK.x1+.015,BULKHEAD.y1,BLOCK.z1+.015],   // switches stand 9 mm proud, skirtings 12 mm
     [3.684,2.19,-5.945,4.484,2.51,-5.92],                                       // oak fascia over P9
     [0.723,2.19,-5.945,1.523,2.51,-5.92],                                       // and over P8
+    [3.07,-.005,-9.53,3.21,2.64,-5.905],                                         // bedroom/study partition: stubs, lintel, skirtings
   ];
   // The bedroom/estudio partition (x 3,091-3,192) ends against the block: its end face stays.
-  const keepFace=(a,b,c,n)=>Math.abs(n.z)>.9&&[a,b,c].every(p=>p.x>3.088&&p.x<3.195&&Math.abs(p.z+5.91)<.004);
+  const keepFace=()=>false;
   const skip=o=>{for(let n=o;n;n=n.parent){if(n===group||n.userData.door||n.userData.frontGroup)return true;}return false;};
   const users=new Map();scene.traverse(o=>{if(o.isMesh)users.set(o.geometry,(users.get(o.geometry)||0)+1);});
   const meshes=[];scene.traverse(o=>{if(o.isMesh&&!o.isReflector&&!skip(o)&&o.geometry?.getAttribute('position'))meshes.push(o);});
@@ -100,7 +102,8 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
   const frontGroups=a2.map(f=>f.group).filter(Boolean);
   const gone=doors.filter(d=>['Suite derecha','Suite izquierda','Estudio'].includes(d.name));
   const screen=scene.getObjectByName('Mampara estudio');
-  const screenColliders=colliders.filter(c=>c.name==='Vidrio fijo estudio');
+  // The screen's panes and the partition's two stubs (the façade pillar, Estructura 2,927-3,191, stays).
+  const screenColliders=colliders.filter(c=>c.name==='Vidrio fijo estudio'||c.name==='Tabique'&&c.poly.every(([x,z])=>x>3.08&&x<3.20&&z>-9.52&&z<-5.90));
   const blockColliders=colliders.filter(inBlock);
   const tubCollider=colliders.find(c=>c.name==='Banera exenta piedra crema');
 
@@ -132,10 +135,13 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
   // Bulkhead: over the old wall line, the two cheeks (the false ceiling spans A2 only) and A2.
   // It reaches down to the palillería 2 mm under the false ceiling: over A2 that ceiling keeps
   // the wardrobe's baked shade, which the bulkhead's probe-lit soffit covers.
+  // And a 10 cm ceiling strip where the bedroom/study partition met the 2,55 m ceiling (the ceilings
+  // of both rooms stop at it).
   const plaster=new THREE.Mesh(merge([boxGeo(BLOCK.x0,BLOCK.x1,BULKHEAD.y0-.002,BULKHEAD.y1,BLOCK.z0,BLOCK.z1)]),new THREE.MeshStandardMaterial({color:'#efe9e1',roughness:.92}));
+  const strip=new THREE.Mesh(merge([boxGeo(3.088,3.194,BULKHEAD.y1-.002,BULKHEAD.y1+.05,-9.512,BLOCK.z0)]),plaster.material.clone());strip.name='Techo sobre el tabique del estudio';
   plaster.name='Dintel dormitorio abierto';plaster.receiveShadow=true;
-  lightObject(oak,lighting,1.15);lightObject(plaster,lighting,1.3);
-  for(const m of [oak,plaster]){group.add(m);staticMeshes.push(m);}
+  lightObject(oak,lighting,1.15);lightObject(plaster,lighting,1.3);lightObject(strip,lighting,1.7);
+  for(const m of [oak,plaster,strip]){group.add(m);staticMeshes.push(m);}
 
   // ---- Tub and its floor mixer (rooms/bano.mjs), on a pivot at the tub's centre. ----
   const pivot=new THREE.Group();pivot.name='Bañera desplazada';pivot.position.set(TUB.x,0,TUB.z);scene.add(pivot);pivot.updateMatrixWorld(true);
@@ -170,7 +176,7 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
     polys:[latticePoly,...(tubPoly.length?[tubPoly]:[])],
     // Where the visitor must not stand when the option changes: the new pieces when it turns
     // on, the block and the tub's own place when it turns off.
-    blockedBy(on){return on?state.polys:[[[BLOCK.x0,BLOCK.z0],[BLOCK.x1,BLOCK.z0],[BLOCK.x1,BLOCK.z1],[BLOCK.x0,BLOCK.z1]],[[3.09,-9.21],[3.16,-9.21],[3.16,-6.21],[3.09,-6.21]],...(tubCollider?[tubCollider.poly]:[])];},
+    blockedBy(on){return on?state.polys:[[[BLOCK.x0,BLOCK.z0],[BLOCK.x1,BLOCK.z0],[BLOCK.x1,BLOCK.z1],[BLOCK.x0,BLOCK.z1]],[[3.091,-9.51],[3.192,-9.51],[3.192,-5.91],[3.091,-5.91]],...(tubCollider?[tubCollider.poly]:[])];},
     set(on){
       state.on=on;group.visible=on;floor.value=on?1:0;
       for(const m of hidden)m.visible=!on;
