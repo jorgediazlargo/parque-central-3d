@@ -16,7 +16,7 @@ const quadVertex='varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.
 
 export class Post{
   constructor(renderer,scene,camera,{bloom=.15,threshold=.95,knee=.7,key=.25,adapt=.35,minExposure=.55,maxExposure=2.6,base=.5,grain=.018,vignette=.30,
-    white=[1.05,1,.92],saturation=1.12,contrast=.42,ao=1,aoRadius=.30,aoBias=.03,aoIntensity=3.2}={}){
+    white=[1.03,1,.95],saturation=1.0,contrast=.5,ao=1,aoRadius=.30,aoBias=.03,aoIntensity=3.2}={}){
     Object.assign(this,{renderer,scene,camera});
     this.settings={bloom,threshold,knee,key,adapt,minExposure,maxExposure,base,grain,vignette,white,saturation,contrast,ao,aoRadius,aoBias,aoIntensity};
     const half={type:THREE.HalfFloatType,depthBuffer:false,generateMipmaps:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter};

@@ -240,7 +240,7 @@ export function createPhotoMode(THREE,ctx){
       await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));   // let the notice show
       const t0=performance.now();
       lib??=await import('./assets/pathtracer.js?v=21f4139213');
-      lights??=await fetch('./assets/photo-lights.json?v=9160ada16a').then(r=>{if(!r.ok)throw Error('photo-lights.json');return r.json();});
+      lights??=await fetch('./assets/photo-lights.json?v=63d6285522').then(r=>{if(!r.ok)throw Error('photo-lights.json');return r.json();});
       if(!tracer){
         tracer=new lib.WebGLPathTracer(renderer);
         Object.assign(tracer,{renderToCanvas:false,renderDelay:0,minSamples:1,fadeDuration:0,dynamicLowRes:false,rasterizeScene:false,

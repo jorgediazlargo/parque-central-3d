@@ -1,9 +1,9 @@
 import * as THREE from './assets/three.module.js';
 import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,captureSize,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=344884d358';
-import {Post} from './post.mjs?v=ec59b189c9';
+import {Post} from './post.mjs?v=643e937184';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=fa953237f9';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=7e02569fe2';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
@@ -16,7 +16,7 @@ import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
 import {createChimeneas} from './chimenea.mjs?v=f5fe79aeab';
 import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=bc8b1c42e1';
-import {createPhotoMode} from './photo.mjs?v=a6d7d5dd17';
+import {createPhotoMode} from './photo.mjs?v=23787e3a02';
 import {createMirrors} from './mirrors.mjs?v=ffbe3ce218';
 
 const $=id=>document.getElementById(id),canvas=$('world');
@@ -315,9 +315,10 @@ function material(color,kind,roughness=.7){
           porcelainMask*=1.0-suiteOpen*floorRect(floorAt,vec4(0.0,-5.92,5.113,-5.06));
           diffuseColor.rgb=mix(oakFloor,porcelainFloor,porcelainMask);
         `);
-        // Honed porcelain, as in the reference: matte, no highlights. Its own pores
-        // and joints (darker is lower) give the relief the plank normals would fake.
-        shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,clamp(.82+(texture2D(porcelainRough,floorAt*.42).g-.5)*.16+porcelainJoint*.1,0.0,1.0),porcelainMask);')
+        // Honed porcelain: satin (0.62, was 0.82 until 18/11/2026: dead matte read as a
+        // print), so the room's reflection probe gives it a soft sheen towards the windows.
+        // Its own pores and joints (darker is lower) give the relief the plank normals would fake.
+        shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,clamp(.62+(texture2D(porcelainRough,floorAt*.42).g-.5)*.16+porcelainJoint*.1,0.0,1.0),porcelainMask);')
           .replace('#include <normal_fragment_maps>',THREE.ShaderChunk.normal_fragment_maps.replace('mapN.xy *= normalScale;','mapN.xy *= normalScale*(1.0-porcelainMask);')+`
           if(porcelainMask>0.0){
             // The darker band is a tone, not a step down: as relief it read as a wide joint.
@@ -1041,16 +1042,15 @@ async function load(){
     // only the last room module and the captures read. Shared bandwidth would otherwise
     // deliver the geometry last.
     const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
-    const house=Promise.all([get('./assets/house.json?v=41c8105b9e',r=>r.json()),get('./assets/house.bin?v=b5048928a5',r=>r.arrayBuffer())]);
+    const house=Promise.all([get('./assets/house.json?v=3f15a56f10',r=>r.json()),get('./assets/house.bin?v=9658554bc5',r=>r.arrayBuffer())]);
     const surfaceMaps=loadSurfaceMaps(),views=loadViews();
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();
     for(const p of [surfaceMaps,views])p.catch(()=>{});  // reported where awaited
     const bake=fetchLightmap(settings.night?'night':settings.lamps?'day':'dayoff',{after:Promise.allSettled([house,surfaceMaps,views])});
     const [json,buffer]=await house;
-    // The bench at the foot of the master bed is gone (rooms/dormitorio.mjs): so is its collider.
     const progress=window.loadProgress;progress?.stage(.1);
-    data=json;data.colliders=data.colliders.filter(c=>c.name!=='Banco principal cuerpo');
+    data=json;
     // M3 without the partition round it (STUDY): the stubs' colliders go and the fixed panes reach the pillar and the block.
     // The leaves: full height and STUDY.leafWidth each, centred as before.
     {const [z0,z1]=STUDY_SPAN,x=data.fixedStudy[0][0],mid=(z0+z1)/2,w=STUDY.leafWidth;data.fixedStudy=[[x,z0],[x,z1]];

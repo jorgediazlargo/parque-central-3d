@@ -10,9 +10,9 @@
 // - Ceiling (H04, D02): white plastic paint at 2.20 m with the coffer at 2.55 m over the
 //   island and the two F05 rails along it (all exported; the paint is the house's).
 // Round 6:
-// - Stools: the exported ones are replaced by G12 / J02's oak stools (dished seat,
-//   splayed legs, footrest frame, low T back), not render 9's upholstered ones.
-// - Contact shadows (soft decals) under the stools and along the island base.
+// - Stools: the exported ones were replaced by G12 / J02's oak stools until 18/11/2026;
+//   now render 9's upholstered ones (owner), see stools().
+// - Contact shadows (soft decals) along the island base (the stools' are baked since 18/11/2026).
 // - The induction hob (seen edge-on, it read as a black sink) gets a satin sheen.
 // - The back wall darkens a little more towards the worktop, as in render 9.
 // - Props of render 9: a ceramic vase with leafy branches on the back worktop and a
@@ -49,6 +49,7 @@
 // vanity tops of the three baths. Slab layout shared with them in rooms/slab.mjs.
 
 import {mergeGeometries} from '../assets/jsm/utils/BufferGeometryUtils.js';
+import {upholstery,CHAIR_WEAVE} from './salon.mjs';
 import {QUARTZITE,STONE_WHITE,pieceSeeds,slabLayout,slabStone,laminam} from './slab.mjs?v=tm1';
 
 const ZONE=[[7.3,-.2,-3.66],[13.4,3.2,-.2]];
@@ -58,8 +59,7 @@ const VERSION='tm1';
 // B01 stool footprints (plan x ranges) on the island's north side, their centre at plan
 // y 476.98 (back band 467.7-471.4).
 const STOOLS=[[581.64,603.30],[612.99,634.65],[644.34,666],[675.69,697.32]];
-// Where the four splayed legs of the G12 stool meet the floor (world, from its centre).
-const STOOL_Y=476.98,STOOL_FEET=[[-.2,.17],[.2,.17],[0,-.21]];
+const STOOL_Y=476.98;
 // Island (kitchen_geometry.py, plan units): stone cheeks, recessed front, worktop.
 const ISLAND={cheeks:[[563.12,576.58],[702.41,715.87]],y0:481.5,y1:524.58,front:498.8,top:480.17};
 // Back wall stone, height (m) -> gain over the baked light. Baked irradiance measured on
@@ -78,8 +78,8 @@ export async function apply(ctx){
   // --- Stone (back wall lining, worktops, island) -----------------------------------
   const [cx0]=ctx.plan(ISLAND.cheeks[0][1],0),[cx1]=ctx.plan(ISLAND.cheeks[1][0],0);
   const [,frontZ]=ctx.plan(0,ISLAND.front);
-  // Bronze joints of the back-wall lining (kitchen_geometry.py, plan x 640 and 735).
-  const joints=[640,735].map(x=>({facing:2,at:ctx.plan(x,0)[0]}));
+  // The back-wall lining has no joints since 18/11/2026 (owner): its 2.78 m fit one slab.
+  const joints=[];
   // Mirrored repeat: a piece larger than the slab meets the slab's own edge, no seam.
   stoneMap.wrapS=stoneMap.wrapT=THREE.MirroredRepeatWrapping;
   for(const piece of ctx.splitExported({material:'kitchenStone',region:'kitchen',box:ZONE})){
@@ -137,16 +137,11 @@ export async function apply(ctx){
 // --- Contact shadows in the floor ---------------------------------------------------------
 // The kitchen floor keeps its baked light and material; its own copy multiplies the light
 // by an analytic occlusion: the island footprint (cheeks and the recessed carcass under
-// the overhang) and, for each stool, its four legs and the soft shade of the seat.
+// the overhang). The stools' shadow is in the bake (dump_runtime.py).
 function floorContact(ctx){
   const {THREE}=ctx,P=(x,y)=>ctx.plan(x,y).map(v=>v.toFixed(4));
   const box=(x0,y0,x1,y1)=>{const [a,b]=P(x0,y0),[c,d]=P(x1,y1);return `vec4(${a},${b},${c},${d})`;};
   const rects=[box(563.12,ISLAND.y0,576.58,ISLAND.y1),box(702.41,ISLAND.y0,715.87,ISLAND.y1),box(576.58,ISLAND.front,702.41,ISLAND.y1)];
-  const legs=[],seats=[];
-  for(const [x0,x1] of STOOLS){
-    const [x,z]=ctx.plan((x0+x1)/2,STOOL_Y);seats.push(`vec2(${x.toFixed(4)},${z.toFixed(4)})`);
-    for(const [lx,lz] of STOOL_FEET)legs.push(`vec2(${(x+lx).toFixed(4)},${(z+lz).toFixed(4)})`);
-  }
   const code=`
     float cocinaAO=1.0;
     {vec2 q=houseWorld.xz;
@@ -154,8 +149,6 @@ function floorContact(ctx){
     ${rects.map(r=>`{vec4 r=${r};vec2 c=(r.xy+r.zw)*.5,h=abs(r.zw-r.xy)*.5;vec2 o=abs(q-c)-h+.12;d=min(d,length(max(o,0.0))+min(max(o.x,o.y),0.0)-.12);}`).join('\n')}
     d=max(d,0.0);
     cocinaAO*=1.0-.38*exp(-d/.04)-.15*exp(-d/.25);
-    ${seats.map(s=>`{float r=length(q-${s});cocinaAO*=1.0-.24*exp(-r*r/.045);}`).join('\n')}
-    ${legs.map(l=>`{float r=length(q-${l});cocinaAO*=1.0-.62*exp(-r*r/.00045)-.18*exp(-r*r/.006);}`).join('\n')}
     }
     bakedE*=cocinaAO;radiance*=cocinaAO;`;
   for(const piece of ctx.splitExported({material:'floor',region:'kitchen',box:[[7.3,-.2,-3.66],[13.4,.2,-.2]]})){
@@ -169,36 +162,71 @@ function floorContact(ctx){
 }
 
 // --- Stools of render 9 ----------------------------------------------------------------
+// Owner, 18/11/2026: the stools of render 9, not G12 / J02's oak ones. A round upholstered
+// seat (Ø 40 cm, top at 0,70) with a low upholstered back band round its rear half on a
+// bronze hoop, four straight bronze legs (Ø 19 mm) and a footrest frame at 0,27. Four, on
+// the B01 footprints (the render has five on a longer island). Their floor shadow is in
+// the bake now (dump_runtime.py), so the floor shader no longer fakes it.
 async function stools(ctx){
   const {THREE}=ctx;
   // Drop the exported stools: upholstery (kitchenFabric) and frames (kitchenBronze).
   const [bx0,bz0]=ctx.plan(570,458),[bx1,bz1]=ctx.plan(710,500);
   ctx.removeExported({material:['kitchenFabric','kitchenBronze'],region:'kitchen',box:[[bx0,-.1,bz0],[bx1,1.0,bz1]]});
-  // G12 / J02 (stool side, measured at scale): oak stools with a dished seat (rim at 0,67,
-  // 0,38 wide), two splayed front legs and a rear leg that rises into the T back (bar at
-  // 0,75-0,80, under the worktop), a footrest at 0,22.
-  const oak=ctx.cloneMaterial(ctx.mats.wood);
-  const parts=[],box=(w,h,d,x,y,z)=>parts.push(new THREE.BoxGeometry(w,h,d).translate(x,y,z));
-  // Local frame: the stool faces +z (the island, south); the T back is at -z.
-  box(.38,.035,.32,0,.6525,0);box(.33,.045,.26,0,.6125,0);        // seat and its apron
-  const [fl,fr,rear]=STOOL_FEET,tops=[[-.15,.62,.12],[.15,.62,.12],[0,.80,-.15]];
-  [fl,fr,rear].forEach(([x,z],k)=>parts.push(rod(THREE,[x,0,z],tops[k],.017,8)));
-  const at=k=>{const [x,z]=STOOL_FEET[k],[tx,ty,tz]=tops[k],t=.22/ty;return [x+(tx-x)*t,.22,z+(tz-z)*t];};
-  for(const [a,b] of [[0,1],[1,2],[2,0]])parts.push(rod(THREE,at(a),at(b),.012,8));
-  box(.35,.05,.03,0,.775,-.15);                                    // T bar on the rear leg
-  const one=mergeGeometries(parts),all=[];
+  const fabric=await upholstery(ctx,ctx.mats.kitchenFabric,{...CHAIR_WEAVE,color:'#958a7f',key:'cocina-taburete'});
+  const bronze=ctx.cloneMaterial(ctx.mats.kitchenBronze);bronze.color.set('#c09a62');bronze.metalness=.7;bronze.roughness=.32;  // satin brass-bronze of render 9
+  const soft=[],metal=[];
+  // Local frame: the stool faces +z (the island); its back is at -z.
+  const SEAT={r:.20,y0:.615,y1:.70,edge:.032},HOOP={r:.2,y:.728},BACK={r:.19,y:.77,tube:.026,squash:1.65,arc:Math.PI*1.12};
+  // Seat: a lathed cushion with a soft rounded edge and a slight crown.
+  const prof=[];
+  prof.push(new THREE.Vector2(0,SEAT.y0+.004));
+  for(let i=0;i<=8;i++){const t=-Math.PI/2+i/8*Math.PI/2;prof.push(new THREE.Vector2(SEAT.r-SEAT.edge+SEAT.edge*Math.cos(t),SEAT.y0+SEAT.edge+SEAT.edge*Math.sin(t)));}
+  for(let i=1;i<=8;i++){const t=i/8*Math.PI/2;prof.push(new THREE.Vector2(SEAT.r-SEAT.edge+SEAT.edge*Math.cos(t),SEAT.y1-SEAT.edge+SEAT.edge*Math.sin(t)));}
+  prof.push(new THREE.Vector2(SEAT.r*.55,SEAT.y1+.006),new THREE.Vector2(0,SEAT.y1+.008));
+  soft.push(metricUV(new THREE.LatheGeometry(prof,40)));
+  // Back band: a squashed tube round the rear, its ends closed by squashed spheres.
+  const arc=[],n=24,a0=-Math.PI/2-BACK.arc/2;
+  for(let i=0;i<=n;i++){const t=a0+i/n*BACK.arc;arc.push(new THREE.Vector3(Math.cos(t)*BACK.r,0,Math.sin(t)*BACK.r));}
+  const band=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(arc),48,BACK.tube,14,false);
+  const caps=[arc[0],arc[n]].map(p=>new THREE.SphereGeometry(BACK.tube,14,10).translate(p.x,0,p.z));
+  for(const g of [band,...caps]){g.scale(1,BACK.squash,1);g.translate(0,BACK.y,0);soft.push(metricUV(g));}
+  // Bronze: hoop under the band, four legs, footrest frame, glides.
+  const hoopArc=[];for(let i=0;i<=n;i++){const t=a0+i/n*BACK.arc;hoopArc.push(new THREE.Vector3(Math.cos(t)*HOOP.r,HOOP.y,Math.sin(t)*HOOP.r));}
+  metal.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(hoopArc),48,.0075,10,false));
+  const L=.165,legs=[[-L,-L],[L,-L],[L,L],[-L,L]];
+  for(const [x,z] of legs){
+    const top=z<0?HOOP.y:SEAT.y0+.01;
+    metal.push(rod(THREE,[x,.008,z],[x,top,z],.0095,14));
+    metal.push(new THREE.CylinderGeometry(.011,.012,.008,14).translate(x,.004,z));   // glide
+  }
+  for(let k=0;k<4;k++){const [x0,z0]=legs[k],[x1,z1]=legs[(k+1)%4];metal.push(rod(THREE,[x0,.27,z0],[x1,.27,z1],.0075,10));}
+  // Rails under the seat: front pair of legs to the seat pan.
+  metal.push(rod(THREE,[-L,SEAT.y0-.005,L],[L,SEAT.y0-.005,L],.0075,10),rod(THREE,[-L,SEAT.y0-.005,-L],[L,SEAT.y0-.005,-L],.0075,10));
+  const prep=(list,keep)=>list.map(g=>{g=g.index?g.toNonIndexed():g;for(const k of Object.keys(g.attributes))if(!keep.includes(k))g.deleteAttribute(k);return g;});
+  const softOne=mergeGeometries(prep(soft,['position','normal','uv'])),metalOne=mergeGeometries(prep(metal,['position','normal','uv']));
+  // Upholstery shade: darker under the seat and inside the band (where hands do not reach light).
+  {const p=softOne.getAttribute('position'),nm=softOne.getAttribute('normal'),c=new Float32Array(p.count*3);
+    for(let i=0;i<p.count;i++){const v=.62+.38*THREE.MathUtils.smoothstep(nm.getY(i),-.9,.4);c[i*3]=c[i*3+1]=c[i*3+2]=v;}
+    softOne.setAttribute('color',new THREE.BufferAttribute(c,3));}
+  const softAll=[],metalAll=[];
   for(const [x0,x1] of STOOLS){
     const [x,z]=ctx.plan((x0+x1)/2,STOOL_Y);
-    all.push(one.clone().translate(x,0,z));
+    softAll.push(softOne.clone().translate(x,0,z));metalAll.push(metalOne.clone().translate(x,0,z));
   }
   const g=new THREE.Group();g.name='Cocina taburetes';
-  g.add(new THREE.Mesh(mergeGeometries(all),oak));
+  g.add(new THREE.Mesh(mergeGeometries(softAll),fabric),new THREE.Mesh(mergeGeometries(metalAll),bronze));
   ctx.group.add(g);ctx.lightRuntimeObject(g);
 }
+// UVs in metres (u round the surface, v along it), for upholstery tiled per metre.
+function metricUV(g){
+  const p=g.getAttribute('position'),uv=g.getAttribute('uv');
+  for(let i=0;i<uv.count;i++){const r=Math.hypot(p.getX(i),p.getZ(i));uv.setXY(i,Math.atan2(p.getZ(i),p.getX(i))*Math.max(r,.05),p.getY(i)+r*.5);}
+  return g;
+}
 
-function rod(THREE,a,b,r,seg){
+function rod(THREE,a,b,r,seg,rTop=r){
   const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),d=B.clone().sub(A),L=d.length();
-  const g=new THREE.CylinderGeometry(r,r,L,seg,1,true);g.translate(0,L/2,0);
+  const g=new THREE.CylinderGeometry(rTop,r,L,seg,1,true);g.translate(0,L/2,0);
   g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize()));
   return g.translate(A.x,A.y,A.z);
 }
