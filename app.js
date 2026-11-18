@@ -507,16 +507,18 @@ function box(group,w,h,d,x,y,z,mat){
 // M3 (G06): oak frame 3.00 x 2.20, rails at 0.78 and 1.87, arcs of 0.30 at the top corners.
 // Jorge, 18/11/2026: no plaster round it. The stubs (30 cm each side) and the lintel over 2,20
 // go, and the screen runs from the façade pillar to the central block (3,60 m, data.fixedStudy
-// at load) and from floor to ceiling (2,55): fixed panes of 1,20 either side of the leaves, which
-// keep 2,20 under a glazed transom.
-const STUDY={frame:.035,stile:.026,depth:.045,rails:[.78,1.87],height:2.55,leaf:2.20,side:.11,radius:.30};
+// at load) and from floor to ceiling (2,55). The two leaves go full height (to the head) and as
+// wide as their 180° swing allows: each folds back onto its fixed pane and stops at the outer
+// jamb, so leaf = fixed pane = (3,60 - 2 x 0,035) / 4 -> 0,88 (a 1,76 m opening).
+const STUDY={frame:.035,stile:.026,depth:.045,rails:[.78,1.87],height:2.55,leafWidth:.88,side:.11,radius:.30};
 const STUDY_SPAN=[-9.51008,-5.90989];   // z of the pillar's face and the block's (house.json colliders)
 const studyFrame=material('#ffffff','wood',.55);
 function studyPanel(group,width,height){
   const {stile,depth,rails}=STUDY;
   box(group,width-.02,height-.02,.010,width/2,height/2,0,mats.glass);
   for(const x of [stile/2,width-stile/2])box(group,stile,height,depth,x,height/2,0,studyFrame);
-  for(const y of [.015,...rails,height-.015])box(group,width,.032,depth,width/2,y,0,studyFrame);
+  // The fixed panes' top rail (STUDY.height - side) runs on across the leaves.
+  for(const y of [.015,...rails,STUDY.height-STUDY.side,height-.015])box(group,width,.032,depth,width/2,y,0,studyFrame);
   // G06 draws no pull on the M3 leaves.
 }
 function leaf(width,height,glass,door){
@@ -599,7 +601,7 @@ function setupDoors(){
   const [a,b]=data.fixedStudy,g=new THREE.Group(),length=Math.hypot(b[0]-a[0],b[1]-a[1]);g.name='Mampara estudio';
   g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);scene.add(g);runtimeObjects.push(g);
   const study=doors.find(d=>d.name==='Estudio'),along=p=>((p[0]-a[0])*(b[0]-a[0])+(p[1]-a[1])*(b[1]-a[1]))/length;
-  const {frame:f,stile,depth,rails,height:h,leaf:hl,side,radius:r}=STUDY,doorFrom=along(study.a),doorTo=along(study.b);
+  const {frame:f,stile,depth,rails,height:h,side,radius:r}=STUDY,doorFrom=along(study.a),doorTo=along(study.b);
   const extrude=(shape,z=0,mat=studyFrame,d=depth)=>{
     const geo=new THREE.ExtrudeGeometry(shape,{depth:d,bevelEnabled:false,curveSegments:24});geo.translate(0,0,z-d/2);
     const o=new THREE.Mesh(geo,mat);o.castShadow=mat!==mats.glass;o.receiveShadow=true;g.add(o);return o;
@@ -613,13 +615,11 @@ function setupDoors(){
   };
   // Outer frame with rounded upper corners, sill included.
   const outer=arched(0);outer.holes.push(arched(f));extrude(outer);
-  // Fixed glazing on both sides of the French pair, and the transom over it.
+  // Fixed glazing on both sides of the French pair.
   for(const [x0,x1] of [[f,doorFrom],[doorTo,length-f]])extrude(arched(f,x0,x1),0,mats.glass,.010);
-  box(g,doorTo-doorFrom,h-f-hl,.010,(doorFrom+doorTo)/2,(hl+h-f)/2,0,mats.glass);
-  // Stiles at the door opening; rails across the fixed panels, one at the leaves' head right across.
+  // Stiles at the door opening; rails across the fixed panels.
   box(g,stile,h-2*f,depth,doorFrom-stile/2,h/2,0,studyFrame);box(g,stile,h-2*f,depth,doorTo+stile/2,h/2,0,studyFrame);
   for(const y of rails)for(const [x0,x1] of [[f,doorFrom],[doorTo,length-f]])box(g,x1-x0,.032,depth,(x0+x1)/2,y,0,studyFrame);
-  box(g,length-2*f,.032,depth,length/2,hl+.016,0,studyFrame);
   // Narrow side lite of each fixed panel: a stile `side` in from the jamb that turns
   // into an arc concentric with the frame's corner and runs on as a top rail.
   const ri=r-side;
@@ -1052,9 +1052,13 @@ async function load(){
     const progress=window.loadProgress;progress?.stage(.1);
     data=json;data.colliders=data.colliders.filter(c=>c.name!=='Banco principal cuerpo');
     // M3 without the partition round it (STUDY): the stubs' colliders go and the fixed panes reach the pillar and the block.
-    {const [z0,z1]=STUDY_SPAN,x=data.fixedStudy[0][0];data.fixedStudy=[[x,z0],[x,z1]];
+    // The leaves: full height and STUDY.leafWidth each, centred as before.
+    {const [z0,z1]=STUDY_SPAN,x=data.fixedStudy[0][0],mid=(z0+z1)/2,w=STUDY.leafWidth;data.fixedStudy=[[x,z0],[x,z1]];
       data.colliders=data.colliders.filter(c=>!(c.name==='Tabique'&&c.poly.every(([px,pz])=>px>3.08&&px<3.20&&(pz>z0-.01&&pz<-9.20||pz>-6.22&&pz<z1+.01))));
-      for(const c of data.colliders)if(c.name==='Vidrio fijo estudio')c.poly=c.poly.map(([px,pz])=>[px,Math.abs(pz+9.2103)<1e-3?z0:Math.abs(pz+6.20986)<1e-3?z1:pz]);}timeOfDay.night=settings.night;await initScene(buffer,bake);progress?.stage(.35);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);progress?.stage(.5);
+      const door=data.doors.find(d=>d.name==='Estudio');
+      if(door){door.a=[x,mid-w];door.b=[x,mid+w];door.height=STUDY.height-STUDY.frame;}
+      const panes=data.colliders.filter(c=>c.name==='Vidrio fijo estudio').sort((p,q)=>p.poly[0][1]-q.poly[0][1]);
+      panes.forEach((c,i)=>{const [za,zb]=i?[mid+w,z1]:[z0,mid-w];c.poly=c.poly.map(([px,pz],k)=>[px,pz<(Math.min(...c.poly.map(p=>p[1]))+Math.max(...c.poly.map(p=>p[1])))/2?za:zb]);});}timeOfDay.night=settings.night;await initScene(buffer,bake);progress?.stage(.35);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);progress?.stage(.5);
     lightmap.syncTextures();
     // Per-room refinements (rooms/<id>.mjs); a failing module is logged and skipped.
     const rooms=applyRooms({scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,curtains,lighting,timeOfDay});
