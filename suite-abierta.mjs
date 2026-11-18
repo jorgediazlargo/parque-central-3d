@@ -14,10 +14,12 @@
 //   ceiling), so the bath is seen from the bed and back; above the old wall line a plaster
 //   bulkhead (2,20-2,55) closes the bedroom's higher ceiling, as over the doors;
 // - P8 and P9 go, with the oak fascias over them: both ways are open (no colliders);
-// - so does the study's glass screen (M3, arched dark frame at x 3,124, z -9,21/-6,21: fixed
-//   panes and the French pair, app.js 'Mampara estudio') with the partition round it (its two
-//   stubs, z -9,51/-9,21 and -6,21/-5,91, and the lintel): the study is open to the bedroom; only
-//   the façade pillar (Estructura, x 2,927-3,191, z -9,73/-9,51) stays;
+// - so does the study's glass screen (M3, arched oak frame at x 3,124, z -9,51/-5,91, floor to
+//   ceiling: fixed panes, the French pair and its transom, app.js 'Mampara estudio'): the study
+//   is open to the bedroom; only the façade pillar (Estructura, x 2,927-3,191, z -9,73/-9,51)
+//   stays. The partition round the screen (two stubs, z -9,51/-9,21 and -6,21/-5,91, the lintel
+//   over 2,20 and their skirtings) is gone in both versions (Jorge, 18/11/2026), carved out
+//   here at load with a ceiling strip where it met the 2,55 m ceiling;
 // - the bedroom's oak runs on to the palillería's line, z -5,06, wall to wall through both doorways
 //   (floor shader, uniform suiteOpen); the vestidor y baño keeps its stone (Jorge, 16/11);
 // - the freestanding tub moves 92,85 cm north, its rim 8 cm from the palillería, turned half a
@@ -52,15 +54,18 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
     [BLOCK.x0-.02,-.01,BLOCK.z0-.02,BLOCK.x1+.015,BULKHEAD.y1,BLOCK.z1+.015],   // switches stand 9 mm proud, skirtings 12 mm
     [3.684,2.19,-5.945,4.484,2.51,-5.92],                                       // oak fascia over P9
     [0.723,2.19,-5.945,1.523,2.51,-5.92],                                       // and over P8
-    [3.07,-.005,-9.53,3.21,2.64,-5.905],                                         // bedroom/study partition: stubs, lintel, skirtings
   ];
+  const PARTITION=[[3.07,-.005,-9.53,3.21,2.64,-5.905]];                       // bedroom/study partition: stubs, lintel, skirtings
   // The bedroom/estudio partition (x 3,091-3,192) ends against the block: its end face stays.
   const keepFace=()=>false;
-  const skip=o=>{for(let n=o;n;n=n.parent){if(n===group||n.userData.door||n.userData.frontGroup)return true;}return false;};
+  // The study screen (app.js 'Mampara estudio') stands inside the partition's box: never carved.
+  const skip=o=>{for(let n=o;n;n=n.parent){if(n===group||n.userData.door||n.userData.frontGroup||n.name==='Mampara estudio')return true;}return false;};
   const users=new Map();scene.traverse(o=>{if(o.isMesh)users.set(o.geometry,(users.get(o.geometry)||0)+1);});
-  const meshes=[];scene.traverse(o=>{if(o.isMesh&&!o.isReflector&&!skip(o)&&o.geometry?.getAttribute('position'))meshes.push(o);});
   scene.updateMatrixWorld(true);
   const A=new THREE.Vector3(),B=new THREE.Vector3(),C=new THREE.Vector3(),n=new THREE.Vector3(),box=new THREE.Box3();
+  // Splits every triangle wholly inside one of `BOXES` into its own mesh; returns the meshes to hide.
+  const carve=(BOXES,label)=>{
+  const meshes=[],hidden=[];scene.traverse(o=>{if(o.isMesh&&!o.isReflector&&!skip(o)&&!o.userData.split&&o.geometry?.getAttribute('position'))meshes.push(o);});
   for(const mesh of meshes){
     const geo=mesh.geometry;
     if(!geo.boundingBox)geo.computeBoundingBox();
@@ -88,7 +93,7 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
     }
     part.computeBoundingSphere();
     geo.setIndex(new THREE.BufferAttribute(new Uint32Array(keep),1));
-    const piece=new THREE.Mesh(part,mesh.material);piece.name=(mesh.name||'')+' (bloque central)';
+    const piece=new THREE.Mesh(part,mesh.material);piece.name=(mesh.name||'')+' ('+label+')';
     piece.matrixAutoUpdate=false;piece.matrix.copy(mesh.matrix);
     Object.assign(piece,{castShadow:mesh.castShadow,receiveShadow:mesh.receiveShadow,renderOrder:mesh.renderOrder,frustumCulled:mesh.frustumCulled});
     piece.onBeforeRender=mesh.onBeforeRender;
@@ -96,6 +101,11 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
     mesh.parent.add(piece);if(staticMeshes.includes(mesh))staticMeshes.push(piece);
     hidden.push(piece);
   }
+  return hidden;};
+  // The partition first (always gone), then the block (gone with the option).
+  const partition=carve(PARTITION,'tabique del estudio');
+  for(const m of partition)m.visible=false;
+  hidden.push(...carve(BOXES,'bloque central'));
   // A2's ten fronts (glass doors and drawers): lifted closed into their groups, hidden with it.
   const a2=fronts.list.filter(f=>{const [x,z]=f.pivot||[0,0];return x>BLOCK.x0&&x<BLOCK.x1&&z>BLOCK.z0&&z<BLOCK.z1+.02;});
   for(const f of a2)fronts.set(f,0);
@@ -103,7 +113,7 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
   const gone=doors.filter(d=>['Suite derecha','Suite izquierda','Estudio'].includes(d.name));
   const screen=scene.getObjectByName('Mampara estudio');
   // The screen's panes and the partition's two stubs (the façade pillar, Estructura 2,927-3,191, stays).
-  const screenColliders=colliders.filter(c=>c.name==='Vidrio fijo estudio'||c.name==='Tabique'&&c.poly.every(([x,z])=>x>3.08&&x<3.20&&z>-9.52&&z<-5.90));
+  const screenColliders=colliders.filter(c=>c.name==='Vidrio fijo estudio');   // app.js drops the stubs' colliders
   const blockColliders=colliders.filter(inBlock);
   const tubCollider=colliders.find(c=>c.name==='Banera exenta piedra crema');
 
@@ -140,8 +150,13 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
   const plaster=new THREE.Mesh(merge([boxGeo(BLOCK.x0,BLOCK.x1,BULKHEAD.y0-.002,BULKHEAD.y1,BLOCK.z0,BLOCK.z1)]),new THREE.MeshStandardMaterial({color:'#efe9e1',roughness:.92}));
   const strip=new THREE.Mesh(merge([boxGeo(3.088,3.194,BULKHEAD.y1-.002,BULKHEAD.y1+.05,-9.512,BLOCK.z0)]),plaster.material.clone());strip.name='Techo sobre el tabique del estudio';
   plaster.name='Dintel dormitorio abierto';plaster.receiveShadow=true;
-  lightObject(oak,lighting,1.15);lightObject(plaster,lighting,1.3);lightObject(strip,lighting,1.7);
-  for(const m of [oak,plaster,strip]){group.add(m);staticMeshes.push(m);}
+  // The pillar's and the block's faces where the stubs met them were never lit by the bake: a
+  // 4 mm plaster skin over each (the screen's jambs stand against them).
+  const ends=new THREE.Mesh(merge([boxGeo(3.088,3.194,0,BULKHEAD.y1,-9.512,-9.506),boxGeo(3.088,3.194,0,BULKHEAD.y1,BLOCK.z0-.004,BLOCK.z0+.002)]),plaster.material.clone());
+  ends.name='Testas del tabique del estudio';ends.receiveShadow=true;
+  lightObject(oak,lighting,1.15);lightObject(plaster,lighting,1.3);lightObject(strip,lighting,1.7);lightObject(ends,lighting,1.3);
+  for(const m of [oak,plaster]){group.add(m);staticMeshes.push(m);}
+  for(const m of [strip,ends]){scene.add(m);staticMeshes.push(m);}
 
   // ---- Tub and its floor mixer (rooms/bano.mjs), on a pivot at the tub's centre. ----
   const pivot=new THREE.Group();pivot.name='Bañera desplazada';pivot.position.set(TUB.x,0,TUB.z);scene.add(pivot);pivot.updateMatrixWorld(true);
@@ -190,7 +205,7 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
       pivot.rotation.y=on?Math.PI:0;pivot.position.z=TUB.z+(on?TUB_DZ:0);pivot.updateMatrixWorld(true);
     }};
   state.set(false);
-  console.info(`[suite-abierta] ${hidden.length} meshes hidden with the block, ${a2.length} fronts, ${blockColliders.length} colliders, ${moved.length} tub pieces; laths ${LATTICE.count} x ${LATTICE.lath*1000} mm, gap ${(gap*1000).toFixed(1)} mm`);
+  console.info(`[suite-abierta] ${partition.length} meshes gone with the study partition, ${hidden.length} meshes hidden with the block, ${a2.length} fronts, ${blockColliders.length} colliders, ${moved.length} tub pieces; laths ${LATTICE.count} x ${LATTICE.lath*1000} mm, gap ${(gap*1000).toFixed(1)} mm`);
   return state;
 }
 

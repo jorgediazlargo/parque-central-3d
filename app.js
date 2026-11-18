@@ -15,7 +15,7 @@ import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
 import {createChimeneas} from './chimenea.mjs?v=b0e1e453e0';
-import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=4e43369670';
+import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=bc8b1c42e1';
 import {createPhotoMode} from './photo.mjs?v=a6d7d5dd17';
 import {createMirrors} from './mirrors.mjs?v=ffbe3ce218';
 
@@ -120,8 +120,8 @@ function glassMaterial(){
 // the palillería, mirrored about it (A), blending into the bedroom floor at z -6,12 (B). The tub's old
 // place (x 1,80-3,40, z -4,05/-3,25) kept its baked shadow: there the floor takes the light of the rows
 // 30 cm clear of it, north and south (C), faded in at the edges. Where the bedroom/study partition stood
-// (x 3,091-3,192, its stubs and lintel gone with the study screen) the floor takes the bedroom's light
-// 9 cm west of it (L) and the study's 9 cm east (R), blended across.
+// (x 3,091-3,192: its stubs and lintel are gone in both versions, the M3 screen runs pillar to block)
+// the floor takes the bedroom's light 9 cm west of it (L) and the study's 9 cm east (R), blended across.
 const FLOOR_FIX=`uniform float suiteOpen,floorFix;uniform vec3 floorFixA[2],floorFixB[2],floorFixC[2],floorFixL[2],floorFixR[2];
 vec4 floorBakedSample(sampler2D page0,sampler2D page1,vec3 c[2],vec2 p){
   vec2 uv=vec2(dot(c[0],vec3(p,1.0)),dot(c[1],vec3(p,1.0)));
@@ -132,11 +132,14 @@ vec4 floorAcross(sampler2D page0,sampler2D page1,vec2 p){
   return mix(l,r,smoothstep(3.0,3.283,p.x));
 }
 vec4 floorBakedFix(vec4 rgbm,sampler2D page0,sampler2D page1,vec2 p){
-  if(suiteOpen*floorFix<.5)return rgbm;
-  if(p.x>3.0&&p.x<3.283&&p.y>-9.51&&p.y<-5.91){
-    float w=smoothstep(3.0,3.06,p.x)*(1.0-smoothstep(3.223,3.283,p.x))*smoothstep(-9.51,-9.48,p.y);
+  if(floorFix<.5)return rgbm;
+  if(p.x>3.0&&p.x<3.283&&p.y>-9.51&&p.y<-5.91&&(suiteOpen>.5||p.y<-9.06||p.y>-6.36)){
+    // Without the open bedroom only the stubs' footprint (and 15 cm round it) changes.
+    float w=smoothstep(3.0,3.06,p.x)*(1.0-smoothstep(3.223,3.283,p.x))*smoothstep(-9.51,-9.48,p.y)
+      *max(suiteOpen,1.0-smoothstep(-9.21,-9.06,p.y)+smoothstep(-6.36,-6.21,p.y));
     return mix(vec4(rgbm.rgb*rgbm.a,1.0),floorAcross(page0,page1,p),w);
   }
+  if(suiteOpen<.5)return rgbm;
   if(p.x>1.45&&p.x<3.75&&p.y>-4.35&&p.y<-2.95){
     vec4 n=floorBakedSample(page0,page1,floorFixC,vec2(p.x,-4.35)),s=floorBakedSample(page0,page1,floorFixC,vec2(p.x,-2.95));
     float w=smoothstep(1.45,1.65,p.x)*(1.0-smoothstep(3.55,3.75,p.x))*smoothstep(-4.35,-4.2,p.y)*(1.0-smoothstep(-3.1,-2.95,p.y));
@@ -502,7 +505,12 @@ function box(group,w,h,d,x,y,z,mat){
 // Studio screen after render 4: warm bronze-oak profiles, paired stiles at every joint,
 // rails at hand and transom height and arched side lites with an inner concentric arc.
 // M3 (G06): oak frame 3.00 x 2.20, rails at 0.78 and 1.87, arcs of 0.30 at the top corners.
-const STUDY={frame:.035,stile:.026,depth:.045,rails:[.78,1.87],height:2.20,side:.11,radius:.30};
+// Jorge, 18/11/2026: no plaster round it. The stubs (30 cm each side) and the lintel over 2,20
+// go, and the screen runs from the façade pillar to the central block (3,60 m, data.fixedStudy
+// at load) and from floor to ceiling (2,55): fixed panes of 1,20 either side of the leaves, which
+// keep 2,20 under a glazed transom.
+const STUDY={frame:.035,stile:.026,depth:.045,rails:[.78,1.87],height:2.55,leaf:2.20,side:.11,radius:.30};
+const STUDY_SPAN=[-9.51008,-5.90989];   // z of the pillar's face and the block's (house.json colliders)
 const studyFrame=material('#ffffff','wood',.55);
 function studyPanel(group,width,height){
   const {stile,depth,rails}=STUDY;
@@ -591,7 +599,7 @@ function setupDoors(){
   const [a,b]=data.fixedStudy,g=new THREE.Group(),length=Math.hypot(b[0]-a[0],b[1]-a[1]);g.name='Mampara estudio';
   g.position.set(a[0],0,a[1]);g.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);scene.add(g);runtimeObjects.push(g);
   const study=doors.find(d=>d.name==='Estudio'),along=p=>((p[0]-a[0])*(b[0]-a[0])+(p[1]-a[1])*(b[1]-a[1]))/length;
-  const {frame:f,stile,depth,rails,height:h,side,radius:r}=STUDY,doorFrom=along(study.a),doorTo=along(study.b);
+  const {frame:f,stile,depth,rails,height:h,leaf:hl,side,radius:r}=STUDY,doorFrom=along(study.a),doorTo=along(study.b);
   const extrude=(shape,z=0,mat=studyFrame,d=depth)=>{
     const geo=new THREE.ExtrudeGeometry(shape,{depth:d,bevelEnabled:false,curveSegments:24});geo.translate(0,0,z-d/2);
     const o=new THREE.Mesh(geo,mat);o.castShadow=mat!==mats.glass;o.receiveShadow=true;g.add(o);return o;
@@ -605,11 +613,13 @@ function setupDoors(){
   };
   // Outer frame with rounded upper corners, sill included.
   const outer=arched(0);outer.holes.push(arched(f));extrude(outer);
-  // Fixed glazing on both sides of the French pair.
+  // Fixed glazing on both sides of the French pair, and the transom over it.
   for(const [x0,x1] of [[f,doorFrom],[doorTo,length-f]])extrude(arched(f,x0,x1),0,mats.glass,.010);
-  // Stiles at the door opening; rails across the fixed panels.
+  box(g,doorTo-doorFrom,h-f-hl,.010,(doorFrom+doorTo)/2,(hl+h-f)/2,0,mats.glass);
+  // Stiles at the door opening; rails across the fixed panels, one at the leaves' head right across.
   box(g,stile,h-2*f,depth,doorFrom-stile/2,h/2,0,studyFrame);box(g,stile,h-2*f,depth,doorTo+stile/2,h/2,0,studyFrame);
   for(const y of rails)for(const [x0,x1] of [[f,doorFrom],[doorTo,length-f]])box(g,x1-x0,.032,depth,(x0+x1)/2,y,0,studyFrame);
+  box(g,length-2*f,.032,depth,length/2,hl+.016,0,studyFrame);
   // Narrow side lite of each fixed panel: a stile `side` in from the jamb that turns
   // into an arc concentric with the frame's corner and runs on as a top rail.
   const ri=r-side;
@@ -1040,7 +1050,11 @@ async function load(){
     const [json,buffer]=await house;
     // The bench at the foot of the master bed is gone (rooms/dormitorio.mjs): so is its collider.
     const progress=window.loadProgress;progress?.stage(.1);
-    data=json;data.colliders=data.colliders.filter(c=>c.name!=='Banco principal cuerpo');timeOfDay.night=settings.night;await initScene(buffer,bake);progress?.stage(.35);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);progress?.stage(.5);
+    data=json;data.colliders=data.colliders.filter(c=>c.name!=='Banco principal cuerpo');
+    // M3 without the partition round it (STUDY): the stubs' colliders go and the fixed panes reach the pillar and the block.
+    {const [z0,z1]=STUDY_SPAN,x=data.fixedStudy[0][0];data.fixedStudy=[[x,z0],[x,z1]];
+      data.colliders=data.colliders.filter(c=>!(c.name==='Tabique'&&c.poly.every(([px,pz])=>px>3.08&&px<3.20&&(pz>z0-.01&&pz<-9.20||pz>-6.22&&pz<z1+.01))));
+      for(const c of data.colliders)if(c.name==='Vidrio fijo estudio')c.poly=c.poly.map(([px,pz])=>[px,Math.abs(pz+9.2103)<1e-3?z0:Math.abs(pz+6.20986)<1e-3?z1:pz]);}timeOfDay.night=settings.night;await initScene(buffer,bake);progress?.stage(.35);await Promise.all([exterior(views),surfaceTextures(surfaceMaps)]);progress?.stage(.5);
     lightmap.syncTextures();
     // Per-room refinements (rooms/<id>.mjs); a failing module is logged and skipped.
     const rooms=applyRooms({scene,camera,renderer,mats,staticMeshes,lightmap,data,doors,curtains,lighting,timeOfDay});
