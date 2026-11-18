@@ -14,7 +14,7 @@ import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
-import {createChimeneas} from './chimenea.mjs?v=61bb30a7bb';
+import {createChimeneas} from './chimenea.mjs?v=f5fe79aeab';
 import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=bc8b1c42e1';
 import {createPhotoMode} from './photo.mjs?v=a6d7d5dd17';
 import {createMirrors} from './mirrors.mjs?v=ffbe3ce218';
@@ -35,9 +35,9 @@ let eye=1.69;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
 const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,closet:false,hallLime:false,fireplace:'',suiteOpen:false,eye:1.69};
 try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime','fireplace','suiteOpen','eye'])if(key in saved)settings[key]=saved[key];}catch{}
-// Salón: '' (the plan) or 'corta'.
-// Only the short fireplace is left (18/11/2026): a saved long or low one (or the old checkbox) opens it.
-settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(settings.fireplace)?'corta':'';
+// Salón: '' (the plan) or 'baja'.
+// Only the low fireplace is left (18/11/2026): a saved long or short one (or the old checkbox) opens it.
+settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(settings.fireplace)?'baja':'';
 // ?noche (or ?noche=1) opens at night, ?noche=0 by day, whatever was saved; ?luces=0 by day
 // with the artificial lights off, ?luces with them on.
 {const q=new URLSearchParams(location.search);if(q.get('noche')!==null)settings.night=q.get('noche')!=='0';if(q.get('luces')!==null)settings.lamps=q.get('luces')!=='0';}
@@ -47,7 +47,7 @@ settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(
 // ?abierto=1 opens with the master bedroom open to the bath (suite-abierta.mjs), ?abierto=0 as in the plan.
 {const q=new URLSearchParams(location.search).get('abierto');if(q!==null)settings.suiteOpen=q!=='0';}
 // ?chimenea=1 (or any value but 0) opens with the fireplace, ?chimenea=0 without.
-{const q=new URLSearchParams(location.search).get('chimenea');if(q!==null)settings.fireplace=q==='0'?'':'corta';}
+{const q=new URLSearchParams(location.search).get('chimenea');if(q!==null)settings.fireplace=q==='0'?'':'baja';}
 // Altura de vista (menu): an adult 1.80 m tall (eyes at 1.69 m), or eyes at 1.20 m or 0.95 m (the girls'
 // view). ?altura=120 / ?altura=95 (centimetres of eye height; ?altura=180 the adult) forces it; a value saved
 // before (1.60, the old adult eyes) falls back to the adult. Only the camera moves: collisions are 2D, the floor is flat.
@@ -862,7 +862,7 @@ function setHallLime(on){
 }
 
 // Salón con chimenea (chimenea.mjs): the salón column grown into a plaster block with a
-// fireplace open on three sides, after the studio's render 2a: the column doubled (chimenea.mjs).
+// low open fireplace against the column's north face (chimenea.mjs).
 let fireplace=null;
 function setFireplace(variant){
   timeSwitch=timeSwitch.then(()=>{

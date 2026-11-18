@@ -2,11 +2,13 @@
 // 14/11/2026, after the studio's render «2a. Comedor con chimenea». Not in the proyecto
 // de ejecución: B01 keeps the bare structural column (10,13-10,57 x -6,71/-6,17).
 //
-// «Chimenea corta» (Jorge 15/11/2026), the only one left (18/11: the long and the low ones are
-// gone): as if the column were doubled, not stretched: the column plus a copy of itself to the
-// north (1,08 m), a lime-plaster block from the floor to the ceiling, on a low pale-stone plinth.
-// At 40-98 cm a band in black steel holds a gas fireplace in the new half, open on three sides
-// (salón, comedor and north): no glass and no corner posts (Jorge 18/11: «descubierta»).
+// «Chimenea baja» (Jorge 15-16/11/2026), the only one left (18/11: the long and the short
+// ones are gone): the fire is not real (LED and vapour), so it can stand on its own, against
+// the north face of the bare structural column, which stays as in the plan. A low block of
+// exactly the column's section and finish (its faces are the column's own baked plaster: same
+// materials, light read from the column face each one continues), 40 cm high, and on it a dark
+// steel tray with the logs and the flames. Nothing over the fire (Jorge 18/11: no glass, no
+// cap, no lintel, no back plate): it is open on every side and above.
 //
 // Runtime geometry, lit by the room probes like the furniture (lightObject); nothing is
 // baked, so the bake still sees the bare column: the floor carries no baked shadow of the
@@ -14,17 +16,15 @@
 // bloom). Hidden until the option is on; it then also blocks the way (polys, physics).
 import {mergeGeometries} from './assets/jsm/utils/BufferGeometryUtils.js';
 
-// World metres (x east, y up, z south). The column is 10.129-10.567 x -6.71/-6.17; the
-// block wraps it in 4 mm of plaster, so the bake never shows through.
-const BX0=10.125,BX1=10.571;
-const BAND={y0:.40,y1:.98};                                 // fire and logs opening
-const STEEL=.012;                                           // lining thickness
+// World metres (x east, y up, z south). The column is 10.129-10.567 x -6.71/-6.17.
+const COLUMN={x0:10.129,x1:10.567,z0:-6.71,z1:-6.17};
+const BAND={y0:.40};                                        // the block's top, where the tray sits
 export const VARIANTS={
-  // The column twice (2 x 0,54 m) + plaster: fire in the northern copy, plaster jamb before the column.
-  corta:{Z0:-7.254,Z1:-6.166,FIRE:{z0:-7.214,z1:-6.754}},
+  // The short one's fire half, to the column's north face, open above the 40 cm block.
+  baja:{Z0:-7.254,Z1:-6.71,FIRE:{z0:-7.214,z1:-6.754}},
 };
 
-// Shown or not: set('' | 'corta').
+// Shown or not: set('' | 'baja').
 export function createChimeneas(THREE,ctx){
   const all=Object.fromEntries(Object.keys(VARIANTS).map(k=>[k,createChimenea(THREE,ctx,k)]));
   const f={variant:'',
@@ -36,21 +36,12 @@ export function createChimeneas(THREE,ctx){
   return f;
 }
 
-export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,plaster,plasterNormal},variant='corta'){
+export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting},variant='baja'){
   const {Z0,Z1,FIRE}=VARIANTS[variant];
-  const X0=BX0,X1=BX1;
-  const PLINTH={x0:10.10,x1:10.60,z0:Z0,z1:Z1,y:.40};           // plinth, the block's length
-  const IN=.004;                                                // steel 4 mm proud of the plaster
-  const BACK=FIRE.z1;                                           // south end of the steel band
+  const X0=COLUMN.x0,X1=COLUMN.x1;
+  const PLINTH={x0:X0,x1:X1,z0:Z0,z1:Z1};                       // the block stands on the floor like the column
+  const IN=-.003;                                               // the steel tray 3 mm inside the block's faces
   const group=new THREE.Group();group.name='Salón con chimenea '+variant;
-  // Ceiling over the block (D02 says 2,55 in the salón; the cove sits by the walls).
-  let ceiling=2.55;
-  {
-    const rc=new THREE.Raycaster(new THREE.Vector3((X0+X1)/2,1.4,(Z0+Z1)/2),new THREE.Vector3(0,1,0),0,3);
-    const hit=rc.intersectObjects(staticMeshes.filter(m=>m.visible),false).find(h=>h.distance>.5);
-    if(hit&&hit.point.y>2.1&&hit.point.y<2.8)ceiling=hit.point.y;
-  }
-
   // Boxes with metric UVs (u, v in metres on every face), so the plaster keeps its scale.
   const box=(x0,x1,y0,y1,z0,z1)=>{
     const g=new THREE.BoxGeometry(x1-x0,y1-y0,z1-z0);
@@ -63,19 +54,11 @@ export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,pl
     g.translate((x0+x1)/2,(y0+y1)/2,(z0+z1)/2);
     return g;
   };
-  const lists={plaster:[],stone:[],steel:[],char:[],decal:[]};
+  const lists={steel:[],char:[],decal:[]};
 
-  // ---- Lime-plaster block: everything but the band, plus jambs at the south end. ----
-  lists.plaster.push(box(X0,X1,BAND.y1,ceiling-.002,Z0,Z1));
-  lists.plaster.push(box(X0,X1,BAND.y0,BAND.y1,BACK,Z1));               // south of the band (column)
-  // ---- Pale stone plinth. ----
-  lists.stone.push(box(PLINTH.x0,PLINTH.x1,0,PLINTH.y,PLINTH.z0,PLINTH.z1));
-
-  // ---- Black steel: soffit, the back of the firebox, the fire's bed and front rail. ----
-  // Open on three sides: no glass and no corner posts.
-  lists.steel.push(box(X0-IN,X1+IN,BAND.y1-STEEL,BAND.y1,Z0-IN,BACK)); // soffit/lintel
-  lists.steel.push(box(X0,X1,BAND.y0,BAND.y1,FIRE.z1-STEEL,FIRE.z1));  // back of the firebox
-  lists.steel.push(box(X0-IN,X1+IN,BAND.y0,BAND.y0+.07,Z0-IN,FIRE.z1));   // fire bed and front rail
+  // ---- The block (the column's plaster) up to 40 cm, and on it the steel tray, its whole length. ----
+  group.add(...columnFaces(THREE,staticMeshes,{x0:X0,x1:X1,z0:Z0,z1:Z1,top:BAND.y0}));
+  lists.steel.push(box(X0-IN,X1+IN,BAND.y0,BAND.y0+.07,Z0-IN,Z1));
 
   // ---- Ceramic logs on the burner (char). ----
   const cyl=(r,len,axis,cx,cy,cz,seg=14)=>{
@@ -89,7 +72,7 @@ export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,pl
   {const g=cyl(.029,.30,'x',fx,bed+.075,fz);g.rotateY(0);lists.char.push(g);}
   {const g=new THREE.CylinderGeometry(.027,.025,.26,12);g.rotateZ(Math.PI/2);g.rotateY(.55);g.translate(fx,bed+.07,fz+.08);lists.char.push(g);}
 
-  // ---- Contact shadow round the plinth (the bake never saw it). ----
+  // ---- Contact shadow round the block (the bake never saw it). ----
   {
     const pad=.16,w=PLINTH.x1-PLINTH.x0+2*pad,d=PLINTH.z1-PLINTH.z0+2*pad;
     const g=new THREE.PlaneGeometry(w,d);g.rotateX(-Math.PI/2);
@@ -97,16 +80,7 @@ export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,pl
   }
 
   // ---- Materials. ----
-  const plasterMat=new THREE.MeshStandardMaterial({color:'#ddd3c6',roughness:.9,map:plaster||null,normalMap:plasterNormal||null});
-  // plaster.webp is a detail tile centred on mid-grey (the walls' shader doubles it), 0,75 m a tile.
-  if(plaster){plasterMat.map=plaster.clone();plasterMat.map.repeat.set(1/.75,1/.75);plasterMat.map.needsUpdate=true;
-    plasterMat.onBeforeCompile=shader=>{shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',
-      '#ifdef USE_MAP\n  diffuseColor.rgb*=1.0+(texture2D(map,vMapUv).rgb*1.9922-1.0)*.8;\n#endif');};
-    plasterMat.customProgramCacheKey=()=>'chimenea-plaster';}
-  if(plasterNormal){plasterMat.normalMap=plasterNormal.clone();plasterMat.normalMap.repeat.set(1/.75,1/.75);plasterMat.normalMap.needsUpdate=true;plasterMat.normalScale.set(.6,.6);}
   const mats={
-    plaster:plasterMat,
-    stone:new THREE.MeshStandardMaterial({color:'#e4dacb',roughness:.72,normalMap:plasterNormal||null,normalScale:new THREE.Vector2(.25,.25)}),
     steel:new THREE.MeshStandardMaterial({color:'#1b1a18',roughness:.55,metalness:.35}),
     char:new THREE.MeshStandardMaterial({color:'#2b2723',roughness:.95,emissive:'#ff4a12',emissiveIntensity:.05}),
     decal:new THREE.MeshBasicMaterial({map:shadowTexture(THREE),transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2}),
@@ -115,7 +89,7 @@ export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,pl
     if(!list.length)continue;
     const mesh=new THREE.Mesh(mergeGeometries(list.map(g=>g.index?g.toNonIndexed():g).map(g=>{for(const k of Object.keys(g.attributes))if(!['position','normal','uv','color'].includes(k))g.deleteAttribute(k);return g;})),mats[key]);
     mesh.name='chimenea:'+key;
-    mesh.castShadow=key!=='decal';mesh.receiveShadow=key!=='decal';
+    mesh.castShadow=mesh.receiveShadow=key!=='decal';
     if(key!=='decal')lightObject(mesh,lighting);
     group.add(mesh);
   }
@@ -158,12 +132,85 @@ export function createChimenea(THREE,{scene,staticMeshes,lightObject,lighting,pl
   scene.add(group);
   // Collision footprint (block and plinth), as physics polygons [x, z].
   const rect=(x0,x1,z0,z1)=>[[x0,z0],[x1,z0],[x1,z1],[x0,z1]];
-  const polys=[rect(PLINTH.x0,PLINTH.x1,PLINTH.z0,PLINTH.z1),rect(X0,X1,Z0,Z1)];
+  const polys=[rect(X0,X1,Z0,Z1)];
   const state={on:false,polys,group,
     set(on){state.on=on;group.visible=on;},
     tick(t){flame.uniforms.time.value=t;const f=.9+.1*Math.sin(t*7.3)*Math.sin(t*3.1);mats.char.emissiveIntensity=.06*f;}};
   state.set(false);
   return state;
+}
+
+// The block's plaster: west, east and north faces up to `top` (the steel tray covers its top), each
+// with the material of the column face it continues and that face's baked light (its
+// lightmap UVs, read at the matching point of the column: same height, z or x mapped
+// across), so block and column are one finish in every light. The column is split in
+// two exported regions at x 10,18 (salón and shared walls).
+function columnFaces(THREE,staticMeshes,{x0,x1,z0,z1,top}){
+  const C=COLUMN,eps=.002;
+  // Column triangles per face: west (x0, normal -x), east (x1, +x), north (z0, -z).
+  const faces={west:[],east:[],north:[]};
+  for(const mesh of staticMeshes){
+    if(mesh.userData.exported?.material!=='wall')continue;
+    const g=mesh.geometry,p=g.getAttribute('position'),n=g.getAttribute('normal'),l=g.getAttribute('uv1');
+    if(!l)continue;
+    const count=g.index?g.index.count:p.count;
+    for(let i=0;i<count;i+=3){
+      const v=[0,1,2].map(k=>g.index?g.index.getX(i+k):i+k);
+      const P=v.map(k=>[p.getX(k),p.getY(k),p.getZ(k)]),L=v.map(k=>[l.getX(k),l.getY(k)]),nx=n.getX(v[0]),nz=n.getZ(v[0]);
+      const inZ=P.every(q=>q[2]>=C.z0-eps&&q[2]<=C.z1+eps),inX=P.every(q=>q[0]>=C.x0-eps&&q[0]<=C.x1+eps);
+      if(nx<-.9&&inZ&&P.every(q=>Math.abs(q[0]-C.x0)<eps))faces.west.push({mesh,uv:P.map(q=>[-q[2],q[1]]),L});
+      else if(nx>.9&&inZ&&P.every(q=>Math.abs(q[0]-C.x1)<eps))faces.east.push({mesh,uv:P.map(q=>[-q[2],q[1]]),L});
+      else if(nz<-.9&&inX&&P.every(q=>Math.abs(q[2]-C.z0)<eps))faces.north.push({mesh,uv:P.map(q=>[q[0],q[1]]),L});
+    }
+  }
+  // (mesh, lightmap UV) at a point (a, b) of a column face, in that face's (u, v) plane.
+  const at=(face,a,b)=>{
+    let best=null;
+    for(const t of faces[face]){
+      const [p,q,r]=t.uv,d=(q[0]-p[0])*(r[1]-p[1])-(r[0]-p[0])*(q[1]-p[1]);if(Math.abs(d)<1e-9)continue;
+      const w1=((a-p[0])*(r[1]-p[1])-(r[0]-p[0])*(b-p[1]))/d,w2=((q[0]-p[0])*(b-p[1])-(a-p[0])*(q[1]-p[1]))/d,w0=1-w1-w2;
+      const worst=Math.min(w0,w1,w2);
+      if(!best||worst>best.worst)best={worst,mesh:t.mesh,uv:[0,1].map(k=>w0*t.L[0][k]+w1*t.L[1][k]+w2*t.L[2][k])};
+      if(worst>=-1e-6)break;
+    }
+    if(!best)throw Error('Columna sin luz horneada');
+    return best;
+  };
+  const mz=z=>C.z0+.002+(z-z0)/(z1-z0)*(C.z1-C.z0-.004);             // block z -> column z
+  // The column's north face has a lightmap seam at 1,016 m: the cap reads its light just below.
+  const SPLIT=10.18,NORTH_MAX=.95,clampY=y=>Math.min(Math.max(y,.002),2.5);
+  const quads=new Map();                                             // material -> triangles
+  // A rectangle: corners (world), normal, the column face and its (a, b) for each corner.
+  const quad=(corners,normal,face,ab)=>{
+    const looks=ab.map(([a,b])=>at(face,a,b));
+    // The middle decides the material (a quad never crosses the region split).
+    const mid=at(face,(ab[0][0]+ab[2][0])/2,(ab[0][1]+ab[2][1])/2).mesh.material;
+    if(!quads.has(mid))quads.set(mid,[]);
+    const list=quads.get(mid),uvOf=c=>Math.abs(normal[0])>.5?[-c[2],c[1]]:Math.abs(normal[1])>.5?[c[0],-c[2]]:[c[0],c[1]];
+    for(const k of [0,1,2,0,2,3])list.push({p:corners[k],n:normal,uv:uvOf(corners[k]),l:looks[k].uv});
+  };
+  const side=(x,face,normal,ya,yb,za,zb)=>{
+    const c=normal[0]<0?[[x,ya,za],[x,ya,zb],[x,yb,zb],[x,yb,za]]:[[x,ya,zb],[x,ya,za],[x,yb,za],[x,yb,zb]];  // counter-clockwise from outside
+    quad(c,normal,face,c.map(q=>[-mz(q[2]),clampY(q[1])]));
+  };
+  for(const [x,face,normal] of [[x0,'west',[-1,0,0]],[x1,'east',[1,0,0]]])side(x,face,normal,0,top,z0,z1);
+  // North face: lit like the shared part of the column's north face (its
+  // salón strip, x < 10,18, is two texels wide: read at its edge it frays into dots).
+  const nx=x=>Math.max(x,SPLIT+.03);
+  {
+    const [xa,xb]=[x0,x1];
+    const c=[[xb,0,z0],[xa,0,z0],[xa,top,z0],[xb,top,z0]];
+    quad(c,[0,0,-1],'north',c.map(q=>[nx(q[0]),Math.min(clampY(q[1]),NORTH_MAX)]));
+  }
+  return [...quads].map(([material,list])=>{
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(list.flatMap(v=>v.p),3));
+    g.setAttribute('normal',new THREE.Float32BufferAttribute(list.flatMap(v=>v.n),3));
+    g.setAttribute('uv',new THREE.Float32BufferAttribute(list.flatMap(v=>v.uv),2));
+    g.setAttribute('uv1',new THREE.Float32BufferAttribute(list.flatMap(v=>v.l),2));
+    const mesh=new THREE.Mesh(g,material);mesh.name='chimenea:columna';mesh.castShadow=mesh.receiveShadow=true;
+    return mesh;
+  });
 }
 
 // Soft rectangular contact shadow (alpha falls off within the padding).
