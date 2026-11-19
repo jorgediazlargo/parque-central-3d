@@ -34,7 +34,7 @@ const mobile=matchMedia('(pointer:coarse)').matches,eyeHeights=[1.69,1.2,.95];
 let eye=1.69;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
 const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,fireplace:'',suiteOpen:false,eye:1.69};
-try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','lamps','fullscreen','fireplace','suiteOpen','eye'])if(key in saved)settings[key]=saved[key];}catch{}
+try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['night','lamps','fullscreen','fireplace','suiteOpen','eye'])if(key in saved)settings[key]=saved[key];}catch{}
 // Salón: '' (the plan) or 'baja'.
 // Only the low fireplace is left (18/11/2026): a saved long or short one (or the old checkbox) opens it.
 settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(settings.fireplace)?'baja':'';
@@ -51,7 +51,9 @@ settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(
 // before (1.60, the old adult eyes) falls back to the adult. Only the camera moves: collisions are 2D, the floor is flat.
 {const q=new URLSearchParams(location.search).get('altura'),h=q==='180'?1.69:+q/100;if(eyeHeights.includes(h))settings.eye=h;if(!eyeHeights.includes(settings.eye))settings.eye=1.69;eye=settings.eye;}
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
-for(const key of ['sound','bob','night','lamps','fullscreen','suiteOpen']) {
+// Footstep sound and the gentle bob are always on (no menu option since 19/11/2026); the bob
+// still stays off when the system asks for reduced motion.
+for(const key of ['night','lamps','fullscreen','suiteOpen']) {
   $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='suiteOpen')setSuiteOpen(settings.suiteOpen);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
 }
 $('eye').value=String(eye);$('eyeMeta').textContent=eyeMeta();
