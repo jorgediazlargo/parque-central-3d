@@ -3,14 +3,17 @@
 // edits inside this room's zone (scripts/rooms/vestidor.json).
 //
 // Render 6: glazed oak wardrobes lit from above by the LED strip under each shelf.
-// - Hanging clothes: thin open-hemmed garments (about 700 triangles each, merged per
-//   fabric) draped over oak hangers whose middle and brass hook show above the collar;
-//   sleeves hang apart from the body with a cuff seam. Folds, plackets, buttons, lapels
-//   and knit ribs are drawn in the shader with pixel-wide antialiased lines (no
-//   photographed detail map, which blurred at distance); vertex colours carry each
-//   garment's colour, the overlap shadow between neighbours and the LED light.
-// - Folded stacks on the upper shelves replace the exported round "pillows" (26.000
-//   triangles), with contact shadows on the shelf.
+// - Clothes from a library modelled in Blender (scripts/garments_blender.py, one glb):
+//   shirts with collar, placket, buttons and cuffs; knits with ribbed neck, cuffs and
+//   hem; jackets and coats with lapels, pocket flaps and buttons; 2 variants of each,
+//   2.600-4.300 triangles, with the drape folds, seams and stitching baked into a
+//   normal map and ambient occlusion in the vertex colour. Contoured oak hangers and
+//   brass hooks; folded pieces (shirt, knit, tee) on the shelves; loafers, sneakers,
+//   Chelsea boots and pumps instead of the exported shoe blocks (found by size and
+//   removed by index). All drawn as InstancedMesh with a colour per instance; the LED
+//   light, the shade towards the back and the neighbour's shade, once vertex colours,
+//   are per pixel (ropaShade per instance). About 320.000 triangles for the whole house.
+// - Contact shadows on the shelves under the folded stacks.
 // - Wardrobe interiors: warm gradient down from each strip, darker shelf undersides,
 //   contact lines, and the clothes' shadow on the back panel and the drawer tops.
 // - Glass doors: bronze tint; the sharp reflection of the other glazed fronts (warm
@@ -25,6 +28,8 @@
 // tray to 0,90; their light is the vertical sensor strips up both module sides, so the
 // light falloff from the shelf (STRIP_Y, TOP_STRIP_Y) is only a soft shading.
 const STRIP_Y=1.84, TOP_STRIP_Y=2.18;
+// Clothes library made by scripts/garments_blender.py; ?v= is the file's content hash.
+const ROPA_URL='./assets/rooms/vestidor/ropa.glb?v=4ea2ff940e';
 const SHELF_Y=1.84,HANG_Y=.90;
 // Render 6 palette (sRGB).
 const COLORS={white:'#eeeae3',ivory:'#ddd4c4',ecru:'#c3ae90',sand:'#a28a6c',greige:'#86776a',taupe:'#66553f',olive:'#59543f',brown:'#45362a',umber:'#2c241d'};
@@ -54,278 +59,184 @@ export async function apply(ctx){
   const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647;};
   const V=(x,y,z)=>new THREE.Vector3(x,y,z);
   const smooth=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t);};
-
-  // --- Geometry helpers ------------------------------------------------------------
-  // A (rows x cols) grid; at(j,i) -> [position, uv, fold(vec4), ao]. The fold attribute
-  // feeds the cloth shader: across-garment coordinate (m), distance below the shoulder
-  // (m), phase, kind (0 back, 1 shirt front, 2 jacket front, 3 knit front, 4 sleeve,
-  // 5 plain).
-  const grid=(rows,cols,at,{wrap=true,capEnd=false,capStart=false}={})=>{
-    const pos=[],uv=[],fold=[],ao=[],idx=[];
-    for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){const [p,t,f,a]=at(j,i);pos.push(p.x,p.y,p.z);uv.push(t[0],t[1]);fold.push(...f);ao.push(a);}
-    const cw=wrap?cols:cols-1;
-    for(let j=0;j<rows-1;j++)for(let i=0;i<cw;i++){
-      const a=j*cols+i,b=j*cols+(i+1)%cols,c=(j+1)*cols+(i+1)%cols,d=(j+1)*cols+i;
-      idx.push(a,b,d,b,c,d);
-    }
-    const cap=(row,flip,shade)=>{
-      const s=[0,0,0],f=[0,0,0,0];
-      for(let i=0;i<cols;i++){const k=row*cols+i;for(let e=0;e<3;e++)s[e]+=pos[k*3+e];for(let e=0;e<4;e++)f[e]+=fold[k*4+e];}
-      const k=pos.length/3;pos.push(s[0]/cols,s[1]/cols+(flip?.004:-.004),s[2]/cols);uv.push(0,0);fold.push(...f.map(v=>v/cols));ao.push(shade);
-      for(let i=0;i<cols;i++){const a=row*cols+i,b=row*cols+(i+1)%cols;flip?idx.push(k,a,b):idx.push(k,b,a);}
-    };
-    if(capEnd)cap(rows-1,false,.55);if(capStart)cap(0,true,.8);
-    const g=new THREE.BufferGeometry();
-    g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-    g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-    g.setAttribute('clothFold',new THREE.Float32BufferAttribute(fold,4));
-    g.setAttribute('ao',new THREE.Float32BufferAttribute(ao,1));
-    g.setIndex(idx);g.computeVertexNormals();
-    return g;
-  };
-  const spow=(v,e)=>Math.sign(v)*Math.abs(v)**e;
-
-  // d: thickness (half) at the shoulders, chest and hem: hanging cloth is thin, the
-  // hanger gives the shoulders their volume. The hem stays open (no closed "bag").
-  const TYPES={
-    shirt:{L:[.74,.80],W:.200,d:[.013,.020,.008],waist:.90,drop:.050,flare:.010,sleeve:.60,sr:[.040,.028],sz:.012,collar:true,front:1,fabric:'linen',hem:.045},
-    jacket:{L:[.72,.77],W:.218,d:[.016,.032,.020],waist:.93,drop:.020,flare:.006,sleeve:.60,sr:[.046,.036],sz:.018,front:2,fabric:'linen',hem:0},
-    knit:{L:[.60,.65],W:.196,d:[.013,.022,.012],waist:.88,drop:.064,flare:-.016,sleeve:.55,sr:[.042,.030],sz:.016,front:3,fabric:'fabric',hem:0},
-    coat:{L:[.86,.90],W:.212,d:[.016,.036,.024],waist:.95,drop:.026,flare:.024,sleeve:.64,sr:[.050,.040],sz:.020,front:2,fabric:'linen',hem:0},
-  };
-  // Hanger: its centre line (local y below the rail centre), sloping to the tips like a
-  // shoulder. The hook rises from its middle to the rail, so hanger and hook read.
-  const HANG=.080,HANGER_H=.013,HANGER_D=.009;
-  const hangerY=(x,W)=>-HANG-.040*Math.min(1,Math.abs(x)/(W-.012))**1.4;
-
-  const garment=(type,narrow,maxL=9)=>{
-    const T=TYPES[type],ph=rnd()*6.28,ph2=rnd()*6.28;
-    const W=T.W*(narrow?.88:1)*(.97+rnd()*.06),L=Math.min(maxL,T.L[0]+rnd()*(T.L[1]-T.L[0]));
-    const yTop=-HANG+HANGER_H+.003,amp=type==='knit'?.004:.009;
-    // Shoulder line: draped over the hanger (cloth just above its top edge), then falling
-    // past its tips. The neck opening dips, deeper in front, so the middle of the hanger
-    // and its hook show above the collar.
-    const neck=x=>1-smooth(.058,.092,Math.abs(x));
-    const yTip=hangerY(W,W)+HANGER_H+.003;
-    const shoulderY=(x,front)=>Math.min(hangerY(x,W)+HANGER_H+.003,yTip-T.drop*Math.max(0,Math.abs(x)/W-.85)/.15)
-      -neck(x)*(T.collar?(front?.022:.006):(front?.034:.014));
-    const parts=[];
-    // Body: a flattened open tube, thick only where the hanger fills the shoulders.
-    const rows=13,cols=18;
-    parts.push(grid(rows,cols,(j,i)=>{
-      const v=(j/(rows-1))**1.2,f=i/cols*Math.PI*2,c=Math.cos(f),s=Math.sin(f);
-      const w=W*(1-(1-T.waist)*Math.sin(Math.min(1,v*1.7)*Math.PI*.5))+T.flare*v*v;
-      const d=v<.15?T.d[0]+(T.d[1]-T.d[0])*smooth(0,.15,v):T.d[1]+(T.d[2]-T.d[1])*smooth(.15,1,v);
-      let x=w*spow(c,.6),z=d*spow(s,.85);
-      // Drape: the whole sheet waves more towards the hem, the back a little less.
-      z+=amp*v*(Math.sin(x*17+ph2)+.5*Math.sin(x*31+ph))*(s>0?1:.6);
-      x+=c*Math.abs(c)*.006*v*Math.sin(v*9+ph);
-      const yS=shoulderY(x,s>0);
-      // Hem: shirt tails longer at the centre, a little uneven everywhere.
-      const yH=yTop-L+T.hem*Math.abs(c)**1.5+.007*Math.sin(x*24+ph)+.004*Math.sin(x*53+ph2);
-      const y=yS+(yH-yS)*v;
-      // Local shade: side seams (where sleeves and neighbours overlap).
-      const a=1-.30*smooth(.70,1,Math.abs(c))*Math.min(1,v*4);
-      return [V(x,y,z+.004*v*v),[(f/(Math.PI*2))*2*(w+d),y],[x,yS-y,ph,s>.2?T.front:0],a];
-    }));
-    // Sleeves: from the shoulder point, hanging just outside the body, a little in front.
-    for(const side of [-1,1]){
-      const z0=(side>0?.008:-.004)+(rnd()-.5)*.008,len=T.sleeve*(.97+rnd()*.05),sy=shoulderY(W,false);
-      const curve=new THREE.CatmullRomCurve3([
-        V(side*(W-.030),sy+.002,z0*.3),
-        V(side*(W+.010),sy-.06,z0),
-        V(side*(W+.018),sy-.30,z0+.004),
-        V(side*(W+.010+rnd()*.008),sy-len,z0+.010)]);
-      const ph3=rnd()*6.28,rows2=8,cols2=7,P=curve.getSpacedPoints(rows2-1),Z=V(0,0,1);
-      parts.push(grid(rows2,cols2,(j,i)=>{
-        const t=j/(rows2-1),p=P[j],Tn=(j<rows2-1?P[j+1].clone().sub(p):p.clone().sub(P[j-1])).normalize();
-        const a1=new THREE.Vector3().crossVectors(Tn,Z).normalize(),a2=new THREE.Vector3().crossVectors(a1,Tn).normalize();
-        const cap=Math.min(1,.45+t*7),wob=1+.07*Math.sin(t*16+ph3);
-        const rx=(T.sr[0]+(T.sr[1]-T.sr[0])*t)*cap*wob,rz=T.sz*cap*(1-.15*t),f=i/cols2*Math.PI*2;
-        const q=p.clone().addScaledVector(a1,rx*Math.cos(f)).addScaledVector(a2,rz*Math.sin(f));
-        // The side of the sleeve against the body is in its shadow: a dark crease
-        // between sleeve and body.
-        const inner=Math.max(0,-Math.cos(f)*Math.sign(a1.x*side||1));
-        return [q,[i/cols2*.25,t*.6],[(1-t)*len,t*len,ph3,4],1-.45*inner];
-      },{capEnd:true}));
-    }
-    // Shirt collar: a band round the neck, lower at the front.
-    if(T.collar){
-      parts.push(grid(3,12,(j,i)=>{
-        const f=i/12*Math.PI*2,c=Math.cos(f),s=Math.sin(f),h=j/2,front=Math.max(0,s);
-        const y=yTop-.014-.016*front+.022*h-.008*front*h;
-        return [V(.058*c*(1+.10*h),y,(T.d[0]+.005)*s*(1+.20*h)),[f*.1,h*.03],[0,0,0,5],h<.5?.70:.92];
-      }));
-    }
-    return {parts,W};
-  };
-
-  const hanger=W=>{
-    const P=[-1,-.66,-.33,0,.33,.66,1].map(u=>V(u*(W-.012),hangerY(u*(W-.012),W),0));
-    const curve=new THREE.CatmullRomCurve3(P),S=curve.getSpacedPoints(10);
-    const pos=[],idx=[],cols=6;
-    S.forEach((p,j)=>{
-      const t=j/10,e=Math.abs(t*2-1),k=Math.min(1,(1-e)*12+.4),Tn=(j<10?S[j+1].clone().sub(p):p.clone().sub(S[j-1])).normalize();
-      const a1=new THREE.Vector3().crossVectors(Tn,V(0,0,1)).normalize();
-      for(let i=0;i<cols;i++){const f=i/cols*Math.PI*2;const q=p.clone().addScaledVector(a1,HANGER_H*(1-.2*e)*k*Math.cos(f)).add(V(0,0,HANGER_D*k*Math.sin(f)));pos.push(q.x,q.y,q.z);}
-    });
-    for(let j=0;j<10;j++)for(let i=0;i<cols;i++){const a=j*cols+i,b=j*cols+(i+1)%cols,c=(j+1)*cols+(i+1)%cols,d=(j+1)*cols+i;idx.push(a,b,d,b,c,d);}
-    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setIndex(idx);g.computeVertexNormals();return g;
-  };
-  // Hook over the rail, drawn in the plane across the rail (s = outward, y up): a neck
-  // from the hanger to the rail, then the loop round the 14 mm rail.
-  const hookCurve=new THREE.CatmullRomCurve3([[0,-HANG+HANGER_H*.5],[0,-.050],[0,-.026],[.006,-.015],[.0108,-.004],[.0092,.0065],[.003,.011],[-.004,.0106],[-.0096,.005],[-.0108,-.003],[-.0085,-.0095]].map(([s,y])=>V(0,y,s)));
-  const hookGeo=new THREE.TubeGeometry(hookCurve,11,.0022,4,false);
-
-  // --- Materials --------------------------------------------------------------------
-  // One material per fabric: colour, overlap shade and LED light live in vertex colours.
-  // No photographed detail map here: at 2-4 m its 20 cm slubs and loops read as melted,
-  // blotchy cloth. The folds, seams, plackets and ribs are drawn in the shader, with
-  // every line widened to at least a pixel (fwidth) so they stay crisp, never shimmer.
-  const clothMat=kind=>{
-    const m=ctx.cloneMaterial(ctx.mats[kind]);m.color.set('#ffffff');m.vertexColors=true;
-    m.map=null;m.normalMap=null;m.sheen=.18;m.roughness=kind==='fabric'?.92:.80;
-    const prior=m.onBeforeCompile,priorKey=m.customProgramCacheKey.bind(m),key=priorKey();
-    m.onBeforeCompile=(shader,r)=>{
-      prior.call(m,shader,r);
-      shader.vertexShader='attribute vec4 clothFold;\nattribute vec3 clothAcross;\nvarying vec4 vClothFold;\nvarying vec3 vClothAcross;\n'+shader.vertexShader.replace('#include <begin_vertex>',
-        '#include <begin_vertex>\nvClothFold=clothFold;vClothAcross=normalize((viewMatrix*modelMatrix*vec4(clothAcross,0.0)).xyz);');
-      shader.fragmentShader='varying vec4 vClothFold;\nvarying vec3 vClothAcross;\n'+
-        // Antialiased line of half width w at distance d (at least about a pixel wide,
-        // fading as it gets thinner than that).
-        'float clothLine(float d,float w){float fw=max(fwidth(d),1e-5);return (1.0-smoothstep(w,w+fw*1.5,d))*min(1.0,w/fw*1.6);}\n'+
-        shader.fragmentShader.replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
-        {float cu=vClothFold.x,cv=vClothFold.y,cph=vClothFold.z;int ck=int(vClothFold.w+.5);
-        if(ck<5){
-          // Vertical folds that deepen towards the hem; sleeves crease across.
-          float grow=clamp(.3+cv/.28,.3,1.0);
-          float p1=cu*41.0+cph+cv*2.2,p2=cu*83.0+cph*1.7-cv*3.1,p3=cu*19.0+cph*.6+cv*.8;
-          float h=(sin(p1)*.55+sin(p2)*.2+sin(p3)*.75)*grow;
-          float dh=(cos(p1)*22.6+cos(p2)*16.6+cos(p3)*14.3)*grow;
-          if(ck==4){h=(sin(cv*41.0+cph)*.6+sin(cv*17.0+cph*2.0)*.4)*.7;dh=0.0;}
-          normal=normalize(normal-vClothAcross*dh*(ck==3?.005:.010));
-          diffuseColor.rgb*=.52+.53*smoothstep(-1.3,1.1,h);
-          if(ck==4){
-            // Cuff: a seam 6 cm from the end, the cuff band a touch lighter.
-            diffuseColor.rgb*=1.0-.32*clothLine(abs(cu-.062),.0025);
-            if(cu<.062)diffuseColor.rgb*=1.06;
-          }
-          if(ck==1){
-            // Shirt placket edges and buttons.
-            diffuseColor.rgb*=1.0-.28*clothLine(abs(abs(cu)-.016),.0015);
-            vec2 bq=vec2(cu,mod(cv+.02,.085)-.0425);
-            diffuseColor.rgb*=1.0-.30*clothLine(length(bq),.0035)*step(.03,cv);
-          }
-          if(ck==2){
-            // Jacket lapels opening into the front edge.
-            float lap=.030+.085*clamp(cv/.30,0.0,1.0);
-            float line=cv<.30?abs(abs(cu)-lap):abs(cu);
-            diffuseColor.rgb*=1.0-.40*clothLine(line,.0025);
-            if(cv<.30&&abs(cu)<lap)diffuseColor.rgb*=.72;
-            diffuseColor.rgb*=1.0-.3*clothLine(length(vec2(cu,cv-.40)),.006);
-          }
-          if(ck==3){
-            // Knit: fine vertical ribs (faded out when finer than a pixel), ribbed hem.
-            float rib=sin(cu*700.0);float fr=fwidth(cu*700.0);
-            diffuseColor.rgb*=1.0-.07*(.5+.5*rib)*(1.0-smoothstep(.8,2.5,fr));
-          }
-        }}`);
-    };
-    m.customProgramCacheKey=()=>key+'|vestidor-cloth7';
-    m.needsUpdate=true;
-    return m;
-  };
-  const cloth={linen:{m:clothMat('linen'),geos:[]},fabric:{m:clothMat('fabric'),geos:[]}};
-  const woodMat=new THREE.MeshStandardMaterial({color:'#b98d5c',roughness:.42});
-  const brass=new THREE.MeshStandardMaterial({color:'#d2b07a',metalness:1,roughness:.22});
-  const woodGeos=[],brassGeos=[];
   const up=V(0,1,0);
 
-  // Vertex colours: linear colour x local shade x neighbours x LED light from the strip
-  // at the wardrobe front (bright shoulders turned to it, darker hems and backs).
-  const paint=(g,color,{front=null,first=true,last=true,centre,out,stripY=STRIP_Y,across})=>{
-    const lin=new THREE.Color(COLORS[color]),p=g.getAttribute('position'),n=g.getAttribute('normal'),a=g.getAttribute('ao');
-    const col=new Float32Array(p.count*3),ledDir=out.clone().multiplyScalar(.6).add(V(0,.8,0)).normalize();
-    for(let i=0;i<p.count;i++){
-      let s=a?a.getX(i):1;
-      if(front){
-        const nf=n.getX(i)*front.x+n.getZ(i)*front.z;
-        if(nf>0&&!last)s*=1-.68*nf;
-        if(nf<0&&!first)s*=1+.62*nf;
-      }
-      const depth=((p.getX(i)-centre.x)*out.x+(p.getZ(i)-centre.z)*out.z)/.22;
-      s*=.80+.20*Math.min(1,Math.max(0,depth*.5+.5));
-      const lf=Math.exp(-Math.max(0,stripY-p.getY(i))/.42);
-      const fac=Math.min(1,Math.max(0,.5+.5*(n.getX(i)*ledDir.x+n.getY(i)*ledDir.y+n.getZ(i)*ledDir.z)));
-      s*=.62+.62*lf*(.45+.55*fac);
-      col[i*3]=lin.r*s;col[i*3+1]=lin.g*s;col[i*3+2]=lin.b*s;
+  // --- Clothes library (scripts/garments_blender.py -> assets/rooms/vestidor/ropa.glb) --
+  // Each piece is a node: shirt_a/b, knit_a/b, jacket_a/b, coat_a/b (hanging from the rail
+  // centre), hanger, hook, fold_shirt/knit/tee (0,30 x 0,30 folded piece, fold edge to
+  // +z) and loafer, sneaker, boot, pump (heel on the floor at the origin, toe to +z).
+  // Their meshes: <node>_cloth (baked normal map, ambient occlusion in COLOR_0), _button,
+  // _lining, _sole, _insole, _laces, hanger_wood, hook_metal.
+  const [gltf,linen,wool]=await Promise.all([
+    ctx.loadModel(ROPA_URL),
+    Promise.all(['detail_1k.webp','nor_gl_1k.webp'].map(f=>ctx.loadTexture('./assets/polyhaven/rough_linen/rough_linen_'+f,{srgb:false}))),
+    Promise.all(['detail_1k.webp','nor_gl_1k.webp'].map(f=>ctx.loadTexture('./assets/polyhaven/poly_wool_herringbone/poly_wool_herringbone_'+f,{srgb:false}))),
+  ]);
+  const lib={};
+  gltf.scene.traverse(o=>{
+    if(!o.isMesh)return;
+    const root=o.parent,part=o.name.startsWith(root.name+'_')?o.name.slice(root.name.length+1):o.name;
+    (lib[root.name]??={})[part]=o;
+  });
+  // Ambient occlusion: softened (the probes already darken the wardrobe), as rgb.
+  for(const piece of Object.values(lib))for(const m of Object.values(piece)){
+    const c=m.geometry.getAttribute('color');if(!c)continue;
+    const a=new Float32Array(c.count*3);
+    for(let i=0;i<c.count;i++){const v=1-.68*(1-Math.min(1,c.getX(i)));a[i*3]=a[i*3+1]=a[i*3+2]=v;}
+    m.geometry.setAttribute('color',new THREE.BufferAttribute(a,3));
+  }
+  // Right shoes: the left ones mirrored in their own geometry (a negative instance scale
+  // would flip the winding, and double-sided shading would light them from inside).
+  for(const n of ['loafer','sneaker','boot','pump']){
+    const R={};
+    for(const [part,m] of Object.entries(lib[n])){
+      const g=m.geometry.clone();g.scale(-1,1,1);
+      const a=g.index.array;for(let i=0;i<a.length;i+=3){const t=a[i+1];a[i+1]=a[i+2];a[i+2]=t;}
+      const c=m.clone();c.geometry=g;c.name=m.name+'_R';R[part]=c;
     }
-    g.setAttribute('color',new THREE.BufferAttribute(col,3));
-    const ac=new Float32Array(p.count*3);for(let i=0;i<p.count;i++){ac[i*3]=across.x;ac[i*3+1]=across.y;ac[i*3+2]=across.z;}
-    g.setAttribute('clothAcross',new THREE.BufferAttribute(ac,3));
+    lib[n+'_R']=R;
+  }
+  const bbox=n=>{const b=new THREE.Box3();for(const m of Object.values(lib[n]))b.union(m.geometry.boundingBox||(m.geometry.computeBoundingBox(),m.geometry.boundingBox));return b;};
+
+  // Materials. Cloth is white and takes each instance's colour; the baked normal map
+  // carries the drape, seams and stitching, a tiled fabric normal (object space, picked
+  // per face orientation) the weave, and the knit ribs are procedural. The wardrobe light
+  // is shaded per pixel from ropaShade (per instance: outward x, z; strip height, 0 =
+  // none; flags 1 first, 2 last on the rail) like the old vertex colours: the LED strip at
+  // the front lights shoulders turned to it, hems and backs stay darker, and the next
+  // garment on the rail shades the faces turned to it.
+  const ROPA_SHADE=`
+    {vec3 rpN=normalize(inverseTransformDirection(normal,viewMatrix));
+    vec3 rpOut=vec3(ropaInst.x,0.0,ropaInst.y);float rpS=1.0;
+    float rpF=dot(rpN,ropaFront),rpFl=ropaInst.w;
+    if(rpF>0.0&&mod(rpFl,4.0)<2.0)rpS*=1.0-.55*rpF;
+    if(rpF<0.0&&mod(rpFl,2.0)<1.0)rpS*=1.0+.50*rpF;
+    if(ropaInst.z>0.0){
+      float rpD=dot(ropaWorld-ropaOrigin,rpOut)/.22;rpS*=.80+.20*clamp(rpD*.5+.5,0.0,1.0);
+      float rpL=exp(-max(0.0,ropaInst.z-ropaWorld.y)/.42);
+      float rpA=clamp(.5+.5*dot(rpN,normalize(rpOut*.6+vec3(0.0,.8,0.0))),0.0,1.0);
+      rpS*=.62+.62*rpL*(.45+.55*rpA);
+    }
+    diffuseColor.rgb*=rpS;}`;
+  const ropaMaterial=(params,{key,detail=null,tile=.01,detailN=.5,detailA=.06,ribs=0})=>{
+    const m=new THREE.MeshPhysicalMaterial({color:'#ffffff',side:THREE.DoubleSide,...params});
+    m.onBeforeCompile=sh=>{
+      sh.uniforms.ropaDetail={value:detail?.[0]??null};sh.uniforms.ropaDetailN={value:detail?.[1]??null};
+      sh.vertexShader='attribute vec4 ropaShade;\nvarying vec3 ropaObj,ropaObjN,ropaWorld,ropaFront,ropaOrigin;\nvarying vec4 ropaInst;\n'+sh.vertexShader
+        .replace('#include <begin_vertex>','#include <begin_vertex>\nropaObj=transformed;ropaObjN=objectNormal;')
+        .replace('#include <project_vertex>',`#include <project_vertex>
+          {vec4 rw=vec4(transformed,1.0);
+          #ifdef USE_INSTANCING
+          rw=instanceMatrix*rw;ropaFront=normalize(mat3(modelMatrix)*instanceMatrix[2].xyz);ropaOrigin=(modelMatrix*instanceMatrix[3]).xyz;
+          #else
+          ropaFront=vec3(0.0,0.0,1.0);ropaOrigin=(modelMatrix*vec4(0.0,0.0,0.0,1.0)).xyz;
+          #endif
+          ropaWorld=(modelMatrix*rw).xyz;ropaInst=ropaShade;}`);
+      let fs='uniform sampler2D ropaDetail,ropaDetailN;\nvarying vec3 ropaObj,ropaObjN,ropaWorld,ropaFront,ropaOrigin;\nvarying vec4 ropaInst;\n'+
+        `vec2 ropaUV(){vec3 n=abs(ropaObjN);return (n.x>n.z&&n.x>n.y?ropaObj.zy:(n.y>n.z?ropaObj.xz:ropaObj.xy))/${tile.toFixed(4)};}\n`+sh.fragmentShader;
+      if(detail)fs=fs.replace('#include <color_fragment>',`#include <color_fragment>
+        diffuseColor.rgb*=1.0+${detailA.toFixed(3)}*(texture2D(ropaDetail,ropaUV()).r*2.0-1.0);`);
+      let nm='';
+      if(detail&&params.normalMap)nm+=`{vec2 duv=ropaUV();vec3 dn=texture2D(ropaDetailN,duv).xyz*2.0-1.0;dn.xy*=${detailN.toFixed(3)};
+        mat3 dt=getTangentFrame(-vViewPosition,normal,duv);normal=normalize(dt*dn);}`;
+      if(ribs&&params.normalMap)nm+=`{float rp=ropaObj.x*6.2832/${ribs.toFixed(4)};float rf=1.0-smoothstep(.6,1.6,fwidth(rp));
+        mat3 rt=getTangentFrame(-vViewPosition,normal,ropaObj.xy);normal=normalize(normal+rt[0]*cos(rp)*.32*rf);}`;
+      sh.fragmentShader=fs.replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\n'+nm+ROPA_SHADE);
+    };
+    m.customProgramCacheKey=()=>'vestidor-ropa-'+key;
+    return m;
   };
+  const clothParams=(piece,o)=>({normalMap:piece.cloth.material.normalMap||null,vertexColors:true,specularIntensity:.3,sheenRoughness:.7,sheenColor:new THREE.Color('#ffffff'),...o});
+  const MATS={
+    shirt:n=>ropaMaterial(clothParams(lib[n],{roughness:.78,sheen:.45}),{key:'shirt',detail:linen,tile:.11,detailN:.35,detailA:.05}),
+    knit:n=>ropaMaterial(clothParams(lib[n],{roughness:.95,sheen:.7}),{key:'knit',ribs:.0042}),
+    jacket:n=>ropaMaterial(clothParams(lib[n],{roughness:.88,sheen:.5}),{key:'jacket',detail:wool,tile:.16,detailN:.8,detailA:.10}),
+    coat:n=>ropaMaterial(clothParams(lib[n],{roughness:.9,sheen:.55}),{key:'coat',detail:wool,tile:.22,detailN:.9,detailA:.12}),
+    fold_shirt:n=>ropaMaterial(clothParams(lib[n],{roughness:.8,sheen:.45}),{key:'fold-shirt',detail:linen,tile:.11,detailN:.35,detailA:.05}),
+    fold_tee:n=>ropaMaterial(clothParams(lib[n],{roughness:.9,sheen:.5}),{key:'fold-tee',detail:linen,tile:.07,detailN:.25,detailA:.04}),
+    fold_knit:n=>ropaMaterial(clothParams(lib[n],{roughness:.95,sheen:.7}),{key:'fold-knit',ribs:.0045}),
+  };
+  const fixed={
+    button:ropaMaterial({color:'#ffffff',roughness:.35,vertexColors:false},{key:'button'}),
+    lining:ropaMaterial({color:'#2a211b',roughness:.6,sheen:.4},{key:'lining'}),
+    wood:ropaMaterial({color:'#b98d5c',roughness:.42},{key:'wood'}),
+    metal:ropaMaterial({color:'#d2b07a',metalness:1,roughness:.22},{key:'metal'}),
+    sole_leather:ropaMaterial({color:'#3b2516',roughness:.55},{key:'sole-leather'}),
+    sole_white:ropaMaterial({color:'#e9e5dc',roughness:.7},{key:'sole-white'}),
+    sole_black:ropaMaterial({color:'#141111',roughness:.4},{key:'sole-black'}),
+  };
+  const shoeMat={
+    loafer:ropaMaterial({vertexColors:true,roughness:.42,clearcoat:.35,clearcoatRoughness:.35,specularIntensity:.6},{key:'shoe-leather'}),
+    pump:ropaMaterial({vertexColors:true,roughness:.32,clearcoat:.5,clearcoatRoughness:.2,specularIntensity:.7},{key:'shoe-patent'}),
+    boot:ropaMaterial({vertexColors:true,roughness:.9,sheen:.6,sheenRoughness:.6,sheenColor:new THREE.Color('#ffffff')},{key:'shoe-suede'}),
+    sneaker:ropaMaterial({vertexColors:true,roughness:.7,specularIntensity:.4},{key:'shoe-canvas'}),
+  };
+  const buttonColor={shirt:'#ece6da',jacket:'#2b211a',coat:'#241b15'};
+
+  // Instances, grouped per mesh and per area (the vestidor's glazed wardrobes, the rest)
+  // so whole groups are culled outside the view.
+  const inZone=p=>ZONE.some(([a,b])=>p.x>=a[0]&&p.x<=b[0]&&p.z>=a[2]&&p.z<=b[2]);
+  const batches=new Map();
+  const put=(mesh,material,matrix,{color=null,shade=[0,0,0,3],area='x'}={})=>{
+    const k=mesh.uuid+'|'+material.uuid+'|'+area;
+    let b=batches.get(k);if(!b)batches.set(k,b={mesh,material,items:[]});
+    b.items.push({matrix:matrix.clone(),color,shade});
+  };
+  const putPiece=(name,matrix,{color,shade,area,clothMat,buttons})=>{
+    const piece=lib[name];
+    for(const [part,mesh] of Object.entries(piece)){
+      if(part==='cloth')put(mesh,clothMat,matrix,{color,shade,area});
+      else if(part==='button')put(mesh,buttons||fixed.button,matrix,{shade,area,color:buttons?null:null});
+      else if(fixed[part])put(mesh,fixed[part],matrix,{shade,area});
+      else if(part==='wood'||part==='metal')put(mesh,fixed[part],matrix,{shade,area});
+      else if(fixed[mesh.material?.name])put(mesh,fixed[mesh.material.name],matrix,{shade,area});
+      else put(mesh,fixed.lining,matrix,{shade,area});
+    }
+  };
+  const clothMats={};const matFor=n=>clothMats[n]??=(MATS[n]||MATS[n.split('_')[0]])(n);
+  const buttonMats={};const buttonMat=kind=>buttonMats[kind]??=ropaMaterial({color:buttonColor[kind]||'#ece6da',roughness:.35},{key:'button-'+kind});
 
   // --- Hang them -------------------------------------------------------------------
-  let setIndex=0;
+  const TYPES=['shirt','knit','jacket','coat'];
+  const drop={};for(const t of TYPES)for(const v of ['a','b'])drop[t+'_'+v]=-bbox(t+'_'+v).min.y;
+  let setIndex=0,count=0;
   for(const bay of BAYS){
     const set=SETS[setIndex++%SETS.length].slice(0,bay.n);
     const len=bay.span[1]-bay.span[0],mid=(bay.span[0]+bay.span[1])/2;
     const dir=V(bay.dir[0],0,bay.dir[1]),out=V(bay.out[0],0,bay.out[1]);
     const spacing=Math.min(.098,(len-.20-(bay.narrow?.12:0))/Math.max(1,bay.n-1));
+    // Garments stop short of what is below the rail (tray, drawers, worktop).
+    const room=bay.y-(bay.bottom??.10)-.015;
     set.forEach(([type,color],k)=>{
-      // Garments stop short of what is below the rail (tray, drawers, worktop); a long one
-      // that would not fit becomes a knit, or is left out.
-      const room=t=>bay.y-.084-(bay.bottom??.10)-.015-TYPES[t].hem;
-      if(room(type)<TYPES[type].L[0])type=room('knit')>=TYPES.knit.L[0]?'knit':null;
-      if(!type)return;
-      // A single garment (laundry rail) hangs at the east end, by the machines (G14), clear of the tap.
+      // The variant that fits (a long one a little shorter, at most 7 %); else a knit; else none.
+      const pick=t=>{const vs=[`${t}_${(k+setIndex)%2?'b':'a'}`,`${t}_${(k+setIndex)%2?'a':'b'}`];
+        for(const v of vs)if(drop[v]<=room)return [v,1];
+        for(const v of vs)if(drop[v]*.93<=room)return [v,room/drop[v]];return null;};
+      const chosen=pick(type)||pick('knit');if(!chosen)return;
+      const [name,sy]=chosen,kind=name.split('_')[0];
       const along=bay.n===1?bay.span[1]-.17:mid+(k-(bay.n-1)/2)*spacing*(bay.dir[0]+bay.dir[1])+(rnd()-.5)*.012;
       const c=bay.axis==='z'?V(bay.at,bay.y,along):V(along,bay.y,bay.at);
       const turn=THREE.MathUtils.degToRad(bay.turn+(rnd()-.5)*8);
       const front=dir.clone().multiplyScalar(Math.cos(turn)).addScaledVector(out,Math.sin(turn)).normalize();
       const X=new THREE.Vector3().crossVectors(up,front).normalize();
-      // Garments hang a touch off vertical, and the hook swivels to the rail.
       const tilt=new THREE.Matrix4().makeRotationAxis(X,(rnd()-.5)*.03);
       const basis=new THREE.Matrix4().makeBasis(X,up,front).premultiply(tilt).setPosition(c);
-      const {parts,W}=garment(type,bay.narrow,room(type));
-      for(const g of parts){
-        g.applyMatrix4(basis);
-        paint(g,color,{front,first:k===0,last:k===bay.n-1,centre:c,out,across:X});
-        cloth[TYPES[type].fabric].geos.push(g);
-      }
-      const h=hanger(W);h.applyMatrix4(basis);woodGeos.push(h);
+      const scaled=basis.clone().multiply(new THREE.Matrix4().makeScale(1,sy,1));
+      const area=inZone(c)?'v':'x',flags=(k===0?1:0)+(k===set.length-1?2:0);
+      const shade=[out.x,out.z,STRIP_Y+(bay.y-1.77),flags];
+      putPiece(name,scaled,{color:new THREE.Color(COLORS[color]),shade,area,clothMat:matFor(name),buttons:buttonMat(kind)});
+      put(lib.hanger.wood,fixed.wood,basis,{shade,area});
       const hb=new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(up,out),up,out).setPosition(c);
-      const hk=hookGeo.clone();hk.applyMatrix4(hb);brassGeos.push(hk);
+      put(lib.hook.metal,fixed.metal,hb,{shade,area});
+      count++;
     });
   }
 
   // --- Folded stacks on the upper shelves ------------------------------------------
-  // Each piece: a slab with a rounded fold at the front, extruded across its width.
-  const folded=(w,d,h,sag)=>{
-    const prof=[[-d/2+.006,0],[d/2-h/2,0]];
-    for(let k=1;k<6;k++){const a=-Math.PI/2+k*Math.PI/6;prof.push([d/2-h/2+h/2*Math.cos(a)*1.05,h/2+h/2*Math.sin(a)]);}
-    prof.push([d/2-h/2,h],[-d/2+.006,h-.002],[-d/2,h*.5]);
-    const n=prof.length,rings=[-1,0,1],pos=[],fold=[],uv=[],ao=[],idx=[];
-    // The middle ring puffs up a little (soft cloth), the ends stay crisp.
-    for(const r of rings)for(const [pd,ph] of prof){
-      pos.push(r*w/2,ph+(r===0&&ph>h*.6?sag:0),pd+(r===0?.004:0));fold.push(0,0,0,5);uv.push(r*w*.8,(pd+ph)*1.6);
-      ao.push(ph<.002?.72:ph>h-.003?1.0:.9);
-    }
-    for(let j=0;j<2;j++)for(let i=0;i<n;i++){const a=j*n+i,b=j*n+(i+1)%n,c=(j+1)*n+(i+1)%n,e=(j+1)*n+i;idx.push(a,b,e,b,c,e);}
-    // End caps with their own vertices (crisp folded edges).
-    for(const r of [-1,1]){
-      const base=pos.length/3;
-      for(const [pd,ph] of prof){pos.push(r*w/2,ph,pd);fold.push(0,0,0,5);uv.push(pd*1.6,ph*1.6);ao.push(ph<.002?.7:.86);}
-      const cIdx=pos.length/3;pos.push(r*w/2,h/2,0);fold.push(0,0,0,5);uv.push(0,0);ao.push(.8);
-      for(let i=0;i<n;i++){const a=base+i,b=base+(i+1)%n;r>0?idx.push(cIdx,a,b):idx.push(cIdx,b,a);}
-    }
-    const g=new THREE.BufferGeometry();
-    g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-    g.setAttribute('clothFold',new THREE.Float32BufferAttribute(fold,4));g.setAttribute('ao',new THREE.Float32BufferAttribute(ao,1));
-    g.setIndex(idx);g.computeVertexNormals();return g;
-  };
   const shadowQuads={shelf:[],floor:[]};
   const quad=(list,centre,a,b)=>list.push([centre,a,b]);   // a, b: half extents (vectors)
+  const FOLDS={white:'fold_shirt',ivory:'fold_shirt',ecru:'fold_tee',greige:'fold_knit',sand:'fold_knit'};
+  const foldH={};for(const n of ['fold_shirt','fold_knit','fold_tee'])foldH[n]=bbox(n).max.y;
   let ci=0;
   for(const s of SHELVES){
     const out=V(s.out[0],0,s.out[1]);
@@ -339,14 +250,14 @@ export async function apply(ctx){
       const Z=out.clone(),X=new THREE.Vector3().crossVectors(up,Z);
       let y=s.y;const items=3+(rnd()<.5?1:0);
       for(let it=0;it<items;it++){
-        const h=.030+rnd()*.010,w=sw*(.94+rnd()*.05),d=sd*(.93+rnd()*.06);
-        const g=folded(w,d,h,.002+rnd()*.002);
+        const color=STACK_COLORS[ci++%STACK_COLORS.length],name=FOLDS[color]||'fold_tee';
+        const h=(name==='fold_knit'?.038:.030)+rnd()*.008,w=sw*(.94+rnd()*.05),d=sd*(.93+rnd()*.06);
         const yaw=(rnd()-.5)*.05,off=(rnd()-.5)*.012;
         const m=new THREE.Matrix4().makeBasis(X,up,Z).multiply(new THREE.Matrix4().makeRotationY(yaw));
         m.setPosition(centre.clone().addScaledVector(X,off).addScaledVector(Z,(rnd()-.5)*.01).setY(y));
-        g.applyMatrix4(m);
-        paint(g,STACK_COLORS[ci++%STACK_COLORS.length],{centre,out,stripY:TOP_STRIP_Y,across:X});
-        cloth.linen.geos.push(g);y+=h;
+        m.multiply(new THREE.Matrix4().makeScale(w/.30,h/foldH[name],d/.30));
+        put(lib[name].cloth,matFor(name),m,{color:new THREE.Color(COLORS[color]),shade:[out.x,out.z,TOP_STRIP_Y,3],area:inZone(centre)?'v':'x'});
+        y+=h;
       }
       quad(shadowQuads.shelf,centre.clone().setY(s.y+.0012),X.clone().multiplyScalar(sw/2+.03),Z.clone().multiplyScalar(sd/2+.03));
     }
@@ -358,29 +269,59 @@ export async function apply(ctx){
     quad(shadowQuads.floor,centre,along.multiplyScalar(half),out.multiplyScalar(.13));
   }
 
-  // Merge per material: a handful of draw calls for the whole room.
-  const merge=(geos,names)=>{
-    let nv=0,ni=0;for(const g of geos){nv+=g.getAttribute('position').count;ni+=g.index.count;}
-    const arrays={},sizes={};
-    for(const n of names){sizes[n]=geos[0].getAttribute(n).itemSize;arrays[n]=new Float32Array(nv*sizes[n]);}
-    const idx=new Uint32Array(ni);let ov=0,oi=0;
-    for(const g of geos){
-      for(const n of names)arrays[n].set(g.getAttribute(n).array,ov*sizes[n]);
-      const ix=g.index;for(let i=0;i<ix.count;i++)idx[oi+i]=ix.getX(i)+ov;
-      ov+=g.getAttribute('position').count;oi+=ix.count;g.dispose();
+  // --- Shoes -----------------------------------------------------------------------
+  // scripts/proyecto.py shoes() exports each shoe as a 4 cm wide beveled block (in the
+  // bake). They are found here by their size (0,03-0,07 x 0,22-0,28 x 0,06-0,12 m, in the
+  // dark, clay, fabric and stone meshes), removed (by index: the lightmap UVs stay
+  // aligned) and replaced, row by row, by real pairs toes out, 5 cm behind the front.
+  const shoeRows=findShoeRows(ctx,THREE);
+  let removedShoes=0,pairs=0;
+  if(shoeRows.boxes.length)removedShoes=ctx.removeExported({material:['dark','clay','fabric','stone'],box:shoeRows.boxes});
+  const SHOE_TYPES=['loafer','sneaker','boot','pump','loafer','sneaker'];
+  const SHOE_COLORS={loafer:['#3a2416','#17110d','#7a4a2a'],sneaker:['#ece8e0','#d8d2c6','#efece6'],boot:['#4a3426','#1f1812','#7d5f45'],pump:['#161212','#c79f86','#6e1e22']};
+  const len={};for(const n of SHOE_TYPES)len[n]=bbox(n).max.z;
+  for(const row of shoeRows.rows){
+    const n=Math.max(1,Math.floor((row.length+.02)/.215)),pitch=row.length/n;
+    for(let i=0;i<n;i++){
+      const type=SHOE_TYPES[(pairs+i)%SHOE_TYPES.length],col=SHOE_COLORS[type][Math.floor((pairs+i)/SHOE_TYPES.length)%3];
+      const centre=row.start.clone().addScaledVector(row.along,(i+.5)*pitch);
+      for(const side of [-1,1]){
+        const toeOut=THREE.MathUtils.degToRad(side*(3+rnd()*3));
+        const fwd=row.out.clone().applyAxisAngle(up,toeOut);
+        const toe=centre.clone().addScaledVector(row.along,side*.052+(rnd()-.5)*.006).addScaledVector(row.out,(rnd()-.5)*.012);
+        const heel=toe.addScaledVector(fwd,-len[type]);
+        const X=new THREE.Vector3().crossVectors(up,fwd).normalize();
+        const m=new THREE.Matrix4().makeBasis(X,up,fwd).setPosition(heel.setY(row.y));
+        const area=inZone(centre)?'v':'x';
+        for(const [part,mesh] of Object.entries(lib[side>0?type+'_R':type])){
+          if(part==='cloth')put(mesh,shoeMat[type],m,{color:new THREE.Color(col),area});
+          else put(mesh,fixed[mesh.material?.name]||fixed.lining,m,{area});
+        }
+      }
     }
-    const m=new THREE.BufferGeometry();
-    for(const n of names)m.setAttribute(n,new THREE.BufferAttribute(arrays[n],sizes[n]));
-    m.setIndex(new THREE.BufferAttribute(idx,1));m.computeBoundingSphere();return m;
-  };
+    pairs+=n;
+  }
+
+  // --- Build the instanced meshes ----------------------------------------------------
   const add=(name,geo,mat,lit=true)=>{
     const o=new THREE.Mesh(geo,mat);o.name=name;o.castShadow=false;o.receiveShadow=lit;
     group.add(o);if(lit)ctx.lightRuntimeObject(o);return o;
   };
-  for(const [key,{m,geos}] of Object.entries(cloth))add('Vestidor ropa '+key,merge(geos,['position','normal','uv','color','clothFold','clothAcross']),m);
-  add('Vestidor perchas roble',merge(woodGeos,['position','normal']),woodMat);
-  add('Vestidor ganchos laton',merge(brassGeos,['position','normal']),brass);
-  hookGeo.dispose();
+  let tris=0;
+  for(const {mesh,material,items} of batches.values()){
+    const geo=mesh.geometry.clone();
+    const shade=new Float32Array(items.length*4);items.forEach((it,i)=>shade.set(it.shade,i*4));
+    geo.setAttribute('ropaShade',new THREE.InstancedBufferAttribute(shade,4));
+    const im=new THREE.InstancedMesh(geo,material,items.length);
+    im.name='Vestidor '+mesh.name;im.castShadow=false;im.receiveShadow=true;
+    items.forEach((it,i)=>{im.setMatrixAt(i,it.matrix);if(it.color)im.setColorAt(i,it.color);});
+    if(items.some(it=>it.color)&&!im.instanceColor)im.setColorAt(0,new THREE.Color(1,1,1));
+    im.instanceMatrix.needsUpdate=true;if(im.instanceColor)im.instanceColor.needsUpdate=true;
+    im.computeBoundingSphere();
+    group.add(im);ctx.lightRuntimeObject(im);
+    tris+=(geo.index?geo.index.count:geo.getAttribute('position').count)/3*items.length;
+  }
+  console.info(`[rooms/vestidor] ${count} garments, ${pairs} pairs of shoes (${removedShoes} exported shoe triangles out), ${batches.size} instanced meshes, ${Math.round(tris/1000)}k triangles`);
 
   // --- Contact shadows (multiplied over what is already drawn) ----------------------
   const falloff=(strength,plateau)=>{
@@ -500,4 +441,72 @@ export async function apply(ctx){
   for(const piece of ctx.splitExported({material:'bronze',region:'shared',box:ZONE})){
     const m=piece.material;m.color.set('#a3815a');m.metalness=.75;m.roughness=.28;m.needsUpdate=true;
   }
+}
+
+// Rows of the exported shoe blocks (proyecto.py shoes()): connected pieces of the dark,
+// clay, fabric and stone meshes with a shoe block's size, grouped per shelf line and split
+// where a module side breaks the row. A row's outward side is the nearest wardrobe front
+// parallel to it (fronts in house.json), else the nearest rail's; rows with neither stay.
+function findShoeRows(ctx,THREE){
+  const comps=[];
+  for(const mesh of ctx.staticMeshes){
+    const ex=mesh.userData.exported;if(!ex||!['dark','clay','fabric','stone'].includes(ex.material))continue;
+    const g=mesh.geometry,pos=g.getAttribute('position'),index=g.index;if(!pos)continue;
+    const n=index?index.count:pos.count,ids=new Map(),parent=[],tri=new Int32Array(n);
+    const find=i=>{while(parent[i]!==i){parent[i]=parent[parent[i]];i=parent[i];}return i;};
+    for(let i=0;i<n;i++){
+      const v=index?index.getX(i):i;
+      const k=Math.round(pos.getX(v)*2000)*1e10+Math.round(pos.getY(v)*2000)*1e5+Math.round(pos.getZ(v)*2000);
+      let id=ids.get(k);if(id===undefined){id=parent.length;parent.push(id);ids.set(k,id);}tri[i]=id;
+    }
+    for(let i=0;i<n;i+=3){const a=find(tri[i]);for(const j of [1,2]){const b=find(tri[i+j]);if(b!==a)parent[b]=a;}}
+    const boxes=new Map();
+    for(let i=0;i<n;i++){
+      const r=find(tri[i]),v=index?index.getX(i):i,x=pos.getX(v),y=pos.getY(v),z=pos.getZ(v);
+      let b=boxes.get(r);if(!b)boxes.set(r,b=[x,y,z,x,y,z]);
+      if(x<b[0])b[0]=x;if(y<b[1])b[1]=y;if(z<b[2])b[2]=z;if(x>b[3])b[3]=x;if(y>b[4])b[4]=y;if(z>b[5])b[5]=z;
+    }
+    for(const b of boxes.values()){
+      const sx=b[3]-b[0],sy=b[4]-b[1],sz=b[5]-b[2],a=Math.min(sx,sz),c=Math.max(sx,sz);
+      if(a>.03&&a<.07&&c>.22&&c<.28&&sy>.06&&sy<.12)comps.push({b,longX:sx>sz});
+    }
+  }
+  const groups=new Map();
+  for(const c of comps){
+    const lc=c.longX?(c.b[0]+c.b[3])/2:(c.b[2]+c.b[5])/2;
+    const k=`${c.longX}|${Math.round(c.b[1]*100)}|${Math.round(lc*20)}`;
+    (groups.get(k)||groups.set(k,[]).get(k)).push(c);
+  }
+  const fronts=ctx.data.fronts||[],rails=ctx.data.wardrobes?.rails||[];
+  const rows=[],boxes=[];
+  for(const list of groups.values()){
+    const lx=list[0].longX,s0=lx?2:0,s1=lx?5:3,l0=lx?0:2,l1=lx?3:5;
+    list.sort((p,q)=>p.b[s0]-q.b[s0]);
+    const runs=[[list[0]]];
+    for(let i=1;i<list.length;i++){if(list[i].b[s0]-list[i-1].b[s1]>.05)runs.push([]);runs[runs.length-1].push(list[i]);}
+    for(const run of runs){
+      const smin=Math.min(...run.map(c=>c.b[s0])),smax=Math.max(...run.map(c=>c.b[s1]));
+      const lmin=Math.min(...run.map(c=>c.b[l0])),lmax=Math.max(...run.map(c=>c.b[l1])),y=Math.min(...run.map(c=>c.b[1]));
+      const lc=(lmin+lmax)/2,sc=(smin+smax)/2;
+      // Fronts parallel to the row (their out along the row's long axis), covering it.
+      let best=null,bd=1.2;
+      for(const f of fronts){
+        const o=lx?f.out?.[0]:f.out?.[1];if(!f.edge||!f.pivot||!(Math.abs(o)>=.5))continue;
+        const plane=lx?f.pivot[0]:f.pivot[1],s=lx?[f.pivot[1],f.edge[1]]:[f.pivot[0],f.edge[0]];
+        if(sc<Math.min(...s)-.3||sc>Math.max(...s)+.3||f.y[0]>y+.05||f.y[1]<y)continue;
+        const d=Math.abs(plane-lc);if(d<bd){bd=d;best=Math.sign(o);}
+      }
+      if(best===null)for(const r of rails){
+        const o=lx?r.out[0]:r.out[1];if(!o)continue;
+        const d=Math.hypot((lx?r.at:(r.span[0]+r.span[1])/2)-(lx?lc:sc),(lx?(r.span[0]+r.span[1])/2:r.at)-(lx?sc:lc));
+        if(d<bd+.6){bd=d-.6;best=Math.sign(o);}
+      }
+      if(best===null)continue;
+      const toe=best>0?lmax:lmin;
+      rows.push({start:lx?new THREE.Vector3(toe,y,smin):new THREE.Vector3(smin,y,toe),along:lx?new THREE.Vector3(0,0,1):new THREE.Vector3(1,0,0),
+        out:lx?new THREE.Vector3(best,0,0):new THREE.Vector3(0,0,best),length:smax-smin,y});
+      for(const c of run)boxes.push([[c.b[0]-.002,c.b[1]-.002,c.b[2]-.002],[c.b[3]+.002,c.b[4]+.002,c.b[5]+.002]]);
+    }
+  }
+  return {rows,boxes};
 }
