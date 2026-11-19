@@ -150,12 +150,10 @@ export class Post{
   pass(material,target){
     this.quad.material=material;this.renderer.setRenderTarget(target);this.renderer.render(this.quadScene,this.quadCam);
   }
-  // source: an HDR image already made (photo.mjs, the path-traced view) taken instead of
-  // the scene render; it carries its own contact shadows, so no occlusion pass.
-  render(dt=1/60,source=null){
+  render(dt=1/60){
     const r=this.renderer,s=this.settings;
-    if(!source){r.setRenderTarget(this.sceneRT);r.render(this.scene,this.camera);}
-    const src=source||this.sceneRT.texture,ao=source?0:s.ao;
+    r.setRenderTarget(this.sceneRT);r.render(this.scene,this.camera);
+    const src=this.sceneRT.texture,ao=s.ao;
     // Contact occlusion (half resolution), unless the quality level turned it off.
     const [aoA,aoB]=this.aoRT;
     if(ao>0){

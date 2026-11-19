@@ -10,8 +10,8 @@ import {GLTFLoader} from './assets/jsm/loaders/GLTFLoader.js';
 // - Placed under the camera, facing where it looks; its eyes at the eye height (the model
 //   is 1,81 m, eyes at ≈ 1,69 m, as the adult view). At the children's eye heights it hides:
 //   a scaled-down adult would not be them.
-// - Walk and fast walk play at the measured ground speed of each clip (stride from the
-//   feet), phase-locked to each other and blended by the walking speed; idle when still.
+// - Walk and fast walk play at the ground speed of each clip (the travel taken out of it
+//   in Blender), phase-locked to each other and blended by the walking speed; idle when still.
 //   Walking backwards plays the walk in reverse; sideways, the hips turn up to 50° toward
 //   the motion and the chest and head turn back toward the view.
 // - The head and neck follow the view's pitch, so looking down in front of a mirror the
@@ -21,7 +21,7 @@ import {GLTFLoader} from './assets/jsm/loaders/GLTFLoader.js';
 export const AVATAR_LAYER=1;
 const ADULT_EYE=1.69,MODEL_EYE=1.69;
 
-export async function createAvatar(THREE,{scene,lightObject,lighting,url='./assets/avatar/persona.glb?v=b88e020891'}){
+export async function createAvatar(THREE,{scene,lightObject,lighting,url='./assets/avatar/persona.glb?v=a8ddc027af'}){
   const gltf=await new GLTFLoader().loadAsync(url);
   const root=new THREE.Group();root.name='Persona (espejos)';
   const model=gltf.scene;model.rotation.y=Math.PI;   // the export faces +z; the view looks to -z at yaw 0
@@ -34,7 +34,7 @@ export async function createAvatar(THREE,{scene,lightObject,lighting,url='./asse
   });
   lightObject(root,lighting);
   const bone=name=>skinned.skeleton.bones.find(b=>b.name.replace(/_/g,' ')===name)||model.getObjectByName(name);
-  const head=bone('Bip01 Head'),neck=bone('Bip01 Neck'),chest=bone('Bip01 Spine2'),footL=bone('Bip01 L Foot'),footR=bone('Bip01 R Foot');
+  const head=bone('Bip01 Head'),neck=bone('Bip01 Neck'),chest=bone('Bip01 Spine2');
 
   // Soft contact shadow, a radial falloff multiplied onto the floor.
   const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d');
@@ -45,35 +45,15 @@ export async function createAvatar(THREE,{scene,lightObject,lighting,url='./asse
   blob.position.y=.003;blob.layers.set(AVATAR_LAYER);blob.renderOrder=1;root.add(blob);
 
   const mixer=new THREE.AnimationMixer(model);
-  // Root (Biped COM) keeps its bob and sway, not any drift across the floor.
-  const clip=name=>{
-    const c=gltf.animations.find(a=>a.name===name).clone();
-    for(const t of c.tracks)if(/\.position$/.test(t.name)&&!/Pelvis|Spine|Neck|Head|Clavicle|Arm|Hand|Finger|Thigh|Calf|Foot|Toe/.test(t.name)){
-      const v=t.values,x0=v[0],z0=v[2];for(let i=0;i<v.length;i+=3){v[i]=x0;v[i+2]=z0;}
-    }
-    return c;
-  };
-  const clips={idle:clip('idle'),walk:clip('walk'),walkFast:clip('walkFast')};
+  // The clips are in place (scripts/avatar_blender.py takes the Biped root's straight-line
+  // travel out); their ground speed comes with the armature (glTF extras), so the feet stay
+  // planted when the walk plays at speed / clip speed.
+  const clips={idle:gltf.animations.find(a=>a.name==='idle'),walk:gltf.animations.find(a=>a.name==='walk'),walkFast:gltf.animations.find(a=>a.name==='walkFast')};
   const actions=Object.fromEntries(Object.entries(clips).map(([k,c])=>[k,mixer.clipAction(c)]));
   for(const a of Object.values(actions)){a.play();a.setEffectiveWeight(0);}
   actions.idle.setEffectiveWeight(1);
-
-  // Ground speed of a walk clip: over one cycle the feet's largest separation along the
-  // walking direction is a step; two steps a cycle.
-  const pa=new THREE.Vector3(),pb=new THREE.Vector3();
-  const speedOf=name=>{
-    for(const a of Object.values(actions))a.setEffectiveWeight(0);
-    const a=actions[name];a.setEffectiveWeight(1);let step=0;
-    for(let i=0;i<48;i++){
-      a.time=i/48*a.getClip().duration;mixer.update(0);model.updateMatrixWorld(true);
-      footL.getWorldPosition(pa);footR.getWorldPosition(pb);model.worldToLocal(pa);model.worldToLocal(pb);
-      step=Math.max(step,Math.abs(pa.z-pb.z));
-    }
-    a.setEffectiveWeight(0);
-    return 2*step/a.getClip().duration;
-  };
-  const speeds={walk:speedOf('walk'),walkFast:speedOf('walkFast')};
-  actions.idle.setEffectiveWeight(1);actions.walk.time=actions.walkFast.time=0;
+  let extras={};model.traverse(o=>{if(o.userData?.speed_walk)extras=o.userData;});
+  const speeds={walk:extras.speed_walk||1.01,walkFast:extras.speed_walkFast||1.5};
 
   scene.add(root);
   let move=0,fast=0,phase=0,turn=0,lastX=null,lastZ=null,dir=1;

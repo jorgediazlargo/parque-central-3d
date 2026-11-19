@@ -1,5 +1,5 @@
-// Vestidor en piedra y vitrinas (menu option, off by default = the plan): the owner's
-// variant of 25/10/2026, not in the proyecto de ejecución.
+// Vestidor en piedra y vitrinas: the owner's variant of 25/10/2026, not in the proyecto de
+// ejecución; since 19/11/2026 always on (app.js calls set(true); no menu option).
 // - Floor: the vestidor interior and its passage take the porcelain of the rest of the
 //   house (and of the suite vestidor) instead of oak (app.js, floor shader, uniform
 //   vestidorStone; this module only flips it).

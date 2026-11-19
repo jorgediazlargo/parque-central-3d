@@ -1,7 +1,7 @@
 import * as THREE from './assets/three.module.js';
 import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,captureSize,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=344884d358';
-import {Post} from './post.mjs?v=643e937184';
+import {Post} from './post.mjs?v=e7099b83aa';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
 import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=7e02569fe2';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
@@ -13,16 +13,15 @@ import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
-import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
+import {createVitrinas} from './vitrinas.mjs?v=60624b8997';
 import {createChimeneas} from './chimenea.mjs?v=f5fe79aeab';
 import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=bc8b1c42e1';
-import {createPhotoMode} from './photo.mjs?v=a3d6cbd23d';
 import {createMirrors} from './mirrors.mjs?v=b39cdb6a1b';
-import {createAvatar} from './avatar.mjs?v=b456e51e7d';
+import {createAvatar} from './avatar.mjs?v=1260b64d63';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,quality,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null,fronts={list:[],at:()=>null,step:()=>false};
-let lightmap,roomStatus={},reflections,mirrorSpan=()=>{},wallMirrors=null,avatar=null,photo=null,photoSave=false;const runtimeObjects=[];
+let lightmap,roomStatus={},reflections,mirrorSpan=()=>{},wallMirrors=null,avatar=null;const runtimeObjects=[];
 // Día / Noche: the night bake (artificial light only, same UVs) swapped into the same
 // lightmap and probe textures, the outdoor lights and backdrop, and the room modules'
 // daylight effects (ctx.onTimeOfDay). Reflections are captured again after each switch.
@@ -34,8 +33,8 @@ let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,roomTime
 const mobile=matchMedia('(pointer:coarse)').matches,eyeHeights=[1.69,1.2,.95];
 let eye=1.69;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,closet:false,hallLime:false,fireplace:'',suiteOpen:false,eye:1.69};
-try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime','fireplace','suiteOpen','eye'])if(key in saved)settings[key]=saved[key];}catch{}
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,fireplace:'',suiteOpen:false,eye:1.69};
+try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['sound','bob','night','lamps','fullscreen','fireplace','suiteOpen','eye'])if(key in saved)settings[key]=saved[key];}catch{}
 // Salón: '' (the plan) or 'baja'.
 // Only the low fireplace is left (18/11/2026): a saved long or short one (or the old checkbox) opens it.
 settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(settings.fireplace)?'baja':'';
@@ -43,8 +42,6 @@ settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(
 // with the artificial lights off, ?luces with them on.
 {const q=new URLSearchParams(location.search);if(q.get('noche')!==null)settings.night=q.get('noche')!=='0';if(q.get('luces')!==null)settings.lamps=q.get('luces')!=='0';}
 // ?vestidor=piedra opens with the stone and glass vestidor variant, ?vestidor=plano without it.
-{const q=new URLSearchParams(location.search).get('vestidor');if(q!==null)settings.closet=q==='piedra';}
-{const q=new URLSearchParams(location.search).get('recibidor');if(q!==null)settings.hallLime=q==='cal';}
 // ?abierto=1 opens with the master bedroom open to the bath (suite-abierta.mjs), ?abierto=0 as in the plan.
 {const q=new URLSearchParams(location.search).get('abierto');if(q!==null)settings.suiteOpen=q!=='0';}
 // ?chimenea=1 (or any value but 0) opens with the fireplace, ?chimenea=0 without.
@@ -54,8 +51,8 @@ settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(
 // before (1.60, the old adult eyes) falls back to the adult. Only the camera moves: collisions are 2D, the floor is flat.
 {const q=new URLSearchParams(location.search).get('altura'),h=q==='180'?1.69:+q/100;if(eyeHeights.includes(h))settings.eye=h;if(!eyeHeights.includes(settings.eye))settings.eye=1.69;eye=settings.eye;}
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
-for(const key of ['sound','bob','night','lamps','fullscreen','closet','hallLime','suiteOpen']) {
-  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='closet')setCloset(settings.closet);if(key==='suiteOpen')setSuiteOpen(settings.suiteOpen);if(key==='hallLime')setHallLime(settings.hallLime);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
+for(const key of ['sound','bob','night','lamps','fullscreen','suiteOpen']) {
+  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='suiteOpen')setSuiteOpen(settings.suiteOpen);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
 }
 $('eye').value=String(eye);$('eyeMeta').textContent=eyeMeta();
 $('fireplace').value=settings.fireplace;
@@ -84,7 +81,7 @@ for(const type of ['fullscreenchange','webkitfullscreenchange'])document.addEven
   // Switching screens can drop the capture (or it was refused): full screen lets it back without a click.
   if(playing&&!mobile&&!document.pointerLockElement)Promise.resolve(canvas.requestPointerLock()).catch(()=>{});
 });
-$('night').disabled=$('lamps').disabled=$('closet').disabled=$('hallLime').disabled=$('fireplace').disabled=$('suiteOpen').disabled=true;  // until the house is lit (load)
+$('night').disabled=$('lamps').disabled=$('fireplace').disabled=$('suiteOpen').disabled=true;  // until the house is lit (load)
 // Luces encendidas: by day only (at night they are all on), once there is a bake without them.
 const syncLampsOption=()=>{$('lamps').closest('label').hidden=settings.night||!lightmap?.data.dayOff;};syncLampsOption();
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
@@ -333,7 +330,7 @@ function material(color,kind,roughness=.7){
           }`);
       }
       if(kind==='wood'){
-        // Recibidor en cal (menu option, owner's variant of 26/10/2026): the oak panelling
+        // Recibidor en cal (owner's variant of 26/10/2026, always on since 19/11): the oak panelling
         // between the recibidor doors (G13 C5, H03) and the strip over them read as lime
         // plaster, like the walls; doors, coat cupboard and niche stay oak. Same triangles
         // and baked light (the bake stores light, not colour), so nothing to rebake.
@@ -840,28 +837,9 @@ function setLight(){
   return timeSwitch;
 }
 
-// Vestidor en piedra y vitrinas (vitrinas.mjs): travertine floor and glass doors in the
-// vestidor interior: porcelain floor and glass doors instead of the plan's oak.
+// Vestidor en piedra y vitrinas (vitrinas.mjs), the owner's choice of 19/11/2026: porcelain
+// floor and glass doors in the vestidor interior instead of the plan's oak, always on.
 let closet=null;
-function setCloset(on){
-  timeSwitch=timeSwitch.then(()=>{
-    if(!ready||!closet||on===closet.on)return;
-    closet.set(on);reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;idle(reportShaderErrors);
-    notice(on?'Vestidor en piedra y vitrinas':'Vestidor según el plano');
-  }).catch(e=>{console.error(e);notice('No se ha podido cambiar el vestidor.');settings.closet=!!closet?.on;$('closet').checked=settings.closet;savePreferences();});
-  return timeSwitch;
-}
-
-// Recibidor en cal (wood shader, recibidorCal): the panelling between the recibidor doors
-// in lime plaster instead of the plan's oak.
-function setHallLime(on){
-  timeSwitch=timeSwitch.then(()=>{
-    if(!ready||!!recibidorCal.value===on)return;
-    recibidorCal.value=on?1:0;reflections.capture(renderer,scene);
-    notice(on?'Recibidor en cal':'Recibidor según el plano');
-  }).catch(e=>{console.error(e);notice('No se ha podido cambiar el recibidor.');settings.hallLime=!!recibidorCal.value;$('hallLime').checked=settings.hallLime;savePreferences();});
-  return timeSwitch;
-}
 
 // Salón con chimenea (chimenea.mjs): the salón column grown into a plaster block with a
 // low open fireplace against the column's north face (chimenea.mjs).
@@ -989,15 +967,7 @@ function frame(time){
   avatar?.update(dt||1/60,{x:player[0],z:player[1],yaw,pitch,eye});
   if(fireplace?.on)fireplace.tick(time/1000);
   renderer.info.reset();
-  if(!photo?.frame(dt||1/60))composer.render(dt||1/60);
-  if(photoSave){photoSave=false;savePhoto();}
-}
-function setPhoto(on){photo.set(on);$('photo').checked=photo.active;$('photoSave').hidden=!photo.active;}
-// The canvas is read in the frame that drew it (no preserved drawing buffer).
-function savePhoto(){
-  const n=Math.floor(photo.samples),name=$('room').textContent.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-');
-  canvas.toBlob(blob=>{if(!blob)return;const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`parque-central-${name}-${n}m.png`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);},'image/png');
-  notice(n?`Foto guardada (${n} muestras)`:'Foto guardada (sin trazado aún: quédate quieto un momento)');
+  composer.render(dt||1/60);
 }
 function look(dx,dy){yaw-=dx*.0021;pitch=THREE.MathUtils.clamp(pitch-dy*.0021,-1.3,1.3);}
 $('enter').onclick=enter;$('pause').onclick=pause;$('interaction').onclick=interact;$('touchDoor').onclick=interact;
@@ -1008,8 +978,6 @@ addEventListener('keydown',e=>{
   keys.add(e.code);if(e.code==='KeyE'&&!e.repeat)interact();
   if(e.code==='KeyN'&&!e.repeat){settings.night=!timeOfDay.night;$('night').checked=settings.night;savePreferences();setLight();}
   if(e.code==='KeyL'&&!e.repeat&&!settings.night&&lightmap.data.dayOff){settings.lamps=!settings.lamps;$('lamps').checked=settings.lamps;savePreferences();setLight();}
-  if(e.code==='KeyP'&&!e.repeat&&photo?.supported)setPhoto(!photo.active);
-  if(e.code==='KeyG'&&!e.repeat&&photo?.active)photoSave=true;
   if(e.code==='KeyF'&&!e.repeat&&screenMode.supported){settings.fullscreen=!screenMode.on;$('fullscreen').checked=settings.fullscreen;savePreferences();if(settings.fullscreen)screenMode.enter();else screenMode.exit();}
 });
 addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',pause);
@@ -1071,8 +1039,8 @@ async function load(){
     roomStatus=await rooms;progress?.stage(.7);
     // Vestidor en piedra y vitrinas (menu option): built now, shown or hidden on demand.
     closet=createVitrinas(THREE,{data,staticMeshes,scene,mats,cloneMaterial,lightObject,lighting,floor:vestidorStone});
-    closet.set(settings.closet);
-    recibidorCal.value=settings.hallLime?1:0;
+    closet.set(true);
+    recibidorCal.value=1;   // Recibidor en cal: the panelling between its doors in lime plaster, always
     // Salón con chimenea (menu option): built now, shown or hidden on demand.
     fireplace=createChimeneas(THREE,{scene,staticMeshes,lightObject,lighting,plaster:plasterMap.value,plasterNormal:plasterNormal.value});
     fireplace.set(settings.fireplace);
@@ -1099,7 +1067,7 @@ async function load(){
     // first capture) and again when a door moves, not for every face of every capture.
     renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     reflections.capture(renderer,scene);
-    ready=true;progress?.done();$('night').disabled=$('lamps').disabled=$('closet').disabled=$('hallLime').disabled=$('fireplace').disabled=$('suiteOpen').disabled=false;syncLampsOption();lampGlow(lightmap.mode!=='dayoff');
+    ready=true;progress?.done();$('night').disabled=$('lamps').disabled=$('fireplace').disabled=$('suiteOpen').disabled=false;syncLampsOption();lampGlow(lightmap.mode!=='dayoff');
     // The tour starts on the reduced lightmaps: reflections again once the full pages are in.
     lightmap.sharp.then(()=>{timeSwitch=timeSwitch.then(()=>reflections.capture(renderer,scene));});
     const params=new URLSearchParams(location.search);
@@ -1107,15 +1075,6 @@ async function load(){
       const start=[(738-106.5)/51.53901216893343,(389-619.85)/51.53901216893343];
       if(!physics.blocked(start,activeDoorPolys())){player=start;yaw=Math.PI;pitch=0;camera.position.set(player[0],eye,player[1]);camera.rotation.set(0,yaw,0);}
     }
-    // Modo foto (photo.mjs): path tracing while the camera stands still; ?foto opens with it on.
-    photo=createPhotoMode(THREE,{renderer,scene,camera,composer,mobile,mats,data,porcelainMap,limeMask,limeBox,vestidorStone,suiteOpen,cleanSamples:256,
-      night:()=>timeOfDay.night,lamps:()=>lightmap.mode!=='dayoff',
-      signature:()=>[doors.map(d=>(d.t??0).toFixed(2)).join(),fronts.list.map(f=>(f.t??0).toFixed?.(2)).join(),curtains.map(c=>(c.t??0).toFixed?.(2)).join(),settings.closet,settings.hallLime,settings.fireplace,settings.suiteOpen,timeOfDay.night,lightmap.mode].join('|'),
-      onStatus:text=>{$('photoHud').textContent=text;$('photoHud').hidden=!text;}});
-    $('photo').disabled=!photo.supported;$('photo').closest('label').title=photo.supported?'':'No disponible en móvil ni en GPU sin coma flotante';
-    $('photo').onchange=()=>setPhoto($('photo').checked);
-    $('photoSave').onclick=()=>{photoSave=true;};
-    if(params.get('foto')!==null&&params.get('foto')!=='0')setPhoto(true);
     $('enter').disabled=false;$('enter').textContent='Entrar en casa';requestAnimationFrame(frame);
     idle(reportShaderErrors);
   }catch(e){
