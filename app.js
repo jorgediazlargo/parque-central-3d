@@ -33,8 +33,8 @@ let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,roomTime
 const mobile=matchMedia('(pointer:coarse)').matches,eyeHeights=[1.69,1.2,.95];
 let eye=1.69;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,fireplace:'',suiteOpen:false,eye:1.69};
-try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['night','lamps','fullscreen','fireplace','suiteOpen','eye'])if(key in saved)settings[key]=saved[key];}catch{}
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,fireplace:'',suiteOpen:false,noKitchenDoor:false,eye:1.69};
+try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['night','lamps','fullscreen','fireplace','suiteOpen','noKitchenDoor','eye'])if(key in saved)settings[key]=saved[key];}catch{}
 // Salón: '' (the plan) or 'baja'.
 // Only the low fireplace is left (18/11/2026): a saved long or short one (or the old checkbox) opens it.
 settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(settings.fireplace)?'baja':'';
@@ -45,6 +45,8 @@ settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(
 // ?abierto=1 opens with the master bedroom open to the bath (suite-abierta.mjs), ?abierto=0 as in the plan.
 {const q=new URLSearchParams(location.search).get('abierto');if(q!==null)settings.suiteOpen=q!=='0';}
 // ?chimenea=1 (or any value but 0) opens with the fireplace, ?chimenea=0 without.
+// ?puertacocina=0 opens with the kitchen's glass screen (M1) taken away, ?puertacocina=1 with it.
+{const q=new URLSearchParams(location.search).get('puertacocina');if(q!==null)settings.noKitchenDoor=q==='0';}
 {const q=new URLSearchParams(location.search).get('chimenea');if(q!==null)settings.fireplace=q==='0'?'':'baja';}
 // Altura de vista (menu): an adult 1.80 m tall (eyes at 1.69 m), or eyes at 1.20 m or 0.95 m (the girls'
 // view). ?altura=120 / ?altura=95 (centimetres of eye height; ?altura=180 the adult) forces it; a value saved
@@ -53,8 +55,8 @@ settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
 // Footstep sound and the gentle bob are always on (no menu option since 19/11/2026); the bob
 // still stays off when the system asks for reduced motion.
-for(const key of ['night','lamps','fullscreen','suiteOpen']) {
-  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='suiteOpen')setSuiteOpen(settings.suiteOpen);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
+for(const key of ['night','lamps','fullscreen','suiteOpen','noKitchenDoor']) {
+  $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='suiteOpen')setSuiteOpen(settings.suiteOpen);if(key==='noKitchenDoor')setKitchenDoor(!settings.noKitchenDoor);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
 }
 $('eye').value=String(eye);$('eyeMeta').textContent=eyeMeta();
 $('fireplace').value=settings.fireplace;
@@ -83,7 +85,7 @@ for(const type of ['fullscreenchange','webkitfullscreenchange'])document.addEven
   // Switching screens can drop the capture (or it was refused): full screen lets it back without a click.
   if(playing&&!mobile&&!document.pointerLockElement)Promise.resolve(canvas.requestPointerLock()).catch(()=>{});
 });
-$('night').disabled=$('lamps').disabled=$('fireplace').disabled=$('suiteOpen').disabled=true;  // until the house is lit (load)
+$('night').disabled=$('lamps').disabled=$('fireplace').disabled=$('suiteOpen').disabled=$('noKitchenDoor').disabled=true;  // until the house is lit (load)
 // Luces encendidas: by day only (at night they are all on), once there is a bake without them.
 const syncLampsOption=()=>{$('lamps').closest('label').hidden=settings.night||!lightmap?.data.dayOff;};syncLampsOption();
 function notice(text){$('notice').textContent=text;$('notice').classList.add('visible');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('notice').classList.remove('visible'),2600);}
@@ -871,6 +873,27 @@ function setSuiteOpen(on){
   return timeSwitch;
 }
 
+// Cocina sin puerta (menu option): the glass sliding screen M1 between the kitchen and the
+// salón-comedor taken away, leaves and all; nothing else changes (no track is modelled and the
+// bake does not see the leaves). Back with the option off, parked open on the wall as at load.
+function applyKitchenDoor(on){
+  const d=doors.find(d=>d.name==='Cocina');if(!d)return false;
+  if(on===(d.active!==false))return false;
+  d.active=on;d.blocked=false;d.t=d.goal=d.open||0;placeDoor(d,d.t);
+  for(const g of d.groups)g.visible=on;
+  return true;
+}
+function setKitchenDoor(on){
+  timeSwitch=timeSwitch.then(()=>{
+    if(!ready||!applyKitchenDoor(on))return;
+    const d=doors.find(d=>d.name==='Cocina');
+    if(on&&d.polys.some(p=>overlaps(player,physics.radius,p))){player=[player[0],d.a[1]+(player[1]>d.a[1]?1:-1)*(physics.radius+.12)];camera.position.set(player[0],eye,player[1]);}
+    reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;
+    notice(on?'Cocina con puerta':'Cocina sin puerta');
+  });
+  return timeSwitch;
+}
+
 // Link errors, reported as three would at first draw (renderer.debug.checkShaderErrors).
 const checkedPrograms=new Set();
 const idle=fn=>(window.requestIdleCallback||setTimeout)(fn);
@@ -1053,6 +1076,7 @@ async function load(){
       if(a&&b&&c&&l&&r){for(const [u,f] of [[floorFixA,a],[floorFixB,b],[floorFixC,c],[floorFixL,l],[floorFixR,r]]){u.value[0].set(...f.u);u.value[1].set(...f.v);}floorFix.value=1;}
       else console.warn('[suite-abierta] the floor bake is not one chart here: its old shade stays');}
     suite.set(settings.suiteOpen);
+    applyKitchenDoor(!settings.noKitchenDoor);
     // K01-K02 mirrors C01-C03 reflect the room for real at the two best quality levels on a
     // computer; on phones and lower levels they keep the probe-lit silvered pane.
     wallMirrors=createMirrors(THREE,Reflector,{scene,walls:kitchenColliders(data).filter(c=>WALL_NAMES.test(c.name)).map(c=>c.poly),
@@ -1069,7 +1093,7 @@ async function load(){
     // first capture) and again when a door moves, not for every face of every capture.
     renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     reflections.capture(renderer,scene);
-    ready=true;progress?.done();$('night').disabled=$('lamps').disabled=$('fireplace').disabled=$('suiteOpen').disabled=false;syncLampsOption();lampGlow(lightmap.mode!=='dayoff');
+    ready=true;progress?.done();$('night').disabled=$('lamps').disabled=$('fireplace').disabled=$('suiteOpen').disabled=$('noKitchenDoor').disabled=false;syncLampsOption();lampGlow(lightmap.mode!=='dayoff');
     // The tour starts on the reduced lightmaps: reflections again once the full pages are in.
     lightmap.sharp.then(()=>{timeSwitch=timeSwitch.then(()=>reflections.capture(renderer,scene));});
     const params=new URLSearchParams(location.search);
