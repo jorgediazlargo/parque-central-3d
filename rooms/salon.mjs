@@ -17,6 +17,14 @@
 // read as a floating black slab) and the cove lines glowing amber instead of white.
 // Ronda 8: the sofa remade after render 1 as an armless modular sofa (back and seat
 // blocks, smooth ivory linen, thin rounded oak plinth); see apply().
+// Ronda 9: same design and footprint, but the blocks, their piping and the throw
+// pillows are sewn cloth simulated in Blender (scripts/sofa_blender.py ->
+// assets/rooms/salon/sofa.glb, ≈ 88k triangles): fabric pressed onto a crowned foam
+// core with the seam pinched and the slack gathered at corners and side bands, knife-
+// edge pillows inflated with corner ears; occlusion and fold cavities baked per vertex.
+
+// sofa.glb content (scripts/sofa_blender.py); change with every rebuild.
+const SOFA_VERSION='828486edef';
 
 // Seeded value noise, smooth enough for fabric pulls.
 function noise2(seed){
@@ -212,33 +220,6 @@ function slab(T,{outline,corners=[],y0,y1,r=.03,rb=null,crown=0,bulge=0,lean=nul
   g.setIndex(idx);return g;
 }
 
-// Knife-edge throw pillow (after bedding.mjs): pinched outline, full belly, corner pulls.
-function pillow(T,W,H,Th,seed){
-  const n=noise2(seed),nu=14,nv=14,parts=[];
-  const rim=(u,v)=>[u*W/2*(1-.08*(1-v*v)),v*H/2*(1-.08*(1-u*u))];
-  for(const side of [1,-1]){
-    const pos=[],uv=[],index=[];
-    for(let i=0;i<=nu;i++)for(let j=0;j<=nv;j++){
-      const u=-1+2*i/nu,v=-1+2*j/nv,[x,y]=rim(u,v),edge=Math.max(Math.abs(u),Math.abs(v)),ang=Math.atan2(v,u);
-      let t=Th/2*Math.pow(Math.max(0,1-Math.abs(u)**3),.45)*Math.pow(Math.max(0,1-Math.abs(v)**3),.45);
-      t*=(1+.10*(-v))*(1-.16*edge**4*(.5+.5*Math.sin(ang*9+seed)))*(1+.06*n(u*3+side*5,v*3));
-      // A soft dent where the pillow folds over its lower half.
-      t*=1-.08*Math.exp(-((v+.15)**2)/.02)*(1-u*u);
-      pos.push(x,y,side*t);uv.push(x,y);
-    }
-    for(let i=0;i<nu;i++)for(let j=0;j<nv;j++){
-      const a=i*(nv+1)+j,b=a+nv+1;
-      if(side>0)index.push(a,b,a+1,b,b+1,a+1);else index.push(a,a+1,b,b,a+1,b+1);
-    }
-    const geo=new T.BufferGeometry();
-    geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new T.Float32BufferAttribute(uv,2));
-    geo.setIndex(index);geo.computeVertexNormals();
-    const col=[];for(let i=0;i<pos.length;i+=3){const e=Math.max(Math.abs(pos[i])/(W/2),Math.abs(pos[i+1])/(H/2));const ao=1-.12*Math.max(0,e-.75)/.25;col.push(ao,ao,ao);}
-    geo.setAttribute('color',new T.Float32BufferAttribute(col,3));parts.push(geo);
-  }
-  return parts;
-}
-
 // Floor contact shadow: a dark core under the footprint with a tight edge and a soft halo.
 function contactShadow(T,{x0,z0,x1,z1,y,draw,core=.72,halo=.28,ppm=200,layers=null}){
   const W=Math.round((x1-x0)*ppm),H=Math.round((z1-z0)*ppm),c=document.createElement('canvas');c.width=W;c.height=H;
@@ -367,44 +348,24 @@ export async function apply(ctx){
   // Ronda 8, after render 1: an armless modular sofa. Each run is two upholstered blocks
   // on a thin oak plinth: a deep back block from the plinth to 0.80 m (it also covers the baked
   // shadow of the old back cushions on the wall) and one thick
-  // seat block (no separate base or loose cushions) with a large rounded edge and a
-  // welt just below it. The back ends flush with the seat at the south end and stops
+  // seat block (no separate base or loose cushions) with a large rounded edge and
+  // piping on the top seam. The back ends flush with the seat at the south end and stops
   // short of it at the north end, where the seat runs on with a rounded end. Smooth
   // ivory cotton-linen instead of bouclé; only knife-edge throw pillows are loose.
+  // The upholstery itself comes from sofa.glb (Ronda 9, see the header).
   const removed=ctx.removeExported({material:'linen',region:'salon',box:[[5.2,0,-8.4],[8.4,1.2,-4.7]]});
   const linen=await upholstery(ctx,ctx.mats.linen,{cloth:'rough_linen',color:'#f0eae0',tile:.11,detail:.32,normal:.45,mottle:.035,slub:.022,specular:.2,sheen:.35,key:'sofa'});
-  const sofa=new Builder(T);
-  const put=g=>sofa.add(g);
-  const BX=5.257,FX=6.140,NZ=-8.28,SZ=-4.75,CX=8.278,CZ=-5.627,PL=.04,SEAT=.43,BACK=.80,DEPTH=.23;
-  const backX=BX+DEPTH,backZ=SZ-DEPTH,backN=NZ+.26;
-  // Blocks darken toward the plinth (shade) so the sofa sits on it instead of floating.
-  const shade=[.14,.2],plinth={axis:'y',at:PL,k:.3,fall:.03};
-  const block={r:.075,rb:.018,bulge:.005,wrinkle:.0018,shade};
-  // Back blocks: the main one wraps the corner; slightly crowned tops, rounder ends.
-  put(slab(T,{...rrect(BX,backN,backX,SZ,.09),y0:PL,y1:BACK,...block,r:.085,crown:.006,seed:2,
-    contacts:[plinth]}));
-  put(slab(T,{...rrect(backX+.003,backZ,CX,SZ,.09),y0:PL,y1:BACK,...block,r:.085,crown:.006,seed:3,
-    contacts:[plinth,{axis:'x',at:backX,k:.3,fall:.025}]}));
-  // Seat blocks: the main one covers the corner square and runs past the back to the
-  // north end; the south run butts against it. Soft sit dips, contact with the backs.
-  const seat={...block,y0:PL,y1:SEAT,crown:.008,sag:.004,wrinkle:.0028};
-  put(slab(T,{...rrect(backX+.003,NZ,FX,backZ-.003,.11),...seat,seed:10,
-    contacts:[plinth,{axis:'x',at:backX,k:.42,fall:.04},{axis:'z',at:backZ,k:.3,fall:.04}]}));
-  put(slab(T,{...rrect(FX+.004,CZ,CX,backZ-.003,.09),...seat,seed:11,
-    contacts:[plinth,{axis:'z',at:backZ,k:.42,fall:.04},{axis:'x',at:FX,k:.3,fall:.02}]}));
-  // Throw pillows as in render 1: a large one and a small one on the main run near the
-  // corner, a large one in the corner and another along the south run, all leaning
-  // back against the blocks, in the same mesh and material (one draw call).
-  const pillowB=sofa,tmp=new T.Object3D();
-  const addPillow=(W,H,Th,seed,x,y,z,ry,rx,rz)=>{
-    tmp.rotation.order='YXZ';tmp.rotation.set(rx,ry,rz);tmp.position.set(x,y,z);tmp.updateMatrix();
-    for(const g of pillow(T,W,H,Th,seed)){g.applyMatrix4(tmp.matrix);pillowB.add(g,1.02);}
-  };
-  addPillow(.55,.53,.16,5,backX+.09,SEAT+.245,-6.35,Math.PI/2,-.30,.05);
-  addPillow(.42,.40,.12,4,backX+.07,SEAT+.185,-5.72,Math.PI/2,-.34,-.06);
-  addPillow(.55,.53,.16,3,backX+.30,SEAT+.245,backZ-.10,Math.PI*.82,-.30,.04);
-  addPillow(.55,.53,.16,7,6.95,SEAT+.245,backZ-.09,Math.PI,-.31,-.05);
-  const sofaMesh=new T.Mesh(sofa.build(),linen);sofaMesh.castShadow=true;sofaMesh.receiveShadow=true;
+  const BX=5.257,FX=6.140,NZ=-8.28,SZ=-4.75,CX=8.278,CZ=-5.627,PL=.04;
+  // Ronda 9: blocks and pillows simulated as sewn cloth in Blender (scripts/sofa_blender.py),
+  // already in world metres; fabric UVs in metres from the unsimulated cloth and the
+  // occlusion baked by Cycles in COLOR_0, eased here (the probes carry the room light).
+  const sofaMesh=(await ctx.loadModel(`./assets/rooms/salon/sofa.glb?v=${SOFA_VERSION}`)).scene.getObjectByProperty('isMesh',true);
+  {const c=sofaMesh.geometry.getAttribute('color'),a=c.array,lo=.38,k=a instanceof Float32Array?1:(a instanceof Uint16Array?65535:255);
+    const out=new Float32Array(c.count*3);
+    for(let i=0;i<c.count;i++){const ao=Math.min(1,a[i*c.itemSize]/k),v=lo+(1-lo)*Math.pow(ao,.85);out[i*3]=out[i*3+1]=out[i*3+2]=v;}
+    sofaMesh.geometry.setAttribute('color',new T.Float32BufferAttribute(out,3));}
+  sofaMesh.material=linen;sofaMesh.name='salon:sofa';sofaMesh.castShadow=true;sofaMesh.receiveShadow=true;
+  sofaMesh.removeFromParent();sofaMesh.position.set(0,0,0);sofaMesh.rotation.set(0,0,0);sofaMesh.scale.set(1,1,1);
   const sofaGroup=new T.Group();sofaGroup.name='salon:sofa';sofaGroup.add(sofaMesh);
   group.add(sofaGroup);
   // Thin oak plinth set back 2.5 cm from the upholstery (the exported one goes).
