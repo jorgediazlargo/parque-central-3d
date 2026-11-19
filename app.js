@@ -1037,7 +1037,7 @@ async function load(){
     // only the last room module and the captures read. Shared bandwidth would otherwise
     // deliver the geometry last.
     const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
-    const house=Promise.all([get('./assets/house.json?v=5ead00dd3e',r=>r.json()),get('./assets/house.bin?v=3d5f678295',r=>r.arrayBuffer())]);
+    const house=Promise.all([get('./assets/house.json?v=e8473866b4',r=>r.json()),get('./assets/house.bin?v=3d5f678295',r=>r.arrayBuffer())]);
     const surfaceMaps=loadSurfaceMaps(),views=loadViews();
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();
