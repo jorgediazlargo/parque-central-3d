@@ -3,6 +3,7 @@
 // edits inside this room's zone (scripts/rooms/vestidor.json).
 //
 // Render 6: glazed oak wardrobes lit from above by the LED strip under each shelf.
+// - Shoes: real pairs (zapatos.glb) instead of the exported blocks; see addShoes().
 // - Hanging clothes: thin open-hemmed garments (about 700 triangles each, merged per
 //   fabric) draped over oak hangers whose middle and brass hook show above the collar;
 //   sleeves hang apart from the body with a cuff seam. Folds, plackets, buttons, lapels
@@ -500,4 +501,157 @@ export async function apply(ctx){
   for(const piece of ctx.splitExported({material:'bronze',region:'shared',box:ZONE})){
     const m=piece.material;m.color.set('#a3815a');m.metalness=.75;m.roughness=.28;m.needsUpdate=true;
   }
+  // --- Shoes (19/11/2026) -------------------------------------------------------------
+  await addShoes(ctx,THREE,group,rnd);
+}
+
+// Real shoes in the shoe rows: loafers, sneakers with laces, Chelsea boots and pumps
+// (assets/rooms/vestidor/zapatos.glb, from scripts/garments_blender.py through
+// scripts/zapatos_glb.py; ambient occlusion in COLOR_0). scripts/proyecto.py shoes()
+// exports each shoe as a 4 cm wide beveled block (in the bake): they are found by size
+// (findShoeRows), removed by index (the lightmap UVs stay aligned) and replaced, row by
+// row, by pairs toes out toward the nearest front. One InstancedMesh per part and area
+// (vestidor / other wardrobes), coloured per instance.
+const ZAPATOS_URL='./assets/rooms/vestidor/zapatos.glb?v=755bea5f65';
+const SHOE_ZONE=[[[0,-.2,-5.9],[4.4,3.2,-4.15]],[[0,-.2,-4.15],[.75,3.2,-1.79]],[[4.3,-.2,-4.15],[4.85,3.2,-.2]],[[4.4,-.2,-4.75],[4.85,3.2,-4.15]]];
+async function addShoes(ctx,THREE,group,rnd){
+  const gltf=await ctx.loadModel(ZAPATOS_URL),lib={};
+  gltf.scene.traverse(o=>{
+    if(!o.isMesh)return;
+    const root=o.parent,part=o.name.startsWith(root.name+'_')?o.name.slice(root.name.length+1):o.name;
+    (lib[root.name]??={})[part]=o;
+  });
+  // Ambient occlusion softened (the probes already darken the wardrobe), as rgb.
+  for(const piece of Object.values(lib))for(const m of Object.values(piece)){
+    const c=m.geometry.getAttribute('color');if(!c)continue;
+    const a=new Float32Array(c.count*3);
+    for(let i=0;i<c.count;i++){const v=1-.68*(1-Math.min(1,c.getX(i)));a[i*3]=a[i*3+1]=a[i*3+2]=v;}
+    m.geometry.setAttribute('color',new THREE.BufferAttribute(a,3));
+  }
+  // Right shoes: the left ones mirrored in their own geometry (a negative instance scale
+  // would flip the winding).
+  for(const n of ['loafer','sneaker','boot','pump']){
+    const R={};
+    for(const [part,m] of Object.entries(lib[n])){
+      const g=m.geometry.clone();g.scale(-1,1,1);
+      const a=g.index.array;for(let i=0;i<a.length;i+=3){const t=a[i+1];a[i+1]=a[i+2];a[i+2]=t;}
+      const c=m.clone();c.geometry=g;c.name=m.name+'_R';R[part]=c;
+    }
+    lib[n+'_R']=R;
+  }
+  const P=o=>new THREE.MeshPhysicalMaterial({color:'#ffffff',...o});
+  const fixed={lining:P({color:'#2a211b',roughness:.6,sheen:.4}),sole_leather:P({color:'#3b2516',roughness:.55}),
+    sole_white:P({color:'#e9e5dc',roughness:.7}),sole_black:P({color:'#141111',roughness:.4})};
+  const upper={loafer:P({vertexColors:true,roughness:.42,clearcoat:.35,clearcoatRoughness:.35,specularIntensity:.6}),
+    pump:P({vertexColors:true,roughness:.32,clearcoat:.5,clearcoatRoughness:.2,specularIntensity:.7}),
+    boot:P({vertexColors:true,roughness:.9,sheen:.6,sheenRoughness:.6,sheenColor:new THREE.Color('#ffffff')}),
+    sneaker:P({vertexColors:true,roughness:.7,specularIntensity:.4})};
+  const inZone=p=>SHOE_ZONE.some(([a,b])=>p.x>=a[0]&&p.x<=b[0]&&p.z>=a[2]&&p.z<=b[2]);
+  const batches=new Map();
+  const put=(mesh,material,matrix,color,area)=>{
+    const k=mesh.uuid+'|'+material.uuid+'|'+area;let b=batches.get(k);
+    if(!b)batches.set(k,b={mesh,material,items:[]});b.items.push({matrix:matrix.clone(),color});
+  };
+  const up=new THREE.Vector3(0,1,0),len={};
+  for(const n of ['loafer','sneaker','boot','pump']){const b=new THREE.Box3();for(const m of Object.values(lib[n])){m.geometry.computeBoundingBox();b.union(m.geometry.boundingBox);}len[n]=b.max.z;}
+  const shoeRows=findShoeRows(ctx,THREE);
+  let removed=0,pairs=0;
+  if(shoeRows.boxes.length)removed=ctx.removeExported({material:['dark','clay','fabric','stone'],box:shoeRows.boxes});
+  const TYPES=['loafer','sneaker','boot','pump','loafer','sneaker'];
+  const COLORS={loafer:['#3a2416','#17110d','#7a4a2a'],sneaker:['#ece8e0','#d8d2c6','#efece6'],boot:['#4a3426','#1f1812','#7d5f45'],pump:['#161212','#c79f86','#6e1e22']};
+  for(const row of shoeRows.rows){
+    const n=Math.max(1,Math.floor((row.length+.02)/.215)),pitch=row.length/n;
+    for(let i=0;i<n;i++){
+      const type=TYPES[(pairs+i)%TYPES.length],col=new THREE.Color(COLORS[type][Math.floor((pairs+i)/TYPES.length)%3]);
+      const centre=row.start.clone().addScaledVector(row.along,(i+.5)*pitch),area=inZone(centre)?'v':'x';
+      for(const side of [-1,1]){
+        const fwd=row.out.clone().applyAxisAngle(up,THREE.MathUtils.degToRad(side*(3+rnd()*3)));
+        const toe=centre.clone().addScaledVector(row.along,side*.052+(rnd()-.5)*.006).addScaledVector(row.out,(rnd()-.5)*.012);
+        const heel=toe.addScaledVector(fwd,-len[type]);
+        const X=new THREE.Vector3().crossVectors(up,fwd).normalize();
+        const m=new THREE.Matrix4().makeBasis(X,up,fwd).setPosition(heel.setY(row.y));
+        for(const [part,mesh] of Object.entries(lib[side>0?type+'_R':type])){
+          if(part==='cloth')put(mesh,upper[type],m,col,area);
+          else put(mesh,fixed[mesh.material?.name]||fixed.lining,m,null,area);
+        }
+      }
+    }
+    pairs+=n;
+  }
+  for(const {mesh,material,items} of batches.values()){
+    const im=new THREE.InstancedMesh(mesh.geometry,material,items.length);
+    im.name='Vestidor zapato '+mesh.name;im.castShadow=false;im.receiveShadow=true;
+    items.forEach((it,i)=>{im.setMatrixAt(i,it.matrix);if(it.color)im.setColorAt(i,it.color);});
+    im.instanceMatrix.needsUpdate=true;if(im.instanceColor)im.instanceColor.needsUpdate=true;
+    im.computeBoundingSphere();group.add(im);ctx.lightRuntimeObject(im);
+  }
+  console.info(`[rooms/vestidor] ${pairs} pairs of shoes (${removed} exported shoe triangles out)`);
+}
+
+// Rows of the exported shoe blocks (proyecto.py shoes()): connected pieces of the dark,
+// clay, fabric and stone meshes with a shoe block's size, grouped per shelf line and split
+// where a module side breaks the row. A row's outward side is the nearest wardrobe front
+// parallel to it (fronts in house.json), else the nearest rail's; rows with neither stay.
+function findShoeRows(ctx,THREE){
+  const comps=[];
+  for(const mesh of ctx.staticMeshes){
+    const ex=mesh.userData.exported;if(!ex||!['dark','clay','fabric','stone'].includes(ex.material))continue;
+    const g=mesh.geometry,pos=g.getAttribute('position'),index=g.index;if(!pos)continue;
+    const n=index?index.count:pos.count,ids=new Map(),parent=[],tri=new Int32Array(n);
+    const find=i=>{while(parent[i]!==i){parent[i]=parent[parent[i]];i=parent[i];}return i;};
+    for(let i=0;i<n;i++){
+      const v=index?index.getX(i):i;
+      const k=Math.round(pos.getX(v)*2000)*1e10+Math.round(pos.getY(v)*2000)*1e5+Math.round(pos.getZ(v)*2000);
+      let id=ids.get(k);if(id===undefined){id=parent.length;parent.push(id);ids.set(k,id);}tri[i]=id;
+    }
+    for(let i=0;i<n;i+=3){const a=find(tri[i]);for(const j of [1,2]){const b=find(tri[i+j]);if(b!==a)parent[b]=a;}}
+    const boxes=new Map();
+    for(let i=0;i<n;i++){
+      const r=find(tri[i]),v=index?index.getX(i):i,x=pos.getX(v),y=pos.getY(v),z=pos.getZ(v);
+      let b=boxes.get(r);if(!b)boxes.set(r,b=[x,y,z,x,y,z]);
+      if(x<b[0])b[0]=x;if(y<b[1])b[1]=y;if(z<b[2])b[2]=z;if(x>b[3])b[3]=x;if(y>b[4])b[4]=y;if(z>b[5])b[5]=z;
+    }
+    for(const b of boxes.values()){
+      const sx=b[3]-b[0],sy=b[4]-b[1],sz=b[5]-b[2],a=Math.min(sx,sz),c=Math.max(sx,sz);
+      if(a>.03&&a<.07&&c>.22&&c<.28&&sy>.06&&sy<.12)comps.push({b,longX:sx>sz});
+    }
+  }
+  const groups=new Map();
+  for(const c of comps){
+    const lc=c.longX?(c.b[0]+c.b[3])/2:(c.b[2]+c.b[5])/2;
+    const k=`${c.longX}|${Math.round(c.b[1]*100)}|${Math.round(lc*20)}`;
+    (groups.get(k)||groups.set(k,[]).get(k)).push(c);
+  }
+  const fronts=ctx.data.fronts||[],rails=ctx.data.wardrobes?.rails||[];
+  const rows=[],boxes=[];
+  for(const list of groups.values()){
+    const lx=list[0].longX,s0=lx?2:0,s1=lx?5:3,l0=lx?0:2,l1=lx?3:5;
+    list.sort((p,q)=>p.b[s0]-q.b[s0]);
+    const runs=[[list[0]]];
+    for(let i=1;i<list.length;i++){if(list[i].b[s0]-list[i-1].b[s1]>.05)runs.push([]);runs[runs.length-1].push(list[i]);}
+    for(const run of runs){
+      const smin=Math.min(...run.map(c=>c.b[s0])),smax=Math.max(...run.map(c=>c.b[s1]));
+      const lmin=Math.min(...run.map(c=>c.b[l0])),lmax=Math.max(...run.map(c=>c.b[l1])),y=Math.min(...run.map(c=>c.b[1]));
+      const lc=(lmin+lmax)/2,sc=(smin+smax)/2;
+      // Fronts parallel to the row (their out along the row's long axis), covering it.
+      let best=null,bd=1.2;
+      for(const f of fronts){
+        const o=lx?f.out?.[0]:f.out?.[1];if(!f.edge||!f.pivot||!(Math.abs(o)>=.5))continue;
+        const plane=lx?f.pivot[0]:f.pivot[1],s=lx?[f.pivot[1],f.edge[1]]:[f.pivot[0],f.edge[0]];
+        if(sc<Math.min(...s)-.3||sc>Math.max(...s)+.3||f.y[0]>y+.05||f.y[1]<y)continue;
+        const d=Math.abs(plane-lc);if(d<bd){bd=d;best=Math.sign(o);}
+      }
+      if(best===null)for(const r of rails){
+        const o=lx?r.out[0]:r.out[1];if(!o)continue;
+        const d=Math.hypot((lx?r.at:(r.span[0]+r.span[1])/2)-(lx?lc:sc),(lx?(r.span[0]+r.span[1])/2:r.at)-(lx?sc:lc));
+        if(d<bd+.6){bd=d-.6;best=Math.sign(o);}
+      }
+      if(best===null)continue;
+      const toe=best>0?lmax:lmin;
+      rows.push({start:lx?new THREE.Vector3(toe,y,smin):new THREE.Vector3(smin,y,toe),along:lx?new THREE.Vector3(0,0,1):new THREE.Vector3(1,0,0),
+        out:lx?new THREE.Vector3(best,0,0):new THREE.Vector3(0,0,best),length:smax-smin,y});
+      for(const c of run)boxes.push([[c.b[0]-.002,c.b[1]-.002,c.b[2]-.002],[c.b[3]+.002,c.b[4]+.002,c.b[5]+.002]]);
+    }
+  }
+  return {rows,boxes};
 }
