@@ -1,7 +1,7 @@
 import * as THREE from './assets/three.module.js';
 import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,captureSize,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=344884d358';
-import {Post} from './post.mjs?v=e7099b83aa';
+import {Post} from './post.mjs?v=804d013709';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
 import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=7e02569fe2';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';

@@ -2,7 +2,8 @@ import * as THREE from './assets/three.module.js';
 
 // HDR post-processing after one multisampled scene render:
 //  1. contact occlusion: scalable ambient obscurance (SAO) from the resolved depth at
-//     half resolution, small radius, two depth-aware blur passes. The bake carries the
+//     half resolution, small radius, two depth-aware blur passes, and a depth-aware
+//     (joint bilateral) upsampling in the composite. The bake carries the
 //     room-scale shading; this only adds the contact darkening its texels are too coarse
 //     for (feet, plinths, cushions, props added at runtime);
 //  2. metering: centre-weighted log-average luminance of a 64² copy (mipmapped to 1 texel);
@@ -63,7 +64,7 @@ export class Post{
         for(int i=-4;i<=4;i++){
           if(i==0)continue;
           vec2 s=texture2D(src,vUv+dir*float(i)).rg;
-          float k=exp(-float(i*i)/18.0)*exp(-abs(s.g-c.g)/(.04*c.g+.01));
+          float k=exp(-float(i*i)/18.0)*exp(-abs(s.g-c.g)/(.015*c.g+.005));
           sum+=s.r*k;w+=k;
         }
         gl_FragColor=vec4(sum/w,c.g,0.0,1.0);
@@ -105,13 +106,27 @@ export class Post{
       }`,{src:{value:null},texel:{value:new THREE.Vector2()}},{blending:THREE.AdditiveBlending,transparent:true});
     this.final=new THREE.ShaderMaterial({
       uniforms:{src:{value:null},bloomTex:{value:null},aoTex:{value:null},exposure:{value:null},bloom:{value:bloom},base:{value:base},grain:{value:grain},vignette:{value:vignette},
-        time:{value:0},resolution:{value:new THREE.Vector2()},white:{value:new THREE.Vector3(...white)},saturation:{value:saturation},contrast:{value:contrast},aoStrength:{value:ao},showAO:{value:0}},
+        time:{value:0},resolution:{value:new THREE.Vector2()},depthTex:{value:null},projInv:{value:new THREE.Matrix4()},aoTexel:{value:new THREE.Vector2(1,1)},white:{value:new THREE.Vector3(...white)},saturation:{value:saturation},contrast:{value:contrast},aoStrength:{value:ao},showAO:{value:0}},
       vertexShader:quadVertex,depthTest:false,depthWrite:false,
-      fragmentShader:`uniform sampler2D src,bloomTex,aoTex,exposure;uniform float bloom,base,grain,vignette,time,saturation,contrast,aoStrength,showAO;uniform vec2 resolution;uniform vec3 white;varying vec2 vUv;
+      fragmentShader:`uniform sampler2D src,bloomTex,aoTex,exposure,depthTex;uniform mat4 projInv;uniform vec2 aoTexel;uniform float bloom,base,grain,vignette,time,saturation,contrast,aoStrength,showAO;uniform vec2 resolution;uniform vec3 white;varying vec2 vUv;
+        // Joint bilateral upsampling of the half-resolution occlusion: of its four nearest
+        // texels, those at another depth than this pixel (their g = view depth) weigh
+        // nothing, so a pillow in front of the back cushion keeps a clean edge instead of
+        // the half-resolution stair-steps and dark fringe of a plain bilinear read.
+        float viewZ(vec2 uv){float d=texture2D(depthTex,uv).r;if(d>=1.0)return 1e4;vec4 v=projInv*vec4(uv*2.0-1.0,d*2.0-1.0,1.0);return -v.z/v.w;}
+        float aoUp(vec2 uv){
+          float z=viewZ(uv);vec2 q=uv/aoTexel-.5,f=fract(q),b=(floor(q)+.5)*aoTexel;float sum=0.0,w=0.0;
+          for(int j=0;j<2;j++)for(int i=0;i<2;i++){
+            vec2 t=texture2D(aoTex,b+vec2(float(i),float(j))*aoTexel).rg;
+            float k=(i==0?1.0-f.x:f.x)*(j==0?1.0-f.y:f.y)*exp(-abs(t.g-z)/(.008*z+.003))+1e-6;
+            sum+=t.r*k;w+=k;
+          }
+          return sum/w;
+        }
         float grainHash(vec2 p){p=fract(p*vec2(443.897,441.423));p+=dot(p,p.yx+19.19);return fract((p.x+p.y)*p.x);}
         void main(){
           float e=texture2D(exposure,vec2(.5)).r*base;
-          float ao=mix(1.0,texture2D(aoTex,vUv).r,aoStrength);
+          float ao=aoStrength>0.0?mix(1.0,aoUp(vUv),aoStrength):1.0;
           vec3 c=texture2D(src,vUv).rgb*ao*e*white+texture2D(bloomTex,vUv).rgb*bloom;
           gl_FragColor=vec4(c,1.0);
           #include <tonemapping_fragment>
@@ -184,6 +199,7 @@ export class Post{
     const f=this.final.uniforms;f.src.value=src;f.bloomTex.value=this.mips[0].texture;f.aoTex.value=ao>0?aoA.texture:this.noAO;f.exposure.value=next.texture;
     f.bloom.value=s.bloom/this.mips.length;f.base.value=s.base;f.grain.value=s.grain;f.vignette.value=s.vignette;f.time.value=this.time;
     f.white.value.set(...s.white);f.saturation.value=s.saturation;f.contrast.value=s.contrast;f.aoStrength.value=ao;f.showAO.value=s.showAO?1:0;
+    f.depthTex.value=this.sceneRT.depthTexture;f.projInv.value.copy(this.camera.projectionMatrixInverse);f.aoTexel.value.set(1/aoA.width,1/aoA.height);
     this.pass(this.final,null);
   }
 }
