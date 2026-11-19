@@ -30,16 +30,6 @@ function oakGrain(THREE,source){
 
 function rand(seed){let s=seed>>>0;return ()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296;};}
 
-// Smooth 2-D value noise in [-1, 1].
-function noise2(seed){
-  const h=(x,y)=>{let k=Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(seed,2147483647)|0;k=Math.imul(k^(k>>>13),1274126177);return ((k^(k>>>16))>>>0)/2147483648-1;};
-  return (x,y)=>{
-    const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
-    const a=h(xi,yi),b=h(xi+1,yi),c=h(xi,yi+1),d=h(xi+1,yi+1);
-    return (a+(b-a)*u)*(1-v)+(c+(d-c)*u)*v;
-  };
-}
-
 // Continuous veneer sheet, W x H metres at 2.1 mm/px, vertical grain, cut from the shared
 // 50 cm white oak tile: boards of 26-36 cm (as the panel joints of render 3), each its own
 // strip of the tile, mirrored at random and stretched 2.2x along the grain, with the
@@ -247,79 +237,8 @@ export async function apply(ctx){
       polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4,toneMapped:false}));
     m.rotation.x=-Math.PI/2;m.position.set(x,top+.001,z);m.renderOrder=1;ctx.group.add(m);
   }
-
-  // 7. Bed linen of render 3: washed linen with soft creases, not a smooth CGI shell.
-  // bedding.mjs (shared) builds the dressing; here only its meshes in this room change:
-  // the duvet, sheet cuff and throw get the same crease field (so the layers stay
-  // concentric), the pillows a few dents, and a vertex tone darkens crease valleys and
-  // the lower drape. Geometry and triangle count unchanged; materials cloned.
-  crumpleBedding(ctx);
-}
-
-// Crease field of washed linen (metres, along the surface normal): broad swells plus
-// tapered linear creases radiating loosely from the edges and the pillows.
-function creaseField(seed,{x0,x1,z0,z1}){
-  const n=noise2(seed),r=rand(seed),list=[];
-  for(let k=0;k<34;k++){
-    const cx=x0+r()*(x1-x0),cz=z0+r()*(z1-z0),ang=(r()-.5)*1.9+(r()<.5?0:Math.PI/2),len=.18+r()*.5,w=.016+r()*.03;
-    list.push({cx,cz,dx:Math.cos(ang),dz:Math.sin(ang),len,w,amp:(r()<.6?-1:1)*(.003+r()*.005),bend:(r()-.5)*1.2});
-  }
-  return (x,z)=>{
-    let h=.006*n(x/.26,z/.26)+.0025*n(x/.10+5,z/.10+3);
-    for(const c of list){
-      const ox=x-c.cx,oz=z-c.cz,s=ox*c.dx+oz*c.dz;if(Math.abs(s)>c.len/2)continue;
-      const q=-ox*c.dz+oz*c.dx-c.bend*s*s;if(Math.abs(q)>c.w*3)continue;
-      const t=Math.sin(Math.PI*(s/c.len+.5));h+=c.amp*t*t*Math.exp(-q*q/(c.w*c.w));
-    }
-    return h;
-  };
-}
-function crumpleBedding(ctx){
-  const {THREE}=ctx,bed={x0:.2,x1:2.2,z0:-8.71,z1:-6.71};
-  // The bedding group: parent of the mattress (ExtrudeGeometry) inside the bed footprint.
-  const mattress=ctx.staticMeshes.find(m=>!m.userData.exported&&m.geometry?.type==='ExtrudeGeometry'&&m.material?.isMeshPhysicalMaterial&&
-    (m.geometry.computeBoundingBox(),m.geometry.boundingBox.getCenter(new THREE.Vector3()).distanceTo(new THREE.Vector3(1.2,.4,-7.71))<.3));
-  const group=mattress?.parent;if(!group)return;
-  const top=creaseField(61,bed),side=noise2(67);
-  const toned=(mesh,normalScale)=>{
-    const m=mesh.material.clone();m.vertexColors=true;m.color.multiplyScalar(.93);if(normalScale)m.normalScale.multiplyScalar(normalScale);mesh.material=m;
-  };
-  for(const mesh of group.children){
-    if(!mesh.isMesh||mesh===mattress||!mesh.geometry.index)continue;
-    const g=mesh.geometry,p=g.getAttribute('position'),nr=g.getAttribute('normal'),col=new Float32Array(p.count*3);
-    const disp=new Float32Array(p.count);
-    for(let i=0;i<p.count;i++){
-      const x=p.getX(i),y=p.getY(i),z=p.getZ(i),ny=nr.getY(i),wt=Math.min(1,Math.max(0,(ny-.45)/.4));
-      // Hanging sides: soft irregular swells running down the drape.
-      const along=Math.abs(nr.getZ(i))>Math.abs(nr.getX(i))?x:z;
-      const hang=Math.min(1,Math.max(0,(.50-y)/.08));
-      disp[i]=wt*top(x,z)+(1-wt)*hang*(.008*side(along/.08,y/.45)+.004*side(along/.03+9,y/.2));
-    }
-    for(let i=0;i<p.count;i++){
-      const d=disp[i];
-      p.setXYZ(i,p.getX(i)+nr.getX(i)*d,p.getY(i)+nr.getY(i)*d,p.getZ(i)+nr.getZ(i)*d);
-      const y=p.getY(i),low=Math.min(1,Math.max(0,(.47-y)/.22));
-      const v=(1+Math.max(-1,Math.min(1,d/.006))*.18)*(1-.22*low);
-      col.set([v,v,v],i*3);
-    }
-    g.setAttribute('color',new THREE.BufferAttribute(col,3));g.computeVertexNormals();
-    toned(mesh,1.25);
-  }
-  // Pillows: dents and a couple of creases on each face.
-  let seed=71;
-  group.traverse(o=>{
-    if(!o.isMesh||o.parent===group||o.geometry.type==='TubeGeometry'||!o.geometry.index)return;
-    const g=o.geometry,p=g.getAttribute('position'),nr=g.getAttribute('normal'),f=creaseField(seed++,{x0:-.35,x1:.35,z0:-.24,z1:.24});
-    const col=new Float32Array(p.count*3);
-    for(let i=0;i<p.count;i++){
-      const x=p.getX(i),y=p.getY(i),edge=Math.max(Math.abs(x)/.4,Math.abs(y)/.27),w=Math.max(0,1-edge**4);
-      const d=f(x,y)*1.3*w;
-      p.setXYZ(i,x+nr.getX(i)*d,y+nr.getY(i)*d,p.getZ(i)+nr.getZ(i)*d);
-      const v=1+Math.max(-1,Math.min(1,d/.005))*.06;col.set([v,v,v],i*3);
-    }
-    g.setAttribute('color',new THREE.BufferAttribute(col,3));g.computeVertexNormals();
-    toned(o,1.2);
-  });
+  // 7. Bed linen: simulated as cloth (bedding.mjs, scripts/bedding_blender.py); the
+  // procedural crease field that used to roughen it here is gone.
 }
 
 // Minimal non-indexed merge of position/normal/uv (same attribute set).

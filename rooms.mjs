@@ -2,7 +2,7 @@ import * as THREE from './assets/three.module.js';
 import {GLTFLoader} from './assets/jsm/loaders/GLTFLoader.js';
 import {lightObject} from './lighting.mjs?v=344884d358';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
-import {clothMaps} from './bedding.mjs?v=322afdf762';
+import {clothMaps} from './bedding.mjs?v=f20c1d700a';
 import {cropReflection} from './mirrors.mjs?v=b39cdb6a1b';
 import {createCurtain,createBlind} from './curtains.mjs?v=023dd6f85e';
 

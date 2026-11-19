@@ -6,9 +6,9 @@ import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
 import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=7e02569fe2';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
-import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
+import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=f20c1d700a';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=eb3fb85d6a';
-import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=ee7d015fd4';
+import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=de12166806';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
@@ -692,7 +692,7 @@ async function initScene(buffer,bake){
   // Joinery fronts: per-vertex ids now, so room modules that split their meshes keep them.
   fronts=createFronts(THREE,{data,staticMeshes,scene});
   // The master bed dressing replaces the exported duvet, pillows and blanket.
-  const bedding=masterBedding();scene.add(bedding);runtimeObjects.push(bedding);bedding.traverse(o=>{if(o.isMesh)staticMeshes.push(o);});
+  const bedding=await masterBedding();scene.add(bedding);runtimeObjects.push(bedding);bedding.traverse(o=>{if(o.isMesh)staticMeshes.push(o);});
   physics=new WorldPhysics(kitchenColliders(data),data.floors);player=[...data.spawn];setupDoors();
   const m=data.vanityMirror;
   if(m){
