@@ -13,7 +13,7 @@
 // fronts (bake_house.py), so the interiors are already lit as if open.
 import {mergeGeometries} from './assets/jsm/utils/BufferGeometryUtils.js';
 
-export const GLAZED=[31,32,35,36,37,38,42,43];
+export const GLAZED=[29,30,33,34,35,36,40,41];   // front ids (proyecto.py build order)
 const T=.019,GAP=.0025,FRAME=.026;   // proyecto.py: leaf thickness, joint, glass frame
 
 export function createVitrinas(THREE,{data,staticMeshes,scene,mats,cloneMaterial,lightObject,lighting,floor}){

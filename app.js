@@ -3,7 +3,7 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,captureSize,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=344884d358';
 import {Post} from './post.mjs?v=804d013709';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=7e02569fe2';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=66e40be0f7';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=f20c1d700a';
@@ -13,9 +13,9 @@ import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
-import {createVitrinas} from './vitrinas.mjs?v=60624b8997';
+import {createVitrinas} from './vitrinas.mjs?v=1913e68244';
 import {createChimeneas} from './chimenea.mjs?v=f5fe79aeab';
-import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=bc8b1c42e1';
+import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=99e867b823';
 import {createMirrors} from './mirrors.mjs?v=b39cdb6a1b';
 import {createAvatar} from './avatar.mjs?v=1260b64d63';
 
@@ -1014,7 +1014,7 @@ async function load(){
     // only the last room module and the captures read. Shared bandwidth would otherwise
     // deliver the geometry last.
     const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar el modelo.');return read(r);});
-    const house=Promise.all([get('./assets/house.json?v=3f15a56f10',r=>r.json()),get('./assets/house.bin?v=9658554bc5',r=>r.arrayBuffer())]);
+    const house=Promise.all([get('./assets/house.json?v=5ead00dd3e',r=>r.json()),get('./assets/house.bin?v=3d5f678295',r=>r.arrayBuffer())]);
     const surfaceMaps=loadSurfaceMaps(),views=loadViews();
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();

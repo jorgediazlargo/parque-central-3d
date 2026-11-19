@@ -106,7 +106,7 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
   const partition=carve(PARTITION,'tabique del estudio');
   for(const m of partition)m.visible=false;
   hidden.push(...carve(BOXES,'bloque central'));
-  // A2's ten fronts (glass doors and drawers): lifted closed into their groups, hidden with it.
+  // A2's eight fronts (glass doors and drawers): lifted closed into their groups, hidden with it.
   const a2=fronts.list.filter(f=>{const [x,z]=f.pivot||[0,0];return x>BLOCK.x0&&x<BLOCK.x1&&z>BLOCK.z0&&z<BLOCK.z1+.02;});
   for(const f of a2)fronts.set(f,0);
   const frontGroups=a2.map(f=>f.group).filter(Boolean);
