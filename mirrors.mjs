@@ -33,6 +33,7 @@ export function cropReflection(THREE,o,{budget=1e6,clipBias=.003}={}){
   const plane=new THREE.Plane(),normal=new THREE.Vector3(),mirrorPos=new THREE.Vector3(),camPos=new THREE.Vector3(),rot=new THREE.Matrix4();
   const look=new THREE.Vector3(),view=new THREE.Vector3(),aim=new THREE.Vector3(),clip=new THREE.Vector4(),q=new THREE.Vector4();
   o.geometry.computeBoundingBox();const bb=o.geometry.boundingBox;
+  virtualCamera.layers.enable(1);   // the visitor's body (avatar.mjs AVATAR_LAYER) shows only in mirrors
   o.onBeforeRender=function(renderer,scene,camera){
     if(drawing)return;
     if(o.userData.inSight&&!o.userData.inSight(camera))return;   // behind walls: keep the last reflection

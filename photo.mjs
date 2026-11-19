@@ -142,7 +142,7 @@ export function createPhotoMode(THREE,ctx){
     const add=(geo,mat)=>{if(geo)out.add(new THREE.Mesh(geo,mat));};
     scene.updateMatrixWorld(true);
     scene.traverse(o=>{
-      if(!o.isMesh||hidden(o))return;
+      if(!o.isMesh||hidden(o)||!o.layers.isEnabled(0))return;   // the mirror-only avatar stays out
       const m=Array.isArray(o.material)?o.material[0]:o.material,kind=o.userData.exported?.material;
       if(o.isReflector){if(!o.userData.mirror)add(worldTriangles(o),S.bronzeMirror);return;}   // vanity; C01-C03 are the exported panes
       if(m.isShaderMaterial||m.isPointsMaterial||m.isLineBasicMaterial)return;

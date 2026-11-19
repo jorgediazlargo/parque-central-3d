@@ -8,7 +8,7 @@ import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=322afdf762';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=eb3fb85d6a';
-import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=c992d6fdf6';
+import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=ee7d015fd4';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
@@ -16,12 +16,13 @@ import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=b6f8705d44';
 import {createChimeneas} from './chimenea.mjs?v=f5fe79aeab';
 import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=bc8b1c42e1';
-import {createPhotoMode} from './photo.mjs?v=23787e3a02';
-import {createMirrors} from './mirrors.mjs?v=ffbe3ce218';
+import {createPhotoMode} from './photo.mjs?v=a3d6cbd23d';
+import {createMirrors} from './mirrors.mjs?v=b39cdb6a1b';
+import {createAvatar} from './avatar.mjs?v=b456e51e7d';
 
 const $=id=>document.getElementById(id),canvas=$('world');
 let scene,camera,renderer,composer,quality,data,physics,player,doors=[],curtains=[],staticMeshes=[],target=null,fronts={list:[],at:()=>null,step:()=>false};
-let lightmap,roomStatus={},reflections,mirrorSpan=()=>{},wallMirrors=null,photo=null,photoSave=false;const runtimeObjects=[];
+let lightmap,roomStatus={},reflections,mirrorSpan=()=>{},wallMirrors=null,avatar=null,photo=null,photoSave=false;const runtimeObjects=[];
 // Día / Noche: the night bake (artificial light only, same UVs) swapped into the same
 // lightmap and probe textures, the outdoor lights and backdrop, and the room modules'
 // daylight effects (ctx.onTimeOfDay). Reflections are captured again after each switch.
@@ -985,6 +986,7 @@ function frame(time){
     }
   }
   wallMirrors?.update(camera);
+  avatar?.update(dt||1/60,{x:player[0],z:player[1],yaw,pitch,eye});
   if(fireplace?.on)fireplace.tick(time/1000);
   renderer.info.reset();
   if(!photo?.frame(dt||1/60))composer.render(dt||1/60);
@@ -1085,6 +1087,8 @@ async function load(){
     // computer; on phones and lower levels they keep the probe-lit silvered pane.
     wallMirrors=createMirrors(THREE,Reflector,{scene,walls:kitchenColliders(data).filter(c=>WALL_NAMES.test(c.name)).map(c=>c.poly),
       doors:opaqueDoorPolys,mirrorSight,enabled:()=>!mobile&&quality.index<=1});
+    // The visitor's body in those mirrors (avatar.mjs): computer only, loaded in the background.
+    if(!mobile)createAvatar(THREE,{scene,lightObject,lighting}).then(a=>{avatar=a;}).catch(e=>console.warn('[avatar]',e));
     // Doors, the study screen, the master bedding and the mirror frame are not baked:
     // they take the probes. Then each room is captured for its reflections, props included.
     for(const o of runtimeObjects)lightObject(o,lighting);
