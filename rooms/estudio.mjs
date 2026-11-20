@@ -256,8 +256,9 @@ function chairs(ctx,THREE){
   const geo=tubChairGeometry(THREE);
   const shadowMat=contactShadow(THREE);
   // B01: the two chairs at y 196.8 and 236.5, facing the desk, each swivelled a little.
-  for(const [x,z,turn] of [[4.30,-8.208,.07],[4.30,-7.438,-.05]]){
-    const chair=new THREE.Group();chair.position.set(x,0,z);chair.rotation.y=turn;
+  for(const [x,z,turn,name] of [[4.30,-8.208,.07,'Silla estudio norte'],[4.30,-7.438,-.05,'Silla estudio sur']]){
+    // Named: estudio-arco.mjs moves them to their places in the arch.
+    const chair=new THREE.Group();chair.name=name;chair.position.set(x,0,z);chair.rotation.y=turn;
     chair.add(new THREE.Mesh(geo.fabric,fabric),new THREE.Mesh(geo.dark,dark));
     chair.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
     ctx.lightRuntimeObject(chair);
