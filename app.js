@@ -3,7 +3,7 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,captureSize,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=344884d358';
 import {Post} from './post.mjs?v=804d013709';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=cd987be34c';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=dc3af05a88';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=f20c1d700a';
@@ -18,7 +18,7 @@ import {createChimeneas} from './chimenea.mjs?v=f5fe79aeab';
 import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=99e867b823';
 import {createEstudioArco} from './estudio-arco.mjs?v=a31b10f39f';
 import {createMirrors} from './mirrors.mjs?v=b39cdb6a1b';
-import {applyVertexLight} from './vertex-light.mjs?v=162038dcb8';
+import {applyVertexLight} from './vertex-light.mjs?v=ef923e6896';
 import {createAvatar} from './avatar.mjs?v=1260b64d63';
 
 const $=id=>document.getElementById(id),canvas=$('world');
@@ -410,7 +410,7 @@ function material(color,kind,roughness=.7){
           const [x0,z0,x1,z1,h]=data.coves[i];
           glow+=`{vec2 q=houseWorld.xz;vec2 lo=vec2(${x0.toFixed(5)},${z0.toFixed(5)}),hi=vec2(${x1.toFixed(5)},${z1.toFixed(5)});vec2 outer=max(max(lo-q,q-hi),vec2(0.0));float edge=min(min(abs(q.x-lo.x),abs(q.x-hi.x)),min(abs(q.y-lo.y),abs(q.y-hi.y)));cove+=exp(-edge*7.0-length(outer)*13.0-abs(houseWorld.y-${(h+.07).toFixed(3)})*6.0)*.42;}`;
         }
-        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',glow+'\noutgoingLight+=vec3(1.0,.62,.32)*cove;\n// Terrace soffit (photo): pale, lit by the sunlit floor and the sky, which the bake does not carry out there.\nfloat terraceSoffit=step(2.465,houseWorld.y)*step(houseWorld.y,2.48)*step(houseNormal.y,-.5)*step(houseWorld.z,-8.65)*step(4.3,houseWorld.x)*step(houseWorld.x,14.4)*terraceDay;\noutgoingLight+=diffuseColor.rgb*vec3(1.0,.985,.95)*.85*terraceSoffit;\n#include <opaque_fragment>');
+        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',glow+'\noutgoingLight+=vec3(1.0,.62,.32)*cove;\n// Terrace soffit (photo): pale, lit by the terrace floor and the sky, which the bake does not carry out there.\nfloat terraceSoffit=step(2.465,houseWorld.y)*step(houseWorld.y,2.48)*step(houseNormal.y,-.5)*step(houseWorld.z,-8.65)*step(4.3,houseWorld.x)*step(houseWorld.x,14.4)*terraceDay;\noutgoingLight+=diffuseColor.rgb*vec3(1.0,.985,.95)*.85*terraceSoffit;\n#include <opaque_fragment>');
       }
     };m.customProgramCacheKey=()=>kind||'plain';
   if(['fabric','linen','rug'].includes(kind))m.defines={USE_UV:''};
@@ -808,12 +808,13 @@ async function exterior(loading){
   dome.position.set(...TERRACE_ORIGIN);dome.renderOrder=-1;scene.add(dome);outdoor.dome=dome.material;
   outdoorLight(timeOfDay.night);
 }
-// Terrace and facade (not baked): sun and sky by day; by night a faint cool moonlight
+// Terrace and facade (not baked): by day the sky alone (the sun never reaches this facade,
+// owner 23/11/2026; it was 2.1 with the sky at .9); by night a faint cool moonlight
 // and sky, the backdrop graded for night. Indoors everything takes the bake or probes.
 function outdoorLight(night){
   const {sky,sun}=outdoor;terraceDay.value=night?0:1;
-  sky.color.set(night?'#3a4866':'#dfe9f2');sky.groundColor.set(night?'#1a1712':'#8a7a64');sky.intensity=night?.22:.9;
-  sun.color.set(night?'#a9bde0':'#ffe2bd');sun.intensity=night?.18:2.1;
+  sky.color.set(night?'#3a4866':'#e4ecf3');sky.groundColor.set(night?'#1a1712':'#8a7f70');sky.intensity=night?.22:1.9;
+  sun.color.set(night?'#a9bde0':'#ffe2bd');sun.intensity=night?.18:0;
   scene.background.set(night?'#06080f':'#c4d7de');
   Object.assign(composer.settings,outdoor.post[night?1:0]);
   if(outdoor.dome){outdoor.dome.map=outdoor.skies[night?1:0];for(const [m,day,dark] of outdoor.views)m.map=night?dark:day;outdoor.ground.color.set(night?'#141712':'#73826a');}
