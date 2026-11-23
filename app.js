@@ -10,7 +10,7 @@ import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './b
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=eb3fb85d6a';
 import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=de12166806';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
-import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=df6f58f222';
+import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=e7049251b3';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=1913e68244';
@@ -663,7 +663,7 @@ function opaqueDoorPolys(){return doors.filter(d=>d.active!==false&&!d.glass).fl
 function shown(o){for(let n=o;n;n=n.parent)if(!n.visible)return false;return true;}
 async function initScene(buffer,bake){
   renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,mobile?1.5:2));renderer.setSize(innerWidth,innerHeight);
   renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.AgXToneMapping;renderer.toneMappingExposure=1;
   renderer.info.autoReset=false;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   // Checked before its first draw, each program costs four synchronous round trips to the

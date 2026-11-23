@@ -2,12 +2,18 @@
 // then multisampling) only while the machine cannot hold ~50 fps, and tries to climb back
 // after a while of comfortable frames. A fast computer never leaves level 0.
 
-// Levels from best to worst for a base pixel ratio (min(devicePixelRatio, 1.5)).
+// Levels from best to worst for a base pixel ratio: min(devicePixelRatio, 2) on a computer,
+// min(devicePixelRatio, 1.5) on a phone or tablet. Above 1.5 (a Retina screen) the top level
+// draws at that ratio and the next ones are those of a 1.5 base, so a slower Mac falls back
+// to exactly the former best level. At ×1.5 a Retina screen upscales every frame by 4/3: the
+// fabric weave, wood pores and the city view soften (review/texturas-4k), which sharper
+// texture maps cannot fix (2k/4k Poly Haven maps changed nothing visible at ×1.5).
 // Two samples instead of four changes under 0.6 % of the image (frame-time.mjs --compare).
 // The two lowest levels also drop the contact occlusion pass (≈ 2–3 ms on the M1 at ×1,5):
 // the bake already carries the room-scale shading.
 export function qualityLevels(base){
-  const raw=[[1,4,1],[1,2,1],[.83,2,1],[.67,2,0],[.5,2,0]].map(([k,samples,ao])=>({ratio:Math.max(.6,Math.round(base*k*100)/100),samples,ao:!!ao}));
+  const top=Math.min(base,1.5);
+  const raw=[...(base>top?[[base/top,4,1]]:[]),[1,4,1],[1,2,1],[.83,2,1],[.67,2,0],[.5,2,0]].map(([k,samples,ao])=>({ratio:Math.max(.6,Math.round(top*k*100)/100),samples,ao:!!ao}));
   return raw.filter((l,i)=>i===0||l.ratio!==raw[i-1].ratio||l.samples!==raw[i-1].samples||l.ao!==raw[i-1].ao);
 }
 
