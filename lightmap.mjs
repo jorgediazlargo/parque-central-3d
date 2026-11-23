@@ -11,6 +11,8 @@ import {probeVolume,fetchProbeData,patchLighting} from './lighting.mjs?v=344884d
 // upCoves: raised ceilings lit from their riser ([x0,z0,x1,z1,h], house.json coves 0 and 1).
 // Their cove is baked about five times brighter than in renders 1 and 2: the share above
 // the room's ambient is scaled down so the wash grades instead of clipping to white.
+// Not in the salon (23/11/2026, review/luz-salon): there the plan's light is kept as baked,
+// as the Cycles reference shows it (the ceiling read half as bright as path traced).
 // Night: the same bake with the daylight off (data.night, same UVs). setMode('night'|'day')
 // fetches the other pages and probes once and swaps them into the same textures, so no
 // material is recompiled. The day bake has every artificial light on too; 'dayoff' is the
@@ -24,6 +26,10 @@ const bakeFiles=(data,m)=>{const v={night:data.night,dayoff:data.dayOff}[m];retu
 // Progressive loading: the first mode shows the reduced pages (data.lowres, 1/4 of the size,
 // scripts/lightmap_lowres.py) and swaps in the full ones when they arrive.
 const lowPages=(data,m)=>data.lowres?.[{night:'night',dayoff:'dayOff'}[m]||'lightmaps'];
+const salonFiles=(data,m)=>({night:data.night,dayoff:data.dayOff}[m]||data).lightmaps;
+const salonUsable=(s,data)=>!!s&&s.data.houseContextSha256===data.contextSha256&&s.data.sourceSha256===data.sourceSha256&&s.data.encoding===data.encoding;
+// The salon's open sides (house.json region 'salon' ends there): dining room and hall.
+const SALON_OPEN={x:10.18,z:-3.70};
 const loadPages=(names,version)=>Promise.all(names.map(name=>bitmaps.loadAsync('./assets/'+name+'?v='+version)));
 // Requests the bake of `mode` now (its JSON and UVs) and its pages and probes once
 // `after` settles, so it downloads alongside the geometry; loadLightmap takes the result.
@@ -31,12 +37,16 @@ const loadPages=(names,version)=>Promise.all(names.map(name=>bitmaps.loadAsync('
 // probes by bake, so a re-denoise is revalidated (no-cache).
 export function fetchLightmap(mode='day',{after=null}={}){
   const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar la iluminación.');return read(r);});
-  const json=get('./assets/house-light.json?v=855ca931b3',r=>r.json()),uvs=get('./assets/house-light.bin?v=06304e570f',r=>r.arrayBuffer());
-  const files=Promise.all([json,uvs]);
+  const json=get('./assets/house-light.json?v=80b88229d8',r=>r.json()),uvs=get('./assets/house-light.bin?v=06304e570f',r=>r.arrayBuffer());
+  // Denser bake of the living room (scripts/bake_salon.py), when there is one for this house bake.
+  // house-light.json names it (`salon`) once bake_salon.py has run on this house bake.
+  const salon=json.then(data=>data.salon?Promise.all([get('./assets/salon-light.json?v=3254c34e01',r=>r.json()),get('./assets/salon-light.bin?v=46c52b39a5',r=>r.arrayBuffer())])
+    .then(([data,buffer])=>({data,buffer})):null).catch(e=>{console.warn('Sin la luz detallada del salón:',e);return null;});
+  const files=Promise.all([json,uvs,salon]);
   const maps=Promise.all([json,after]).then(([data])=>{
     if(data.encoding!=='rgbm-sqrt-range-64')throw Error('Iluminación con un formato antiguo.');
     const m=modeOf(data,mode),version=bakeVersion(data),{pages,probes}=bakeFiles(data,m);
-    return Promise.all([loadPages(lowPages(data,m)||pages,version),fetchProbeData(probes,version)]);
+    return Promise.all([loadPages(lowPages(data,m)||pages,version),fetchProbeData(probes,version),salon.then(s=>salonUsable(s,data)?loadPages(salonFiles(s.data,m),bakeVersion(s.data)):null)]);
   });
   // The full pages start once the reduced ones are in (they would share the bandwidth).
   const full=Promise.all([json,maps]).then(([data])=>lowPages(data,modeOf(data,mode))?loadPages(bakeFiles(data,modeOf(data,mode)).pages,bakeVersion(data)):null);
@@ -46,15 +56,21 @@ export function fetchLightmap(mode='day',{after=null}={}){
 // Resolves with the UVs; the pages and probes fill their textures when decoded (`loaded`),
 // so the house is built (and its programs compiled) meanwhile.
 export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],prefetched=fetchLightmap()}={}){
-  const [data,buffer]=await prefetched.files,mode=modeOf(data,prefetched.mode);
+  const [data,buffer,salonBake]=await prefetched.files,mode=modeOf(data,prefetched.mode);
+  // The salon's meshes (house.json region 'salon') read their own denser pages when the
+  // salon bake was made on this house bake and covers every salon mesh of it.
+  const salon=salonUsable(salonBake,data)&&data.meshes.every(m=>m.sourceKey?.[2]!=='salon'||salonBake.data.meshes.some(s=>s.sourceIndex===m.sourceIndex))?salonBake:null;
+  const salonSpans=new Map((salon?.data.meshes||[]).map(m=>[m.sourceIndex,m]));
+  const salonPages=salon?salon.data.lightmaps.map(()=>new THREE.Texture()):null;
   if(data.sourceSha256!==await sourceHash)throw Error('La geometría y la iluminación no corresponden a la misma versión.');
   const version=bakeVersion(data),files=m=>bakeFiles(data,m);
   const pages=files(mode).pages.map(()=>new THREE.Texture()),probes=probeVolume(data.probes);
-  const variants={[mode]:prefetched.maps.then(([bitmaps,probes])=>({bitmaps,probes}))};
+  const variants={[mode]:prefetched.maps.then(([bitmaps,probes,salonBitmaps])=>({bitmaps,probes,salonBitmaps}))};
   // A new image of another size needs a new GPU texture (storage is allocated once).
-  const show=bitmaps=>pages.forEach((t,i)=>{if(t.image&&t.image.width!==bitmaps[i].width)t.dispose();t.image=bitmaps[i];t.needsUpdate=true;});
+  const fill=(textures,bitmaps)=>textures.forEach((t,i)=>{if(t.image&&t.image.width!==bitmaps[i].width)t.dispose();t.image=bitmaps[i];t.needsUpdate=true;});
+  const show=(bitmaps,salonBitmaps)=>{fill(pages,bitmaps);if(salonPages&&salonBitmaps)fill(salonPages,salonBitmaps);};
   const loaded=variants[mode].then(v=>{
-    show(v.bitmaps);
+    show(v.bitmaps,v.salonBitmaps);
     probes.texture.image.data=v.probes;probes.texture.needsUpdate=true;
   });
   let current=mode;
@@ -63,30 +79,33 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
   const sharp=Promise.all([loaded,prefetched.full]).then(([,full])=>{
     if(!full)return;
     variants[mode]=variants[mode].then(v=>({...v,bitmaps:full}));
-    if(current===mode)show(full);
+    if(current===mode)show(full);  // the salon pages are already full size
   }).catch(e=>console.warn('Iluminación en alta resolución no disponible:',e));
   async function setMode(next){
     next=modeOf(data,next);
     if(next===current)return false;
-    variants[next]??=Promise.all([loadPages(files(next).pages,version),fetchProbeData(files(next).probes,version)])
-      .then(([b,p])=>({bitmaps:b,probes:p})).catch(e=>{delete variants[next];throw e;});
+    variants[next]??=Promise.all([loadPages(files(next).pages,version),fetchProbeData(files(next).probes,version),salon?loadPages(salonFiles(salon.data,next),bakeVersion(salon.data)):null])
+      .then(([b,p,s])=>({bitmaps:b,probes:p,salonBitmaps:s})).catch(e=>{delete variants[next];throw e;});
     const v=await variants[next];
-    show(v.bitmaps);
+    show(v.bitmaps,v.salonBitmaps);
     probes.texture.image.data=v.probes;probes.texture.needsUpdate=true;
     current=next;return true;
   }
-  for(const t of pages){t.channel=1;t.flipY=false;t.premultiplyAlpha=false;t.generateMipmaps=false;t.minFilter=THREE.LinearFilter;t.colorSpace=THREE.NoColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
+  for(const t of [...pages,...(salonPages||[])]){t.channel=1;t.flipY=false;t.premultiplyAlpha=false;t.generateMipmaps=false;t.minFilter=THREE.LinearFilter;t.colorSpace=THREE.NoColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
   lighting.probes=probes;
   const RANGE=data.range;
   const spans=new Map(data.meshes.map(m=>[m.sourceIndex,m]));
   const materials=new Map(),bases=new Map();
   function bind(geometry,sourceIndex){
-    const m=spans.get(sourceIndex);if(!m)return false;
+    const m=spans.get(sourceIndex),s=salonSpans.get(sourceIndex);
+    if(s)geometry.setAttribute('salonUv',new THREE.BufferAttribute(new Uint16Array(salon.buffer,s.offset,s.count*2),2,true));
+    if(!m)return false;
     geometry.setAttribute('uv1',new THREE.BufferAttribute(new Uint16Array(buffer,m.offset,m.count*2),2,true));return true;
   }
   // The living room and kitchen keep the finishes tuned with their former atlases.
   function material(base,kind,region){
     const id=kind+'-'+region;if(materials.has(id))return materials.get(id);
+    const own=region==='salon'&&salonPages;
     const m=base.clone();m.defines={...m.defines,...base.defines};m.lightMap=pages[0];m.lightMapIntensity=1;
     if(region==='salon'){
       if(kind==='linen')m.color.set('#efebe4');
@@ -97,6 +116,14 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
     m.onBeforeCompile=shader=>{
       base.onBeforeCompile(shader);
       shader.uniforms.planarLight={value:pages[1]};
+      if(own){
+        // The salon's own denser pages (bake_salon.py, unclamped indirect light). Toward the
+        // open sides (dining room at +x, hall at +z) they hand over to the house bake over
+        // 1.2 m, so the two bakes meet without a step.
+        shader.uniforms.salonLight0={value:salonPages[0]};shader.uniforms.salonLight1={value:salonPages[1]};
+        shader.vertexShader='attribute vec2 salonUv;\nvarying vec2 vSalonUv;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvSalonUv=salonUv;');
+        shader.fragmentShader='uniform sampler2D salonLight0,salonLight1;\nvarying vec2 vSalonUv;\n'+shader.fragmentShader;
+      }
       if(region==='salon')shader.fragmentShader=shader.fragmentShader.replace('yarnCloth*.018','yarnCloth*.004');
       // Coves are baked from the real ceiling geometry: drop the painted glow.
       shader.fragmentShader=shader.fragmentShader.replace(/float cove=0\.0;[\s\S]*?outgoingLight\+=vec3\([^)]*\)\*cove;/,'');
@@ -106,8 +133,15 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
         float baked=step(bakedUv.x,1.999);
         vec4 rgbm=bakedUv.x<1.0?texture2D(lightMap,bakedUv):texture2D(planarLight,bakedUv-vec2(1.0,0.0));${kind==='floor'?'\n        rgbm=floorBakedFix(rgbm,lightMap,planarLight,houseWorld.xz);':''}
         vec3 bakedSqrt=rgbm.rgb*rgbm.a;
-        vec3 bakedE=bakedSqrt*bakedSqrt*${(RANGE*Math.PI).toFixed(4)};
-        ${kind==='wall'?upCoves.map(([x0,z0,x1,z1,h])=>`if(houseWorld.y>${(h+.01).toFixed(3)}&&all(greaterThan(houseWorld.xz,vec2(${(x0-.06).toFixed(3)},${(z0-.06).toFixed(3)})))&&all(lessThan(houseWorld.xz,vec2(${(x1+.06).toFixed(3)},${(z1+.06).toFixed(3)})))){float coveL=dot(bakedE,vec3(.2126,.7152,.0722));bakedE*=coveL>2.0?(2.0+.3*(coveL-2.0))/coveL:1.0;}`).join('\n'):''}
+        vec3 bakedE=bakedSqrt*bakedSqrt*${(RANGE*Math.PI).toFixed(4)};${own?`
+        {vec2 sUv=vec2(vSalonUv.x*2.0,vSalonUv.y);
+        if(sUv.x<1.999){vec4 s=sUv.x<1.0?texture2D(salonLight0,sUv):texture2D(salonLight1,sUv-vec2(1.0,0.0));
+        vec3 sSqrt=s.rgb*s.a;vec3 salonE=sSqrt*sSqrt*${(RANGE*Math.PI).toFixed(4)};
+        float salonW=(1.0-smoothstep(${(SALON_OPEN.x-1.2).toFixed(2)},${SALON_OPEN.x.toFixed(2)},houseWorld.x))*(1.0-smoothstep(${(SALON_OPEN.z-1.2).toFixed(2)},${SALON_OPEN.z.toFixed(2)},houseWorld.z));
+        // Texels the salon bake left black (a few small concave pieces: the bowl) keep the house bake.
+        float salonL=dot(salonE,vec3(.2126,.7152,.0722)),houseL=dot(bakedE,vec3(.2126,.7152,.0722));
+        bakedE=mix(bakedE,salonE,salonW*step(.0004,salonL)*smoothstep(.03,.12,salonL/max(houseL,1e-4)));}}`:''}
+        ${kind==='wall'?upCoves.filter(([x0,,x1])=>!((x0+x1)/2>5.15&&(x0+x1)/2<10.1)).map(([x0,z0,x1,z1,h])=>`if(houseWorld.y>${(h+.01).toFixed(3)}&&all(greaterThan(houseWorld.xz,vec2(${(x0-.06).toFixed(3)},${(z0-.06).toFixed(3)})))&&all(lessThan(houseWorld.xz,vec2(${(x1+.06).toFixed(3)},${(z1+.06).toFixed(3)})))){float coveL=dot(bakedE,vec3(.2126,.7152,.0722));bakedE*=coveL>2.0?(2.0+.3*(coveL-2.0))/coveL:1.0;}`).join('\n'):''}
         // Texels the bake never wrote (outside every island: a few faces of mixed
         // orientation or slivers past the margin) read exactly black; they take the
         // probes instead of showing as black notches.
@@ -149,5 +183,5 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
       m.needsUpdate=true;
     }
   }
-  return {bind,material,syncTextures,setMode,get mode(){return current;},pages,probes,data,loaded,sharp};
+  return {bind,material,syncTextures,setMode,get mode(){return current;},pages,salonPages,probes,data,loaded,sharp};
 }
