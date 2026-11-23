@@ -342,6 +342,96 @@ async function oakPlinth(ctx,boxes,{y0,y1}){
   return mesh;
 }
 
+// Coffee table after render B03 (Jorge 23/11/2026, an explicit exception to following the
+// plan, whose B01 draws a 73.7 x 129 cm black stone top on metal legs): one solid block of
+// cream vein-cut travertine, 1,00 x 1,00 m in plan and 0,39 m high (about the sofa's seat),
+// no legs, crisp edges with a 4 mm round, smooth faces with the horizontal vein, standing
+// straight on the rug. Centred on the plan's table in z; 10 cm east of it in x, so 28 cm
+// stay between the block and the sofa's seat (centred, 18 cm) and 82 cm to the armchairs.
+// house.bin keeps the old table (changing it would invalidate the house bake): its
+// triangles are removed here and the books and bowl lifted onto the new top. The block's
+// light is baked per vertex like the sofa (vertex-light.mjs), and the salon bake sees it
+// (bake_salon.py reads bake-runtime-salon.npz: mesa_travertino.py).
+export const MESA={x0:6.4404,x1:7.4404,z0:-7.2571,z1:-6.2571,y1:.39,r:.004};
+function travertineBlock(T,{x0,x1,z0,z1,y1,r}){
+  // Grid faces (5 cm, plus a row at the round) so the per-vertex light can hold the
+  // sofa's shadow and the darkening at the foot; vertices rounded onto the inner box.
+  const y0=0,inner=[[x0+r,x1-r],[y0,y1-r],[z0+r,z1-r]];
+  const steps=(a,b)=>{const n=Math.max(1,Math.round((b-a-2*r)/.05)),out=[a];for(let i=0;i<=n;i++)out.push(a+r+(b-a-2*r)*i/n);out.push(b);return out;};
+  const xs=steps(x0,x1),zs=steps(z0,z1),ys=[0,...steps(0,y1).slice(1).map(v=>v*1)];
+  const pos=[],nor=[],uv=[],idx=[];
+  // face(axis fixed, value, u-axis list, v-axis list, outward sign)
+  const face=(fix,val,ua,ul,va,vl,flip)=>{
+    const base=pos.length/3;
+    for(const v of vl)for(const u of ul){
+      const p=[0,0,0];p[fix]=val;p[ua]=u;p[va]=v;
+      const c=p.map((q,k)=>Math.min(Math.max(q,inner[k][0]),inner[k][1])),d=p.map((q,k)=>q-c[k]);
+      const len=Math.hypot(...d)||1,n=d.map(q=>q/len);
+      // Points on the bottom rim stay on the floor (no round there: it stands on the rug).
+      const q=c.map((cc,k)=>cc+n[k]*r);if(p[1]===0)q[1]=0;
+      pos.push(...q);nor.push(...n);
+      // Metric UVs: on the sides u runs round the block and v is the height (veins level
+      // and continuous round the corners); on the top the vein runs east-west.
+      if(fix===1)uv.push(q[0]/1.1+.31,q[2]/.4);
+      else{const W=x1-x0,D=z1-z0,east=fix===0&&val===x1,south=fix===2&&val===z1;
+        const run=fix===2?(south?q[0]-x0:W+D+(x1-q[0])):(east?W+(z1-q[2]):2*W+D+(q[2]-z0));
+        uv.push(run/1.1,q[1]/.4+.17);}
+    }
+    const nu=ul.length;
+    for(let j=0;j<vl.length-1;j++)for(let i=0;i<nu-1;i++){
+      const a=base+j*nu+i,b=a+1,c=a+nu,d=c+1;
+      if(flip)idx.push(a,c,b,b,c,d);else idx.push(a,b,c,b,d,c);
+    }
+  };
+  face(1,y1,0,xs,2,zs,false);       // top (+y)
+  face(0,x0,2,zs,1,ys,false);       // west (-x)
+  face(0,x1,2,zs,1,ys,true);        // east (+x)
+  face(2,z0,0,xs,1,ys,true);        // north (-z)
+  face(2,z1,0,xs,1,ys,false);       // south (+z)
+  const g=new T.BufferGeometry();
+  g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('normal',new T.Float32BufferAttribute(nor,3));
+  g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);
+  // Outward winding check: flip any face whose triangles look inwards.
+  {const P=g.getAttribute('position'),N=g.getAttribute('normal'),I=g.index.array,A=new T.Vector3(),B=new T.Vector3(),C=new T.Vector3(),n=new T.Vector3();
+    for(let t=0;t<I.length;t+=3){A.fromBufferAttribute(P,I[t]);B.fromBufferAttribute(P,I[t+1]);C.fromBufferAttribute(P,I[t+2]);
+      n.subVectors(B,A).cross(C.sub(A));if(n.lengthSq()<1e-14)continue;
+      if(n.dot(new T.Vector3().fromBufferAttribute(N,I[t]))<0){const k=I[t+1];I[t+1]=I[t+2];I[t+2]=k;}}}
+  return g;
+}
+
+async function coffeeTable(ctx){
+  const T=ctx.THREE,{group}=ctx,M=MESA;
+  // The plan's table: black stone top, metal legs and frame (the book covers, also 'dark', stay).
+  const removed=ctx.removeExported({material:'blackstone',region:'salon',box:[[6.40,.30,-7.45],[7.25,.40,-6.05]]})
+    +ctx.removeExported({material:'dark',region:'salon',box:[[6.40,-.01,-7.45],[7.25,.355,-6.05]]});
+  // Books and bowl onto the new top (2 cm higher), with the block 10 cm east; the books
+  // 12 cm south so they do not overhang its north edge.
+  const lift=(pieces,dx,dz)=>{for(const m of pieces){m.position.set(dx,M.y1-.37,dz);m.updateMatrix();m.updateMatrixWorld(true);}return pieces.length;};
+  const books=[[6.45,.36,-7.35],[6.95,.47,-7.0]];
+  lift([...ctx.splitExported({material:'white',region:'salon',box:books}),...ctx.splitExported({material:'dark',region:'salon',box:books})],.10,.12);
+  lift(ctx.splitExported({material:'stone',region:'salon',box:[[6.8,.36,-6.95],[7.15,.43,-6.6]]}),.10,.06);
+  const map=await ctx.loadTexture('./assets/textures/travertine.webp?v=2bc29d0cfa');
+  // B03's stone is a soft tan with fine level striations: the vein map stretched along the
+  // block (1,10 m by 0,40 m per tile) and its contrast halved round its mean.
+  const m=new T.MeshStandardMaterial({map,bumpMap:map,bumpScale:.0004,color:'#e6d6c4',roughness:.6});
+  m.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>',`#ifdef USE_MAP
+    vec4 sampledDiffuseColor=texture2D(map,vMapUv);
+    sampledDiffuseColor.rgb=mix(vec3(.739,.648,.513),sampledDiffuseColor.rgb,.5);
+    diffuseColor*=sampledDiffuseColor;
+  #endif`);};
+  m.customProgramCacheKey=()=>'salon-travertino';
+  m.name='travertino';
+  const mesh=new T.Mesh(travertineBlock(T,M),m);mesh.name='salon:mesa';mesh.castShadow=mesh.receiveShadow=true;
+  const g=new T.Group();g.name='salon:mesa';g.add(mesh);group.add(g);ctx.lightRuntimeObject(g);
+  // A thin contact line where the stone meets the rug (the salon bake holds the soft shadow).
+  group.add(contactShadow(T,{x0:M.x0-.2,z0:M.z0-.2,x1:M.x1+.2,z1:M.z1+.2,y:.0125,layers:[[.05,.22,.02],[.012,.45,.004]],draw:(c,p,grow)=>{
+    const [a,b]=p(M.x0,M.z0),[e,f]=p(M.x1,M.z1);c.fillRect(a-grow,b-grow,e-a+2*grow,f-b+2*grow);}}));
+  // Collision: the plan's table collider takes the block's footprint (same grid cells).
+  const col=ctx.data.colliders.find(c=>c.name==='Mesa centro tablero');
+  if(col)col.poly.splice(0,col.poly.length,[M.x0,M.z0],[M.x1,M.z0],[M.x1,M.z1],[M.x0,M.z1]);
+  console.info(`[rooms/salon] coffee table: travertine block (${removed} exported triangles)`);
+}
+
 export async function apply(ctx){
   const T=ctx.THREE,{group}=ctx;
   // ---- L sofa (B01): main run against the west wall, chaise run along the south. ----
@@ -447,5 +537,6 @@ export async function apply(ctx){
   group.add(painting(T,ctx));
   console.info(`[rooms/salon] painting replaced (${removedArt})`);
   console.info(`[rooms/salon] plinth ${removedPlinth}, leds ${leds.length}`);
+  await coffeeTable(ctx);
   console.info(`[rooms/salon] sofa rebuilt (${removed} exported triangles), armchairs rebuilt (${removedChairs})`);
 }

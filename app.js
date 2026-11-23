@@ -3,7 +3,7 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,captureSize,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=344884d358';
 import {Post} from './post.mjs?v=804d013709';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=a7a63b09ca';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=cd987be34c';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=f20c1d700a';
@@ -18,7 +18,7 @@ import {createChimeneas} from './chimenea.mjs?v=f5fe79aeab';
 import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=99e867b823';
 import {createEstudioArco} from './estudio-arco.mjs?v=a31b10f39f';
 import {createMirrors} from './mirrors.mjs?v=b39cdb6a1b';
-import {applyVertexLight} from './vertex-light.mjs?v=593fdb59db';
+import {applyVertexLight} from './vertex-light.mjs?v=162038dcb8';
 import {createAvatar} from './avatar.mjs?v=1260b64d63';
 
 const $=id=>document.getElementById(id),canvas=$('world');

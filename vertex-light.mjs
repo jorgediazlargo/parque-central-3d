@@ -6,7 +6,7 @@
 // like the lightmaps. A mesh takes it only if its key, vertex count and positions match
 // the bake (the room module builds the same geometry every time); otherwise it keeps the probes.
 const MODES={day:0,dayoff:1,night:2};
-export async function applyVertexLight(THREE,{scene,lightmap,url='./assets/salon-vertex-light.json?v=fceb5cb3ea',bin='./assets/salon-vertex-light.bin?v=fef6c901fa'}){
+export async function applyVertexLight(THREE,{scene,lightmap,url='./assets/salon-vertex-light.json?v=688c8ae50a',bin='./assets/salon-vertex-light.bin?v=eefd4263f2'}){
   const salon=scene.getObjectByName('room:salon');if(!salon||!lightmap.data.salonVertex)return 0;
   const [data,buffer]=await Promise.all([fetch(url).then(r=>r.json()),fetch(bin).then(r=>r.arrayBuffer())]);
   if(data.houseContextSha256!==lightmap.data.contextSha256||data.encoding!==lightmap.data.encoding)return 0;
