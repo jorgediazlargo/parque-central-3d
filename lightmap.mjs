@@ -33,8 +33,13 @@ const bakeFiles=(data,m,variant=null)=>{const b=bakeOf(data,variant),v={night:b.
 const lowPages=(data,m,variant=null)=>variant?null:data.lowres?.[{night:'night',dayoff:'dayOff'}[m]||'lightmaps'];
 const salonFiles=(data,m)=>({night:data.night,dayoff:data.dayOff}[m]||data).lightmaps;
 const salonUsable=(s,data)=>!!s&&s.data.houseContextSha256===data.contextSha256&&s.data.sourceSha256===data.sourceSha256&&s.data.encoding===data.encoding;
-// The salon's open sides (house.json region 'salon' ends there): dining room and hall.
-const SALON_OPEN={x:10.18,z:-3.70};
+// The salon's open sides (house.json region 'salon' ends there): dining room and kitchen.
+// Along z the salon is only open through the kitchen opening (M1, from x0 on); west of it
+// the wall where M1 parks closes it, and there the house bake's coarser texels darkened the
+// wall, its skirting line and the ceiling edge (seen with «Cocina sin puerta», 24/11/2026).
+// The skirting, the wall's returns (faces along x) and its west end (x < 5.4, the door head)
+// keep the house bake: the salon bake is blotchy on those small faces.
+const SALON_OPEN={x:10.18,z:-3.70,x0:7.915};
 const loadPages=(names,version)=>Promise.all(names.map(name=>bitmaps.loadAsync('./assets/'+name+'?v='+version)));
 // Requests the bake of `mode` now (its JSON and UVs) and its pages and probes once
 // `after` settles, so it downloads alongside the geometry; loadLightmap takes the result.
@@ -152,7 +157,7 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
         {vec2 sUv=vec2(vSalonUv.x*2.0,vSalonUv.y);
         if(sUv.x<1.999){vec4 s=sUv.x<1.0?texture2D(salonLight0,sUv):texture2D(salonLight1,sUv-vec2(1.0,0.0));
         vec3 sSqrt=s.rgb*s.a;vec3 salonE=sSqrt*sSqrt*${(RANGE*Math.PI).toFixed(4)};
-        float salonW=(1.0-smoothstep(${(SALON_OPEN.x-1.2).toFixed(2)},${SALON_OPEN.x.toFixed(2)},houseWorld.x))*(1.0-smoothstep(${(SALON_OPEN.z-1.2).toFixed(2)},${SALON_OPEN.z.toFixed(2)},houseWorld.z));
+        float salonW=(1.0-smoothstep(${(SALON_OPEN.x-1.2).toFixed(2)},${SALON_OPEN.x.toFixed(2)},houseWorld.x))*(1.0-smoothstep(${(SALON_OPEN.z-1.2).toFixed(2)},${SALON_OPEN.z.toFixed(2)},houseWorld.z)*(1.0-${kind==='white'?'0.0':`(1.0-smoothstep(${SALON_OPEN.x0.toFixed(3)},${(SALON_OPEN.x0+.7).toFixed(3)},houseWorld.x))*smoothstep(5.25,5.45,houseWorld.x)*step(abs(lpNormalW.x),.5)`}));
         // Texels the salon bake left black (a few small concave pieces: the bowl) keep the house bake.
         float salonL=dot(salonE,vec3(.2126,.7152,.0722)),houseL=dot(bakedE,vec3(.2126,.7152,.0722));
         bakedE=mix(bakedE,salonE,salonW*step(.0004,salonL)*smoothstep(.03,.12,salonL/max(houseL,1e-4)));}}`:''}
