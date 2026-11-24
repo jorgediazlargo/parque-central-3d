@@ -3,7 +3,7 @@ import {Reflector} from './assets/Reflector.js';
 import {ReflectionProbes,captureSize,probeRooms,lightObject,pocketUniforms} from './lighting.mjs?v=344884d358';
 import {Post} from './post.mjs?v=c70a36d40a';
 import {artwork,curtainMaterial} from './salon.mjs?v=a68cd3a486';
-import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=024aae307b';
+import {loadLightmap,fetchLightmap} from './lightmap.mjs?v=a803a6c55b';
 import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=f20c1d700a';
@@ -15,7 +15,7 @@ import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
 import {createFronts} from './fronts.mjs?v=98fd675c87';
 import {createVitrinas} from './vitrinas.mjs?v=1913e68244';
 import {createChimeneas} from './chimenea.mjs?v=f5fe79aeab';
-import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=93dc5b9f36';
+import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=06f00080ff';
 import {createEstudioArco} from './estudio-arco.mjs?v=a31b10f39f';
 import {createMirrors} from './mirrors.mjs?v=c517e7a7e7';
 import {applyVertexLight} from './vertex-light.mjs?v=2af1664059';
@@ -35,7 +35,7 @@ let touchVector=[0,0],touchLook=null,dragLook=null,audioCtx,noticeTimer,roomTime
 const mobile=matchMedia('(pointer:coarse)').matches,eyeHeights=[1.69,1.2,.95];
 let eye=1.69;
 const raycaster=new THREE.Raycaster();raycaster.far=2.25;
-const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,fireplace:'',suiteOpen:false,studyArch:false,noKitchenDoor:false,eye:1.69};
+const settings={sound:true,bob:!matchMedia('(prefers-reduced-motion:reduce)').matches,night:false,lamps:true,fullscreen:true,fireplace:'',suiteOpen:'',studyArch:false,noKitchenDoor:false,eye:1.69};
 try{const saved=JSON.parse(localStorage.getItem('parque-preferences')||'{}');for(const key of ['night','lamps','fullscreen','fireplace','suiteOpen','studyArch','noKitchenDoor','eye'])if(key in saved)settings[key]=saved[key];}catch{}
 // Salón: '' (the plan) or 'baja'.
 // Only the low fireplace is left (18/11/2026): a saved long or short one (or the old checkbox) opens it.
@@ -45,7 +45,11 @@ settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(
 {const q=new URLSearchParams(location.search);if(q.get('noche')!==null)settings.night=q.get('noche')!=='0';if(q.get('luces')!==null)settings.lamps=q.get('luces')!=='0';}
 // ?vestidor=piedra opens with the stone and glass vestidor variant, ?vestidor=plano without it.
 // ?abierto=1 opens with the master bedroom open to the bath (suite-abierta.mjs), ?abierto=0 as in the plan.
-{const q=new URLSearchParams(location.search).get('abierto');if(q!==null)settings.suiteOpen=q!=='0';}
+// Two lines for the palillería (suite-abierta.mjs LINES, 24/11/2026): ?abierto=1 (or a3) at the end of A3,
+// ?abierto=tabique on the old wall's line. A saved true (the former checkbox) is 'a3'.
+{const q=new URLSearchParams(location.search).get('abierto');if(q!==null)settings.suiteOpen=q==='0'?'':q;}
+settings.suiteOpen=settings.suiteOpen==='tabique'?'tabique':settings.suiteOpen?'a3':'';
+const SUITE_BAKE={a3:'abierto',tabique:'abiertoTabique'};   // house-light.json entries (bake_abierto.py)
 // ?arco=1 opens with the study in an arch, no glass screen and the bench back (estudio-arco.mjs), ?arco=0 as in the plan.
 {const q=new URLSearchParams(location.search).get('arco');if(q!==null)settings.studyArch=q!=='0';}
 // ?chimenea=1 (or any value but 0) opens with the fireplace, ?chimenea=0 without.
@@ -59,10 +63,12 @@ settings.fireplace=settings.fireplace===true||['larga','corta','baja'].includes(
 const savePreferences=()=>{try{localStorage.setItem('parque-preferences',JSON.stringify(settings));}catch{}};
 // Footstep sound and the gentle bob are always on (no menu option since 19/11/2026); the bob
 // still stays off when the system asks for reduced motion.
-for(const key of ['night','lamps','fullscreen','suiteOpen','studyArch','noKitchenDoor']) {
+for(const key of ['night','lamps','fullscreen','studyArch','noKitchenDoor']) {
   $(key).checked=settings[key];$(key).onchange=()=>{settings[key]=$(key).checked;savePreferences();if(key==='night'||key==='lamps')setLight();if(key==='suiteOpen')setSuiteOpen(settings.suiteOpen);if(key==='studyArch')setStudyArch(settings.studyArch);if(key==='noKitchenDoor')setKitchenDoor(!settings.noKitchenDoor);if(key==='fullscreen'&&!settings.fullscreen)screenMode.exit();};
 }
 $('eye').value=String(eye);$('eyeMeta').textContent=eyeMeta();
+$('suiteOpen').value=settings.suiteOpen;
+$('suiteOpen').onchange=()=>{settings.suiteOpen=$('suiteOpen').value;savePreferences();setSuiteOpen(settings.suiteOpen);};
 $('fireplace').value=settings.fireplace;
 $('fireplace').onchange=()=>{settings.fireplace=$('fireplace').value;savePreferences();setFireplace(settings.fireplace);};
 $('eye').onchange=()=>{eye=settings.eye=+$('eye').value;savePreferences();if(camera)camera.position.y=eye;$('eyeMeta').textContent=eyeMeta();};
@@ -98,7 +104,7 @@ function notice(text){$('notice').textContent=text;$('notice').classList.add('vi
 const terraceDay={value:1};
 // Dormitorio abierto al baño (suite-abierta.mjs): oak to the palillería, and the floor's baked
 // light where the central block stood taken from charts fitted at load (floorBakedFix).
-const suiteOpen={value:0},suiteBaked={value:0},studyArch={value:0},floorFix={value:0},floorFixA={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixB={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixC={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixL={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixR={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixD={value:[new THREE.Vector3(),new THREE.Vector3()]};
+const suiteOpen={value:0},suiteLine={value:-4.75},suiteBaked={value:0},studyArch={value:0},floorFix={value:0},floorFixA={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixB={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixC={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixL={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixR={value:[new THREE.Vector3(),new THREE.Vector3()]},floorFixD={value:[new THREE.Vector3(),new THREE.Vector3()]};
 const porcelainMap={value:null},porcelainRough={value:null},vestidorStone={value:0},recibidorCal={value:0},crosscutNormal={value:null},plasterMap={value:null},plasterNormal={value:null},limeMask={value:null},limeBox={value:new THREE.Vector4(0,0,1,1)};
 const PLASTER_TILE=.75;  // metres per plaster.webp tile (style_textures.py)
 // Clear glass: a faint tinted body, reflections (box-projected room probes) at full
@@ -129,7 +135,7 @@ function glassMaterial(){
 // (x 3,091-3,192: its stubs and lintel are gone in both versions, the M3 screen runs pillar to block)
 // the floor takes the bedroom's light 9 cm west of it (L) and the study's 9 cm east (R), blended across.
 // With the open bedroom's own bake loaded (suiteBaked, scripts/bake_abierto.py) none of the suite's fixes apply.
-const FLOOR_FIX=`uniform float suiteOpen,suiteBaked,studyArch,floorFix;uniform vec3 floorFixA[2],floorFixB[2],floorFixC[2],floorFixL[2],floorFixR[2],floorFixD[2];
+const FLOOR_FIX=`uniform float suiteOpen,suiteLine,suiteBaked,studyArch,floorFix;uniform vec3 floorFixA[2],floorFixB[2],floorFixC[2],floorFixL[2],floorFixR[2],floorFixD[2];
 vec4 floorBakedSample(sampler2D page0,sampler2D page1,vec3 c[2],vec2 p){
   vec2 uv=vec2(dot(c[0],vec3(p,1.0)),dot(c[1],vec3(p,1.0)));
   vec4 s=uv.x<1.0?texture2D(page0,uv):texture2D(page1,uv-vec2(1.0,0.0));return vec4(s.rgb*s.a,1.0);
@@ -288,7 +294,7 @@ function material(color,kind,roughness=.7){
         // H01 pavements: oak planks (no herringbone) in bedrooms, the play room, their
         // hall and the closet beside the kitchen; 120 cm porcelain at 45° elsewhere.
         shader.uniforms.porcelainMap=porcelainMap;shader.uniforms.vestidorStone=vestidorStone;shader.uniforms.porcelainRough=porcelainRough;
-        Object.assign(shader.uniforms,{suiteOpen,suiteBaked,studyArch,floorFix,floorFixA,floorFixB,floorFixC,floorFixL,floorFixR,floorFixD});
+        Object.assign(shader.uniforms,{suiteOpen,suiteLine,suiteBaked,studyArch,floorFix,floorFixA,floorFixB,floorFixC,floorFixL,floorFixR,floorFixD});
         shader.fragmentShader='uniform sampler2D porcelainMap,porcelainRough;\nuniform float vestidorStone;\nfloat floorRect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}\n'+FLOOR_FIX+shader.fragmentShader;
         shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
           vec2 floorAt=houseWorld.xz;
@@ -325,9 +331,9 @@ function material(color,kind,roughness=.7){
           float porcelainJoint=max(jointLine.x,jointLine.y)*(1.0-smoothstep(.004,.012,max(jointW.x,jointW.y)));
           porcelainFloor=mix(porcelainFloor,porcelainFloor*vec3(.70,.68,.66),porcelainJoint);
           // Dormitorio abierto al baño (suite-abierta.mjs): the bedroom's oak runs on to the palillería.
-          // The bedroom's oak runs on to the palillería's line (z -5,06), wall to wall through both
+          // The bedroom's oak runs on to the palillería's line (suiteLine: z -4,75 or -5,87), wall to wall through both
           // doorways; the vestidor y baño keeps its stone.
-          porcelainMask*=1.0-suiteOpen*floorRect(floorAt,vec4(0.0,-5.92,5.113,-5.06));
+          porcelainMask*=1.0-suiteOpen*floorRect(floorAt,vec4(0.0,-5.92,5.113,suiteLine));
           diffuseColor.rgb=mix(oakFloor,porcelainFloor,porcelainMask);
         `);
         // Honed porcelain: satin (0.62, was 0.82 until 18/11/2026: dead matte read as a
@@ -883,16 +889,17 @@ function setSuiteOpen(on){
     // Never close the new pieces (or the block, back) round the visitor: step them clear first.
     if(suite.blockedBy(on).some(p=>overlaps(player,physics.radius,p))){player=player[1]>-5.08?[2.6,on?-3.55:-4.55]:[2.6,-6.35];camera.position.set(player[0],eye,player[1]);}
     suite.set(on);studyScreen();await suiteLight();reflections.capture(renderer,scene);renderer.shadowMap.needsUpdate=true;idle(reportShaderErrors);
-    notice(on?'Dormitorio abierto al baño':'Dormitorio según el plano');
-  }).catch(e=>{console.error(e);notice('No se ha podido cambiar el dormitorio.');settings.suiteOpen=!!suite?.on;$('suiteOpen').checked=settings.suiteOpen;savePreferences();});
+    notice(on==='tabique'?'Dormitorio abierto al baño · palillería en la pared':on?'Dormitorio abierto al baño · palillería hasta A3':'Dormitorio según el plano');
+  }).catch(e=>{console.error(e);notice('No se ha podido cambiar el dormitorio.');settings.suiteOpen=suite?.on||'';$('suiteOpen').value=settings.suiteOpen;savePreferences();});
   return timeSwitch;
 }
 
 // Its own light (scripts/bake_abierto.py: the house bake with that layout, same UVs) when the
 // house bake has one; otherwise the plan's bake with the fixes of floorBakedFix.
 async function suiteLight(){
-  if(lightmap.hasVariant('abierto'))await lightmap.setVariant(suite.on?'abierto':null).catch(e=>console.warn('Sin la luz propia del dormitorio abierto:',e));
-  suiteBaked.value=suite.on&&lightmap.variant==='abierto'?1:0;suite.baked(suiteBaked.value>.5);
+  const want=SUITE_BAKE[suite.on]||null;
+  await lightmap.setVariant(want&&lightmap.hasVariant(want)?want:null).catch(e=>console.warn('Sin la luz propia del dormitorio abierto:',e));
+  suiteBaked.value=want&&lightmap.variant===want?1:0;suite.baked(suiteBaked.value>.5);
 }
 
 // Estudio en arco (estudio-arco.mjs): no glass screen M3, the bench back at the foot of the bed and,
@@ -1085,7 +1092,7 @@ async function load(){
     for(const kind of ['fabric','linen','rug']){textile(kind);textileNormal(kind);}
     preloadRooms();prepareBedding();
     for(const p of [surfaceMaps,views])p.catch(()=>{});  // reported where awaited
-    const bake=fetchLightmap(settings.night?'night':settings.lamps?'day':'dayoff',{after:Promise.allSettled([house,surfaceMaps,views]),variant:settings.suiteOpen?'abierto':null});
+    const bake=fetchLightmap(settings.night?'night':settings.lamps?'day':'dayoff',{after:Promise.allSettled([house,surfaceMaps,views]),variant:SUITE_BAKE[settings.suiteOpen]||null});
     const [json,buffer]=await house;
     const progress=window.loadProgress;progress?.stage(.1);
     data=json;
@@ -1115,7 +1122,7 @@ async function load(){
     fireplace=createChimeneas(THREE,{scene,staticMeshes,lightObject,lighting,plaster:plasterMap.value,plasterNormal:plasterNormal.value});
     fireplace.set(settings.fireplace);
     // Dormitorio abierto al baño (menu option): built now, shown or hidden on demand.
-    suite=createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,colliders:kitchenColliders(data),lightObject,lighting,mats,cloneMaterial,floor:suiteOpen});
+    suite=createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,colliders:kitchenColliders(data),lightObject,lighting,mats,cloneMaterial,floor:suiteOpen,floorLine:suiteLine});
     {const ground=staticMeshes.find(m=>m.userData.exported?.material==='floor'&&m.userData.exported.region==='shared'&&!m.userData.exported.split);
       const a=ground&&fitChart(THREE,ground,[1.55,-5.04,3.66,-4.0]),b=ground&&fitChart(THREE,ground,[1.55,-6.3,3.66,-5.94]),c=ground&&fitChart(THREE,ground,[1.45,-4.4,3.75,-2.9]),l=ground&&fitChart(THREE,ground,[2.6,-9.4,2.98,-6.3]),r=ground&&fitChart(THREE,ground,[3.3,-9.4,3.7,-6.3]);
       if(a&&b&&c&&l&&r){for(const [u,f] of [[floorFixA,a],[floorFixB,b],[floorFixC,c],[floorFixL,l],[floorFixR,r]]){u.value[0].set(...f.u);u.value[1].set(...f.v);}floorFix.value=1;}

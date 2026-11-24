@@ -10,7 +10,7 @@
 // - the whole block goes (walls, both cheeks, A2 with its fronts, clothes, shoes and LED strips,
 //   the five switches on it): what A2 held is lost;
 // - in its place, on A2's front line, a floor-to-ceiling oak palillería: 24 laths of 40 x 40 mm
-//   with 52 mm gaps over the block's 2,161 m (z -5,10/-5,06, 2,20 m to the vestidor's false
+//   with 52 mm gaps over the block's 2,161 m (z -4,79/-4,75 since 24/11, 2,20 m to the vestidor's false
 //   ceiling), so the bath is seen from the bed and back; above the old wall line a plaster
 //   bulkhead (2,20-2,55) closes the bedroom's higher ceiling, as over the doors;
 // - P8 and P9 go, with the oak fascias over them: both ways are open (no colliders);
@@ -20,7 +20,7 @@
 //   stays. The partition round the screen (two stubs, z -9,51/-9,21 and -6,21/-5,91, the lintel
 //   over 2,20 and their skirtings) is gone in both versions (Jorge, 18/11/2026), carved out
 //   here at load with a ceiling strip where it met the 2,55 m ceiling;
-// - the bedroom's oak runs on to the palillería's line, z -5,06, wall to wall through both doorways
+// - the bedroom's oak runs on to the palillería's line, z -4,75, wall to wall through both doorways
 //   (floor shader, uniform suiteOpen); the vestidor y baño keeps its stone (Jorge, 16/11);
 // - the freestanding tub moves 92,85 cm north, its rim 8 cm from the palillería, turned half a
 //   turn so its floor-standing mixer (which stood on the north side, now 8 cm from the laths)
@@ -34,16 +34,22 @@
 // laths in the lightmaps), the new pieces take the probes.
 
 const BLOCK={x0:1.523,x1:3.684,z0:-5.91,z1:-5.06};            // pocket wall + cheeks + A2
-const LATTICE={z0:-5.10,z1:-5.06,y1:2.20,lath:.04,count:24};   // oak laths, floor to the false ceiling
+// Oak laths, floor to the false ceiling, on one of two lines (Jorge, 24/11/2026; on A2's front,
+// z -5,06, before): 'a3' where A3 and the wall of the suite's entrance end (z -4,75), symmetric
+// with the entrance; 'tabique' on the bedroom face of the old wall (z -5,91), as the bedroom is
+// with the wardrobe, parallel to the end of the study's wardrobe and the bedroom wall. The
+// bedroom's oak runs to the laths' bath face (LINES: z of that face).
+export const LINES={a3:-4.75,tabique:-5.87};
+const LATTICE={z0:LINES.a3-.04,z1:LINES.a3,y1:2.20,lath:.04,count:24};   // built on the 'a3' line, moved
 const BULKHEAD={y0:2.20,y1:2.55};                               // bedroom ceiling is at 2,55
 const TUB={x:2.6031,z:-3.6513,b:.4002,gap:.08};                 // rooms/bano.mjs: centre, half width
-const TUB_DZ=(LATTICE.z1+TUB.gap+TUB.b)-TUB.z;                  // -0,9285 m
+const tubDz=line=>(line+TUB.gap+TUB.b)-TUB.z;                  // a3 -0,6185 m, tabique -1,7385 m
 const MIXER=[2.10,-4.10];                                       // rooms/bano.mjs floor mixer
 // Colliders of the block (house.json: Tabique x3, the cheeks, A2's body) and the old tub.
 export const inBlock=c=>{const xs=c.poly.map(p=>p[0]),zs=c.poly.map(p=>p[1]);
   return Math.min(...xs)>=BLOCK.x0-.002&&Math.max(...xs)<=BLOCK.x1+.002&&Math.min(...zs)>=BLOCK.z0-.002&&Math.max(...zs)<=BLOCK.z1+.002;};
 
-export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,colliders,lightObject,lighting,mats,cloneMaterial,floor}){
+export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,colliders,lightObject,lighting,mats,cloneMaterial,floor,floorLine}){
   const group=new THREE.Group();group.name='Dormitorio abierto al baño';scene.add(group);
   const hidden=[];          // meshes holding what the option removes (visible when off)
 
@@ -195,35 +201,36 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
     const img=g.getImageData(0,0,w,h);for(let i=0;i<img.data.length;i+=4){const a=img.data[i+3];img.data[i]=img.data[i+1]=img.data[i+2]=a;img.data[i+3]=255;}g.putImageData(img,0,0);
     const shadow=new THREE.Mesh(new THREE.PlaneGeometry(1.60+.5,.80+.5).rotateX(-Math.PI/2),
       new THREE.MeshBasicMaterial({color:0x000000,alphaMap:new THREE.CanvasTexture(cv),transparent:true,opacity:.42,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3}));
-    shadow.position.set(TUB.x,.004,TUB.z+TUB_DZ);tubShadow=shadow;shadow.renderOrder=1;shadow.name='Bañera sombra de contacto (dormitorio abierto)';group.add(shadow);
+    shadow.position.set(TUB.x,.004,TUB.z);tubShadow=shadow;shadow.renderOrder=1;shadow.name='Bañera sombra de contacto (dormitorio abierto)';group.add(shadow);
   }
-  const polys=[];
-  for(let i=0;i<LATTICE.count;i++){const x=BLOCK.x0+i*(LATTICE.lath+gap);polys.push([[x,LATTICE.z0],[x+LATTICE.lath,LATTICE.z0],[x+LATTICE.lath,LATTICE.z1],[x,LATTICE.z1]]);}
-  // One rectangle for the whole palillería (the gaps are far narrower than the walker).
-  const latticePoly=[[BLOCK.x0,LATTICE.z0],[BLOCK.x1,LATTICE.z0],[BLOCK.x1,LATTICE.z1],[BLOCK.x0,LATTICE.z1]];
-  const tubPoly=tubCollider?tubCollider.poly.map(([x,z])=>[x,z+TUB_DZ]):[];
+  // One rectangle for the whole palillería (the gaps are far narrower than the walker) and the tub, per line.
+  const polysOf=v=>{const z1=LINES[v],z0=z1-LATTICE.lath,dz=tubDz(z1);
+    return [[[BLOCK.x0,z0],[BLOCK.x1,z0],[BLOCK.x1,z1],[BLOCK.x0,z1]],...(tubCollider?[tubCollider.poly.map(([x,z])=>[x,z+dz])]:[])];};
 
-  const state={on:false,group,moved:moved.length,lathGap:gap,tubShift:TUB_DZ,
-    polys:[latticePoly,...(tubPoly.length?[tubPoly]:[])],
+  const state={on:'',group,moved:moved.length,lathGap:gap,polys:[],
     // Where the visitor must not stand when the option changes: the new pieces when it turns
     // on, the block and the tub's own place when it turns off.
     // With its own bake (scripts/bake_abierto.py) the floor carries the tub's shadow: no decal of its own.
     baked(on){if(tubShadow)tubShadow.visible=!on;},
-    blockedBy(on){return on?state.polys:[[[BLOCK.x0,BLOCK.z0],[BLOCK.x1,BLOCK.z0],[BLOCK.x1,BLOCK.z1],[BLOCK.x0,BLOCK.z1]],[[3.091,-9.51],[3.192,-9.51],[3.192,-5.91],[3.091,-5.91]],...(tubCollider?[tubCollider.poly]:[])];},
+    blockedBy(on){return on?polysOf(on):[[[BLOCK.x0,BLOCK.z0],[BLOCK.x1,BLOCK.z0],[BLOCK.x1,BLOCK.z1],[BLOCK.x0,BLOCK.z1]],[[3.091,-9.51],[3.192,-9.51],[3.192,-5.91],[3.091,-5.91]],...(tubCollider?[tubCollider.poly]:[])];},
+    // on: '' (the plan), 'a3' or 'tabique' (LINES).
     set(on){
-      state.on=on;group.visible=on;floor.value=on?1:0;
+      on=LINES[on]?on:on?'a3':'';
+      state.on=on;group.visible=!!on;floor.value=on?1:0;
+      if(on){const line=LINES[on];floorLine.value=line;oak.position.z=line-LINES.a3;oak.updateMatrixWorld(true);
+        tubShadow.position.z=TUB.z+tubDz(line);state.polys=polysOf(on);state.tubShift=tubDz(line);}
       for(const m of hidden)m.visible=!on;
       hideShoes(on);
       for(const g of frontGroups)g.visible=!on;
       if(on)for(const f of a2){f.t=f.goal=0;fronts.set(f,0);}
-      for(const c of blockColliders)c.off=on;
-      if(tubCollider)tubCollider.off=on;
+      for(const c of blockColliders)c.off=!!on;
+      if(tubCollider)tubCollider.off=!!on;
       for(const d of gone){d.active=!on;for(const g of d.groups)g.visible=!on;if(on)d.t=d.goal=0;}
       if(screen)screen.visible=!on;
-      for(const c of screenColliders)c.off=on;
-      pivot.rotation.y=on?Math.PI:0;pivot.position.z=TUB.z+(on?TUB_DZ:0);pivot.updateMatrixWorld(true);
+      for(const c of screenColliders)c.off=!!on;
+      pivot.rotation.y=on?Math.PI:0;pivot.position.z=TUB.z+(on?tubDz(LINES[on]):0);pivot.updateMatrixWorld(true);
     }};
-  state.set(false);
+  state.set('');
   console.info(`[suite-abierta] ${partition.length} meshes gone with the study partition, ${hidden.length} meshes hidden with the block, ${a2.length} fronts, ${blockColliders.length} colliders, ${moved.length} tub pieces, ${shoes.reduce((n,s)=>n+s.idx.length,0)} shoes; laths ${LATTICE.count} x ${LATTICE.lath*1000} mm, gap ${(gap*1000).toFixed(1)} mm`);
   return state;
 }

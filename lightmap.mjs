@@ -47,7 +47,7 @@ const loadPages=(names,version)=>Promise.all(names.map(name=>bitmaps.loadAsync('
 // probes by bake, so a re-denoise is revalidated (no-cache).
 export function fetchLightmap(mode='day',{after=null,variant=null}={}){
   const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar la iluminación.');return read(r);});
-  const json=get('./assets/house-light.json?v=457db1c912',r=>r.json()),uvs=get('./assets/house-light.bin?v=6f1a46df34',r=>r.arrayBuffer());
+  const json=get('./assets/house-light.json?v=f3d45ef7f6',r=>r.json()),uvs=get('./assets/house-light.bin?v=6f1a46df34',r=>r.arrayBuffer());
   // Denser bake of the living room (scripts/bake_salon.py), when there is one for this house bake.
   // house-light.json names it (`salon`) once bake_salon.py has run on this house bake.
   const salon=json.then(data=>data.salon?Promise.all([get('./assets/salon-light.json?v=4aa3ce7463',r=>r.json()),get('./assets/salon-light.bin?v=b3cc250faf',r=>r.arrayBuffer())])
