@@ -22,6 +22,9 @@
 // assets/rooms/salon/sofa.glb, ≈ 88k triangles): fabric over a crowned foam core,
 // slumped backs, sat-in seats, a wavy seam under the piping; knife-edge pillows
 // inflated in place against seat and back. No baked occlusion (it read as stains).
+// Ronda 10 (23/11/2026, Jorge: «copia las sillas del render»): the armchairs after render 2a,
+// an explicit exception to the plan-first rule: warm greige leaf jacquard (leafJacquard), two
+// stacked round cushions of nearly equal thickness with a deep joint, a taller, thicker back band.
 
 // sofa.glb content (scripts/sofa_blender.py); change with every rebuild.
 const SOFA_VERSION='228a31e478';
@@ -288,7 +291,45 @@ function painting(T,ctx){
 // by their screen footprint so they never shimmer. Lower specular: cloth has no gloss.
 export const CHAIR_WEAVE={cloth:'poly_wool_herringbone',color:'#9b9da6',tile:.4,detail:1.7,normal:1.2,
   mottle:.06,mottleF:[20,20],slub:.4,slubF:[25,250],specular:.25,sheen:.38};
-export async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05,slub=.04,mottleF=[16,16],slubF=[9,170],specular=.25,sheen=.45,key,cloth='curly_teddy_natural'}){
+// Render 2a: the armchairs' cloth is a warm greige jacquard with a small, dense leaf motif
+// woven tone on tone: the leaves are drawn as light outlines and midribs (line art, as in
+// the render's close-up), not filled shapes, on a slightly darker ground. Drawn once on a
+// tileable canvas: one tile = 14 cm of cloth (tile in apply), leaves ≈ 2 cm long, strokes ≈ 1,2 mm.
+export function leafJacquard(T,{size=1024,leaves=64,seed=7}={}){
+  const c=document.createElement('canvas');c.width=c.height=size;const g=c.getContext('2d');
+  g.fillStyle='rgb(118,118,118)';g.fillRect(0,0,size,size);
+  let r=seed;const rnd=()=>{r=(r*16807)%2147483647;return r/2147483647;};
+  const lw=size/115;g.lineCap=g.lineJoin='round';
+  const tiled=(x,y,draw)=>{for(const dx of [-size,0,size])for(const dy of [-size,0,size]){g.save();g.translate(x+dx,y+dy);draw();g.restore();}};
+  const leaf=(x,y,a,l,w,tone)=>tiled(x,y,()=>{
+    g.rotate(a);
+    g.beginPath();g.moveTo(-l/2,0);g.bezierCurveTo(-l/4,-w,l/4,-w*.9,l/2,0);g.bezierCurveTo(l/4,w*.9,-l/4,w,-l/2,0);
+    g.fillStyle='rgb(126,126,126)';g.fill();
+    g.strokeStyle=`rgb(${tone},${tone},${tone})`;g.lineWidth=lw;g.stroke();
+    g.lineWidth=lw*.7;g.beginPath();g.moveTo(-l/2-l*.12,w*.15);g.quadraticCurveTo(0,-w*.12,l/2*.8,0);g.stroke();
+    for(const t of [-.2,.1]){g.beginPath();g.moveTo(l*t,0);g.lineTo(l*t+l*.16,-w*.62);g.stroke();g.beginPath();g.moveTo(l*t,0);g.lineTo(l*t+l*.16,w*.62);g.stroke();}
+  });
+  // Fine scrolling tendrils between the leaves, like the render's dense ground.
+  const tendril=(x,y,a,l,tone)=>tiled(x,y,()=>{
+    g.rotate(a);g.strokeStyle=`rgb(${tone},${tone},${tone})`;g.lineWidth=lw*.6;
+    g.beginPath();g.moveTo(0,0);g.bezierCurveTo(l*.4,-l*.35,l*.8,l*.3,l*.55,l*.05);g.stroke();
+  });
+  // Leaves on a jittered grid (an even, all-over repeat like a woven jacquard, no clumps
+  // that read as stains from a few metres), tendrils in the gaps.
+  const n=Math.round(Math.sqrt(leaves)),cell=size/n;
+  for(let i=0;i<n;i++)for(let j=0;j<n;j++)tendril((i+.5+.6*(rnd()-.5))*cell,(j+.5+.6*(rnd()-.5))*cell,rnd()*Math.PI*2,cell*(.45+.25*rnd()),150+Math.round(rnd()*20));
+  for(let i=0;i<n;i++)for(let j=0;j<n;j++){
+    const l=cell*(.95+.3*rnd()),w=l*(.24+.08*rnd());
+    leaf((i+(j%2)*.5+.3*(rnd()-.5))*cell,(j+.3*(rnd()-.5))*cell,rnd()*Math.PI*2,l,w,182+Math.round(rnd()*28));
+  }
+  const t=new T.CanvasTexture(c);t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=8;t.colorSpace=T.NoColorSpace;
+  return t;
+}
+// The weave's own texture is turned down (detail, normal) so the jacquard reads over it.
+export const ARMCHAIR_WEAVE={...{cloth:'poly_wool_herringbone',tile:.4,detail:.6,normal:.6,mottle:.025,mottleF:[20,20],slub:.1,slubF:[25,250],specular:.25,sheen:.3},
+  color:'#9a948f'};
+
+export async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05,slub=.04,mottleF=[16,16],slubF=[9,170],specular=.25,sheen=.45,key,cloth='curly_teddy_natural',pattern=null}){
   const T=ctx.THREE,m=ctx.cloneMaterial(source),dir=`./assets/polyhaven/${cloth}/${cloth}_`;
   const [map,nor]=await Promise.all([ctx.loadTexture(dir+'detail_1k.webp',{srgb:false}),ctx.loadTexture(dir+'nor_gl_1k.webp',{srgb:false})]);
   for(const t of [map,nor])t.repeat.set(1/tile,1/tile);
@@ -305,6 +346,13 @@ export async function upholstery(ctx,source,{color,tile,detail,normal,mottle=.05
       float fm=1.0-smoothstep(.35,1.2,max(fwidth(mo).x,fwidth(mo).y)),fs=1.0-smoothstep(.35,1.2,max(fwidth(sl).x,fwidth(sl).y));
       float mot=(salonVN(mo)+.5*salonVN(mo*2.3+7.1))/1.5-.5,sb=salonVN(sl)-.5;
       diffuseColor.rgb*=1.0+${mottle.toFixed(3)}*mot*fm+${slub.toFixed(3)}*sb*fs;}`);
+    if(pattern){
+      // Woven motif (jacquard): tonal, in the yarn itself, so it fades with distance like
+      // the weave (mipmapped canvas, UVs in metres).
+      s.uniforms.patternMap={value:pattern.texture};
+      s.fragmentShader='uniform sampler2D patternMap;\n'+s.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+      {float jq=texture2D(patternMap,vUv/${pattern.tile.toFixed(3)}).r;diffuseColor.rgb*=1.0+${pattern.k.toFixed(3)}*(jq-.5);}`);
+    }
   };
   m.customProgramCacheKey=()=>'salon-upholstery-'+key;
   return m;
@@ -432,6 +480,148 @@ async function coffeeTable(ctx){
   console.info(`[rooms/salon] coffee table: travertine block (${removed} exported triangles)`);
 }
 
+// ---- Shelved recess behind the sofa (ronda 11, 23/11/2026, Jorge: «las baldas detrás del
+// sofá, como en los renders»). The 0,30 × 0,66 recess south of the pillar (x 4.884–5.184,
+// z −5.513 to −4.850, soffit at 2.20; B01 leaves it as undefined furniture with F05 «LED en
+// mueble»): lined in the sofa plinth's oak (12 mm back, sides and soffit), three solid oak
+// shelves 36 mm thick with eased edges housed into the sides, evenly spaced above the sofa
+// back (0.80), a concealed warm LED under each shelf and under the soffit washing the back
+// of the compartment below, and a few objects in the studio renders' manner: two short
+// stacks of books lying flat and a clay bud vase with an olive sprig. The LED wash is
+// shaded per fragment in the niche's own materials (a line light under each shelf, aimed
+// down and back, seen only by the compartment below it): the bake has no such light.
+const NICHE={x0:4.884,x1:5.184,z0:-5.513,z1:-4.850,top:2.20,lining:.012,shelf:.036,shelfBottoms:[.84,1.28,1.72]};
+function nicheLedShader(m,uniform){
+  const N=NICHE,L=N.lining,zs=[N.z0+L+.02,N.z1-L-.02].map(v=>v.toFixed(3)),xs=(N.x1-.045).toFixed(3);
+  const comps=N.shelfBottoms.map((b,i)=>[b+N.shelf,(N.shelfBottoms[i+1]??N.top-L)-.004]).slice(0);
+  const prior=m.onBeforeCompile,priorKey=m.customProgramCacheKey?.bind(m);
+  m.onBeforeCompile=(sh,r)=>{
+    if(prior&&prior!==Object.getPrototypeOf(m).onBeforeCompile)prior.call(m,sh,r);
+    sh.uniforms.nicheLed=uniform;
+    sh.fragmentShader='uniform float nicheLed;\n'+sh.fragmentShader.replace('#include <lights_fragment_end>',`#include <lights_fragment_end>
+      {vec3 nN=normalize(inverseTransformDirection(geometryNormal,viewMatrix)),nE=vec3(0.0);
+      vec3 emit=normalize(vec3(-1.0,-1.1,0.0));
+      ${comps.map(([lo,hi])=>`{float inside=step(${(lo-.002).toFixed(3)},lpWorld.y)*step(lpWorld.y,${(hi+.002).toFixed(3)})*step(lpWorld.x,${(N.x1+.02).toFixed(3)});
+        vec3 s=vec3(${xs},${hi.toFixed(3)},clamp(lpWorld.z,${zs[0]},${zs[1]}));vec3 l=s-lpWorld;float d=max(length(l),.05);l/=d;
+        float ce=max(dot(-l,emit),0.0);nE+=inside*max(dot(nN,l),0.0)*ce/(d*d*4.0+.08);}`).join('\n      ')}
+      reflectedLight.indirectDiffuse+=diffuseColor.rgb*nE*nicheLed*vec3(1.0,.70,.42);}`);
+  };
+  m.customProgramCacheKey=()=>(priorKey?priorKey():'')+'|niche-led';
+  return m;
+}
+// Box with eased (rounded) edges: a rounded-rectangle section extruded along z with a small
+// bevel at the ends; metric UVs projected by face, grain along `grain`.
+function easedBox(T,x0,y0,z0,x1,y1,z1,e=.004,grain='z'){
+  const sh=new T.Shape(),w=x1-x0,h=y1-y0,r=Math.min(e,w/2-1e-4,h/2-1e-4),b=Math.min(e*.8,(z1-z0)/4);
+  const ax=r,ay=r,bx=w-r,by=h-r;
+  sh.moveTo(ax,0);sh.lineTo(bx,0);sh.quadraticCurveTo(w,0,w,ay);sh.lineTo(w,by);sh.quadraticCurveTo(w,h,bx,h);
+  sh.lineTo(ax,h);sh.quadraticCurveTo(0,h,0,by);sh.lineTo(0,ay);sh.quadraticCurveTo(0,0,ax,0);
+  const g=new T.ExtrudeGeometry(sh,{depth:z1-z0-2*b,bevelEnabled:true,bevelThickness:b,bevelSize:0,bevelOffset:0,bevelSegments:2,curveSegments:3});
+  g.translate(x0,y0,z0+b);
+  const p=g.getAttribute('position'),n=g.getAttribute('normal'),uv=g.getAttribute('uv');
+  for(let i=0;i<p.count;i++){
+    const ax_=Math.abs(n.getX(i)),ay_=Math.abs(n.getY(i)),az_=Math.abs(n.getZ(i)),X=p.getX(i),Y=p.getY(i),Z=p.getZ(i);
+    const along=grain==='z'?Z:grain==='y'?Y:X;
+    const across=ax_>=ay_&&ax_>=az_?(grain==='y'?Z:Y):ay_>=az_?(grain==='z'?X:Z):(grain==='y'?X:Y);
+    uv.setXY(i,across/1.2,along/1.2);
+  }
+  return g;
+}
+function radialBlob(T){
+  const N=64,c=document.createElement('canvas');c.width=c.height=N;const g=c.getContext('2d');
+  const grad=g.createRadialGradient(N/2,N/2,0,N/2,N/2,N/2);
+  grad.addColorStop(0,'rgba(0,0,0,1)');grad.addColorStop(.55,'rgba(0,0,0,.5)');grad.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=grad;g.fillRect(0,0,N,N);return new T.CanvasTexture(c);
+}
+async function shelvedNiche(ctx){
+  const T=ctx.THREE,N=NICHE,L=N.lining,root=new T.Group();root.name='salon:baldas';
+  const led={value:ctx.night?2.4:1.2};
+  const dir='./assets/polyhaven/white_oak_veneer/white_oak_veneer_';
+  const [map,nor,rough]=await Promise.all(['diff_1k.webp','nor_gl_1k.webp','rough_1k.webp'].map((f,i)=>ctx.loadTexture(dir+f,{srgb:!i})));
+  const oak=nicheLedShader(new T.MeshStandardMaterial({map,normalMap:nor,roughnessMap:rough,roughness:1,color:'#fbeedd'}),led);
+  oak.normalScale.setScalar(.45);oak.name='salon baldas roble';
+  const merge=list=>{
+    const flat=list.map(g=>g.index?g.toNonIndexed():g),out=new T.BufferGeometry();
+    for(const name of ['position','normal','uv']){
+      const size=flat[0].getAttribute(name).itemSize,total=flat.reduce((n,g)=>n+g.getAttribute(name).count,0),arr=new Float32Array(total*size);
+      let o=0;for(const g of flat){arr.set(g.getAttribute(name).array,o);o+=g.getAttribute(name).array.length;}
+      out.setAttribute(name,new T.BufferAttribute(arr,size));
+    }
+    return out;
+  };
+  // Lining: subdivided so the per-vertex bake can hold the light falling into the recess.
+  const panel=(x0,y0,z0,x1,y1,z1,grain,seg)=>{
+    const g=new T.BoxGeometry(x1-x0,y1-y0,z1-z0,...seg).translate((x0+x1)/2,(y0+y1)/2,(z0+z1)/2);
+    const p=g.getAttribute('position'),n=g.getAttribute('normal'),uv=g.getAttribute('uv');
+    for(let i=0;i<p.count;i++){const X=p.getX(i),Y=p.getY(i),Z=p.getZ(i),hor=Math.abs(n.getY(i))>.5;
+      uv.setXY(i,(Math.abs(n.getX(i))>.5?Z:X)/1.2,(hor?(grain==='z'?Z:X):Y)/1.2);}
+    return g;
+  };
+  const y0=.09,lin=[
+    panel(N.x0,y0,N.z0,N.x0+L,N.top,N.z1,'y',[1,14,6]),                 // back
+    panel(N.x0+L,y0,N.z0,N.x1,N.top-L,N.z0+L,'y',[4,14,1]),             // north side
+    panel(N.x0+L,y0,N.z1-L,N.x1,N.top-L,N.z1,'y',[4,14,1]),             // south side
+    panel(N.x0+L,N.top-L,N.z0+L,N.x1,N.top,N.z1-L,'z',[4,1,6])];        // soffit
+  // Solid shelves housed 6 mm into the sides, 2 cm back from the face.
+  const shelves=N.shelfBottoms.map(b=>easedBox(T,N.x0+L,b,N.z0+L-.006,N.x1-.02,b+N.shelf,N.z1-L+.006,.005,'z'));
+  const wood=new T.Mesh(merge([...lin,...shelves]),oak);wood.name='salon:baldas:roble';wood.castShadow=wood.receiveShadow=true;root.add(wood);
+  // Concealed LED profiles: an aluminium channel with an opal diffuser under each shelf and
+  // under the soffit, 3,5 cm in from the front edge (seen only from below).
+  const strips=[...N.shelfBottoms.slice(1),N.top-L].map(y=>new T.BoxGeometry(.012,.004,N.z1-N.z0-2*L-.04).translate(N.x1-.045,y-.002,(N.z0+N.z1)/2));
+  const stripMat=new T.MeshBasicMaterial({color:new T.Color(1.0,.78,.52).multiplyScalar(ctx.night?2.2:1.4)});stripMat.name='salon baldas led';
+  root.add(new T.Mesh(merge(strips),stripMat));
+  // Objects.
+  const tops=N.shelfBottoms.map(b=>b+N.shelf),cx=(N.x0+L+N.x1-.02)/2;
+  const props=[];
+  const book=(x,y,z,w,t,d,rot,cover,pages)=>{
+    // Hard cover (slightly larger) and a lighter page block set back at three edges.
+    const g=new T.Group();g.position.set(x,y,z);g.rotation.y=rot;
+    const c=new T.Mesh(new T.BoxGeometry(d,t,w),new T.MeshStandardMaterial({color:cover,roughness:.75}));c.position.y=t/2;
+    const pg=new T.Mesh(new T.BoxGeometry(d-.006,t-.004,w-.008),new T.MeshStandardMaterial({color:pages,roughness:.9}));pg.position.set(.004,t/2,0);
+    g.add(c,pg);return g;
+  };
+  // Stack A, lower shelf, right (north) side: three books, largest at the bottom.
+  {let y=tops[0];const z=-5.30,x=cx-.005;
+    for(const [w,t,d,rot,cov,pg] of [[.25,.032,.19,.04,'#cfc4b3','#efe9dd'],[.23,.024,.17,-.05,'#8f8070','#ece5d8'],[.21,.02,.15,.09,'#e4ddd0','#f3eee5']]){
+      props.push(book(x,y,z,w,t,d,rot,cov,pg));y+=t;}}
+  // Stack B, upper shelf, left (south) side: two books.
+  {let y=tops[2];const z=-5.06,x=cx;
+    for(const [w,t,d,rot,cov,pg] of [[.24,.028,.18,-.03,'#b4a693','#eee8dc'],[.2,.022,.15,.07,'#6f665c','#e9e2d5']]){
+      props.push(book(x,y,z,w,t,d,rot,cov,pg));y+=t;}}
+  // Clay bud vase on the middle shelf, with an olive sprig.
+  const vx=cx+.01,vz=-5.22,vy=tops[1];
+  const prof=[[0,0],[.036,0],[.05,.03],[.056,.07],[.05,.11],[.03,.145],[.014,.165],[.012,.178],[.016,.184],[.011,.184],[.008,.16]].map(([r,y])=>new T.Vector2(r,y));
+  const vaseGeo=new T.LatheGeometry(prof,28);vaseGeo.computeVertexNormals();
+  const vase=new T.Mesh(vaseGeo,new T.MeshStandardMaterial({color:'#a3907c',roughness:.88}));vase.position.set(vx,vy,vz);props.push(vase);
+  {let r=11;const rnd=()=>{r=(r*16807)%2147483647;return r/2147483647;};
+    const stems=[],leaves=[],top=new T.Vector3(vx,vy+.17,vz);
+    for(const [h,dx,dz] of [[.2,-.02,-.08],[.17,.01,.05],[.12,-.03,-.02]]){
+      const b=new T.Vector3(vx+dx,vy+.17+h,vz+dz),m=top.clone().lerp(b,.5).add(new T.Vector3(dx*.3,.01,dz*.5));
+      const curve=new T.QuadraticBezierCurve3(top,m,b);stems.push(new T.TubeGeometry(curve,8,.0022,4,false));
+      for(let i=0;i<12;i++){
+        const t=.2+.8*i/12,p=curve.getPoint(t),side=i%2?1:-1;
+        // Olive leaves: narrow lanceolate, 4–6 cm, grey-green, paired along the stem.
+        const lg=new T.PlaneGeometry(.011,.05+.012*rnd(),1,2);
+        {const pp=lg.getAttribute('position');for(let k=0;k<pp.count;k++){const yy=pp.getY(k);pp.setX(k,pp.getX(k)*(1-Math.abs(yy)/.03));}}
+        lg.translate(0,.026,0);lg.rotateZ(side*(.55+rnd()*.35));lg.rotateY(rnd()*Math.PI*2);lg.translate(p.x,p.y,p.z);leaves.push(lg);
+      }
+    }
+    props.push(new T.Mesh(merge(stems),new T.MeshStandardMaterial({color:'#5e5243',roughness:.9})));
+    props.push(new T.Mesh(merge(leaves),new T.MeshStandardMaterial({color:'#7d8264',roughness:.75,side:T.DoubleSide})));
+  }
+  for(const o of props){o.traverse(m=>{if(m.isMesh){nicheLedShader(m.material,led);m.castShadow=m.receiveShadow=true;}});root.add(o);}
+  // Soft contact shadows under the objects.
+  const blob=radialBlob(T);
+  for(const [x,y,z,sx,sz,o] of [[cx-.005,tops[0],-5.30,.26,.32,.5],[cx,tops[2],-5.06,.24,.3,.45],[vx,tops[1],vz,.15,.15,.55]]){
+    const m=new T.Mesh(new T.PlaneGeometry(sx,sz),new T.MeshBasicMaterial({color:0,map:blob,transparent:true,opacity:o,depthWrite:false,
+      polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4,toneMapped:false}));
+    m.rotation.x=-Math.PI/2;m.position.set(x,y+.0008,z);m.renderOrder=1;root.add(m);
+  }
+  ctx.group.add(root);ctx.lightRuntimeObject(root);
+  ctx.onTimeOfDay(night=>{led.value=night?2.4:1.2;stripMat.color.setRGB(1.0,.78,.52).multiplyScalar(night?2.2:1.4);});
+  return root;
+}
+
 export async function apply(ctx){
   const T=ctx.THREE,{group}=ctx;
   // ---- L sofa (B01): main run against the west wall, chaise run along the south. ----
@@ -478,17 +668,19 @@ export async function apply(ctx){
   // renders 1 and 2: same mean colour within 2–4 levels and the same weave contrast).
   // The dining chairs (rooms/comedor.mjs) take the same fabric, as in renders 2 and 2a.
   const removedChairs=ctx.removeExported({material:'fabric',region:'salon',box:[[8.2,.2,-7.55],[9.2,1.0,-5.65]]});
-  const weave=await upholstery(ctx,ctx.mats.fabric,{...CHAIR_WEAVE,key:'chairs'});
+  const weave=await upholstery(ctx,ctx.mats.fabric,{...ARMCHAIR_WEAVE,key:'chairs',pattern:{texture:leafJacquard(T),tile:.14,k:1.25}});
   const chairs=new Builder(T);
   const poly=name=>ctx.data.colliders.find(c=>c.name===name)?.poly;
   const smooth=(p,count)=>new T.CatmullRomCurve3(p.map(([x,z])=>new T.Vector3(x,0,z)),true,'centripetal').getSpacedPoints(count).slice(0,count).map(v=>[v.x,v.z]);
   for(const side of ['norte','sur']){
     const base=poly(`Butaca salon ${side} base asiento tapizado`),seat=poly(`Butaca salon ${side} asiento tapizado`),back=poly(`Butaca salon ${side} respaldo tapizado`);
     if(!base||!seat||!back)continue;
-    chairs.add(slab(T,{outline:smooth(base,40),y0:.255,y1:.335,r:.03,bulge:.006,seed:50,bottom:true,seam:false,bottomSeam:false,
-      contacts:[{axis:'y',at:.335,k:.45,fall:.02}]}));
-    chairs.add(slab(T,{outline:smooth(seat,48),y0:.335,y1:.475,r:.05,crown:.02,sag:.008,bulge:.012,wrinkle:.004,seed:51,
-      contacts:[{axis:'y',at:.335,k:.5,fall:.025}]}));
+    // Render 2a: two round cushions stacked, nearly the same thickness, the lower one
+    // a little smaller, with a deep shadowed joint between them.
+    chairs.add(slab(T,{outline:smooth(base,40),y0:.235,y1:.345,r:.034,bulge:.006,seed:50,bottom:true,seam:false,bottomSeam:false,
+      contacts:[{axis:'y',at:.345,k:.55,fall:.025}]}));
+    chairs.add(slab(T,{outline:smooth(seat,48),y0:.345,y1:.48,r:.048,crown:.02,sag:.008,bulge:.009,wrinkle:.004,seed:51,
+      contacts:[{axis:'y',at:.345,k:.6,fall:.03}]}));
     // Back roll: circle fitted to the outer arc of the exported back, band 9 cm thick.
     const arc=back.slice(4,back.length-4);
     let sx=0,sz=0;for(const [x,z] of arc){sx+=x;sz+=z;}sx/=arc.length;sz/=arc.length;
@@ -496,7 +688,7 @@ export async function apply(ctx){
     let Suu=0,Svv=0,Suv=0,Suuu=0,Svvv=0,Suvv=0,Svuu=0;
     for(const [x,z] of arc){const u=x-sx,v=z-sz;Suu+=u*u;Svv+=v*v;Suv+=u*v;Suuu+=u*u*u;Svvv+=v*v*v;Suvv+=u*v*v;Svuu+=v*u*u;}
     const det=Suu*Svv-Suv*Suv,uc=((Suuu+Suvv)/2*Svv-(Svvv+Svuu)/2*Suv)/det,vc=((Svvv+Svuu)/2*Suu-(Suuu+Suvv)/2*Suv)/det;
-    const cxx=sx+uc,czz=sz+vc,R=Math.sqrt(uc*uc+vc*vc+(Suu+Svv)/arc.length),t=.095;
+    const cxx=sx+uc,czz=sz+vc,R=Math.sqrt(uc*uc+vc*vc+(Suu+Svv)/arc.length),t=.105;
     // Unwrapped sweep of the arc, made increasing.
     const angles=arc.map(([x,z])=>Math.atan2(z-czz,x-cxx));
     let a0=angles[0],a1=a0;
@@ -507,11 +699,17 @@ export async function apply(ctx){
     for(let k=1;k<6;k++){const e=[cxx+Rm*Math.cos(a1),czz+Rm*Math.sin(a1)];outline.push([e[0]+t/2*Math.cos(a1+Math.PI*k/6),e[1]+t/2*Math.sin(a1+Math.PI*k/6)]);}
     for(let k=N;k>=0;k--){const a=a0+(a1-a0)*k/N;outline.push([cxx+(R-t)*Math.cos(a),czz+(R-t)*Math.sin(a)]);}
     for(let k=1;k<6;k++){const e=[cxx+Rm*Math.cos(a0),czz+Rm*Math.sin(a0)];outline.push([e[0]+t/2*Math.cos(a0+Math.PI+Math.PI*k/6),e[1]+t/2*Math.sin(a0+Math.PI+Math.PI*k/6)]);}
-    chairs.add(slab(T,{outline,y0:.645,y1:.885,r:.042,bulge:.01,wrinkle:.003,seed:52,flatCap:true,bottom:false,bottomSeam:true,contacts:[]}));
+    chairs.add(slab(T,{outline,y0:.63,y1:.895,r:.048,bulge:.012,wrinkle:.003,seed:52,flatCap:true,bottom:false,bottomSeam:true,contacts:[]}));
   }
   const chairMesh=new T.Mesh(chairs.build(),weave);chairMesh.castShadow=true;chairMesh.receiveShadow=true;
   const chairGroup=new T.Group();chairGroup.name='salon:butacas';chairGroup.add(chairMesh);group.add(chairGroup);
   ctx.lightRuntimeObject(sofaGroup);ctx.lightRuntimeObject(chairGroup);
+  // The shelved recess right after the armchairs, before the cove LEDs split below: the per-
+  // vertex bake keys meshes by their order (vertex-light.mjs), and the split LED piece only
+  // becomes runtime-lit after the viewer applies that bake, so anything after it would shift.
+  await shelvedNiche(ctx);
+  // The coffee table too (its block is vertex-lit): before the cove LEDs, for the same reason.
+  await coffeeTable(ctx);
 
   // ---- Contact shadows on the rug / floor. ----
   // Ronda 7: soft occlusion from the set-back plinth outwards (about 0.6 at the plinth,
@@ -537,6 +735,5 @@ export async function apply(ctx){
   group.add(painting(T,ctx));
   console.info(`[rooms/salon] painting replaced (${removedArt})`);
   console.info(`[rooms/salon] plinth ${removedPlinth}, leds ${leds.length}`);
-  await coffeeTable(ctx);
   console.info(`[rooms/salon] sofa rebuilt (${removed} exported triangles), armchairs rebuilt (${removedChairs})`);
 }

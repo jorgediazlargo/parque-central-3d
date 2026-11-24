@@ -18,7 +18,7 @@ import {createChimeneas} from './chimenea.mjs?v=f5fe79aeab';
 import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=99e867b823';
 import {createEstudioArco} from './estudio-arco.mjs?v=a31b10f39f';
 import {createMirrors} from './mirrors.mjs?v=c517e7a7e7';
-import {applyVertexLight} from './vertex-light.mjs?v=ec2813eabd';
+import {applyVertexLight} from './vertex-light.mjs?v=2af1664059';
 import {createAvatar} from './avatar.mjs?v=1260b64d63';
 
 const $=id=>document.getElementById(id),canvas=$('world');
