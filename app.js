@@ -8,7 +8,7 @@ import {kitchenColliders} from './kitchen.mjs?v=b9b650fbe8';
 import {textile,textileNormal,textileDetail,textileNormalScale} from './textiles.mjs?v=2f3f9752c9';
 import {masterBedding,hideExportedBedding,prepareBedding,beddingReady} from './bedding.mjs?v=f20c1d700a';
 import {WorldPhysics,doorSegments,footprint,overlaps,inside} from './physics.mjs?v=eb3fb85d6a';
-import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=de12166806';
+import {applyRooms,preloadRooms,cloneMaterial} from './rooms.mjs?v=ac0796b25c';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {AdaptiveQuality,qualityLevels} from './quality.mjs?v=e7049251b3';
 import {mirrorSight,WALL_NAMES} from './visibility.mjs?v=679d6be4a6';
@@ -17,7 +17,7 @@ import {createVitrinas} from './vitrinas.mjs?v=1913e68244';
 import {createChimeneas} from './chimenea.mjs?v=f5fe79aeab';
 import {createSuiteAbierta,fitChart,inBlock} from './suite-abierta.mjs?v=99e867b823';
 import {createEstudioArco} from './estudio-arco.mjs?v=a31b10f39f';
-import {createMirrors} from './mirrors.mjs?v=b39cdb6a1b';
+import {createMirrors} from './mirrors.mjs?v=c517e7a7e7';
 import {applyVertexLight} from './vertex-light.mjs?v=ec2813eabd';
 import {createAvatar} from './avatar.mjs?v=1260b64d63';
 

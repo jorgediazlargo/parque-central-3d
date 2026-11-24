@@ -26,7 +26,7 @@ export const MIRRORS=[
 const FACE=.0155;
 
 let drawing=false;   // a mirror inside a mirror's reflection keeps its last image
-export function cropReflection(THREE,o,{budget=1e6,clipBias=.003}={}){
+export function cropReflection(THREE,o,{budget=1e6,gap=.001}={}){
   const target=o.getRenderTarget(),virtualCamera=o.camera,textureMatrix=o.material.uniforms.textureMatrix.value;
   target.samples=4;target.dispose();target.scissorTest=true;
   const size=new THREE.Vector2(),crop=new THREE.Matrix4(),pv=new THREE.Matrix4(),corner=new THREE.Vector4();
@@ -79,13 +79,17 @@ export function cropReflection(THREE,o,{budget=1e6,clipBias=.003}={}){
     const u=w/W,v=h/H;
     textureMatrix.set(.5*u,0,0,.5*u, 0,.5*v,0,.5*v, 0,0,.5,.5, 0,0,0,1);
     textureMatrix.multiply(virtualCamera.projectionMatrix).multiply(virtualCamera.matrixWorldInverse).multiply(o.matrixWorld);
-    // Oblique near plane on the mirror (Lengyel), as the stock Reflector.
+    // Oblique near plane on the mirror (Lengyel), as the stock Reflector, but `gap`
+    // metres behind the glass instead of the stock clip-space bias (.003). That bias grows
+    // with distance: seen along the vanity mirror it let through the wall face 7 mm
+    // behind the glass, a flat white slab over half the reflection.
+    mirrorPos.addScaledVector(normal,-gap);
     plane.setFromNormalAndCoplanarPoint(normal,mirrorPos).applyMatrix4(virtualCamera.matrixWorldInverse);
     clip.set(plane.normal.x,plane.normal.y,plane.normal.z,plane.constant);
     const e=virtualCamera.projectionMatrix.elements;
     q.set((Math.sign(clip.x)+e[8])/e[0],(Math.sign(clip.y)+e[9])/e[5],-1,(1+e[10])/e[14]);
     clip.multiplyScalar(2/clip.dot(q));
-    e[2]=clip.x;e[6]=clip.y;e[10]=clip.z+1-clipBias;e[14]=clip.w;
+    e[2]=clip.x;e[6]=clip.y;e[10]=clip.z+1;e[14]=clip.w;
     virtualCamera.projectionMatrixInverse.copy(virtualCamera.projectionMatrix).invert();
     o.visible=false;drawing=true;
     const current=renderer.getRenderTarget(),face=renderer.getActiveCubeFace(),mip=renderer.getActiveMipmapLevel(),xr=renderer.xr.enabled,shadowAuto=renderer.shadowMap.autoUpdate;

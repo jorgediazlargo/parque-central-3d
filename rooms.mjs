@@ -3,7 +3,7 @@ import {GLTFLoader} from './assets/jsm/loaders/GLTFLoader.js';
 import {lightObject} from './lighting.mjs?v=344884d358';
 import {loadImageTexture} from './images.mjs?v=3b580fe40e';
 import {clothMaps} from './bedding.mjs?v=f20c1d700a';
-import {cropReflection} from './mirrors.mjs?v=b39cdb6a1b';
+import {cropReflection} from './mirrors.mjs?v=c517e7a7e7';
 import {createCurtain,createBlind} from './curtains.mjs?v=023dd6f85e';
 
 // Per-room modules (rooms/<id>.mjs), each exporting `async function apply(ctx)`.
