@@ -106,6 +106,16 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
   const partition=carve(PARTITION,'tabique del estudio');
   for(const m of partition)m.visible=false;
   hidden.push(...carve(BOXES,'bloque central'));
+  // A2's shoes (rooms/vestidor.mjs: instanced pairs, which the carving above cannot see):
+  // the instances standing in the block collapse to nothing with the option on.
+  const shoes=[];{const m4=new THREE.Matrix4(),p=new THREE.Vector3();
+    scene.traverse(o=>{if(!o.isInstancedMesh||!/^Vestidor zapato/.test(o.name))return;
+      o.updateMatrixWorld(true);const idx=[],keep=[];
+      for(let i=0;i<o.count;i++){o.getMatrixAt(i,m4);p.setFromMatrixPosition(m4).applyMatrix4(o.matrixWorld);
+        if(p.x>BLOCK.x0-.02&&p.x<BLOCK.x1+.02&&p.z>BLOCK.z0-.02&&p.z<BLOCK.z1+.05){idx.push(i);keep.push(m4.clone());}}
+      if(idx.length)shoes.push({mesh:o,idx,keep});});}
+  const hideShoes=on=>{const zero=new THREE.Matrix4().makeScale(0,0,0);
+    for(const {mesh,idx,keep} of shoes){idx.forEach((i,k)=>mesh.setMatrixAt(i,on?zero:keep[k]));mesh.instanceMatrix.needsUpdate=true;mesh.computeBoundingSphere();}};
   // A2's eight fronts (glass doors and drawers): lifted closed into their groups, hidden with it.
   const a2=fronts.list.filter(f=>{const [x,z]=f.pivot||[0,0];return x>BLOCK.x0&&x<BLOCK.x1&&z>BLOCK.z0&&z<BLOCK.z1+.02;});
   for(const f of a2)fronts.set(f,0);
@@ -151,12 +161,17 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
   const strip=new THREE.Mesh(merge([boxGeo(3.088,3.194,BULKHEAD.y1-.002,BULKHEAD.y1+.05,-9.512,BLOCK.z0)]),plaster.material.clone());strip.name='Techo sobre el tabique del estudio';
   plaster.name='Dintel dormitorio abierto';plaster.receiveShadow=true;
   // The pillar's and the block's faces where the stubs met them were never lit by the bake: a
-  // 4 mm plaster skin over each (the screen's jambs stand against them).
-  const ends=new THREE.Mesh(merge([boxGeo(3.088,3.194,0,BULKHEAD.y1,-9.512,-9.506),boxGeo(3.088,3.194,0,BULKHEAD.y1,BLOCK.z0-.004,BLOCK.z0+.002)]),plaster.material.clone());
-  ends.name='Testas del tabique del estudio';ends.receiveShadow=true;
-  lightObject(oak,lighting,1.15);lightObject(plaster,lighting,1.3);lightObject(strip,lighting,1.7);lightObject(ends,lighting,1.3);
+  // 4 mm plaster skin over each (the screen's jambs stand against them). The block's goes with
+  // the block: with the option on it stood alone as a thin white post between the study and the
+  // palillería (Jorge, 24/11/2026).
+  const ends=new THREE.Mesh(merge([boxGeo(3.088,3.194,0,BULKHEAD.y1,-9.512,-9.506)]),plaster.material.clone());
+  ends.name='Testa del tabique del estudio (pilar)';ends.receiveShadow=true;
+  const blockEnd=new THREE.Mesh(merge([boxGeo(3.088,3.194,0,BULKHEAD.y1,BLOCK.z0-.004,BLOCK.z0+.002)]),plaster.material.clone());
+  blockEnd.name='Testa del tabique del estudio (bloque)';blockEnd.receiveShadow=true;
+  lightObject(oak,lighting,1.15);lightObject(plaster,lighting,1.3);lightObject(strip,lighting,1.7);lightObject(ends,lighting,1.3);lightObject(blockEnd,lighting,1.3);
   for(const m of [oak,plaster]){group.add(m);staticMeshes.push(m);}
-  for(const m of [strip,ends]){scene.add(m);staticMeshes.push(m);}
+  for(const m of [strip,ends,blockEnd]){scene.add(m);staticMeshes.push(m);}
+  hidden.push(blockEnd);
 
   // ---- Tub and its floor mixer (rooms/bano.mjs), on a pivot at the tub's centre. ----
   const pivot=new THREE.Group();pivot.name='Bañera desplazada';pivot.position.set(TUB.x,0,TUB.z);scene.add(pivot);pivot.updateMatrixWorld(true);
@@ -170,6 +185,7 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
       if(take){pivot.attach(o);moved.push(o);}
     }
   }
+  let tubShadow=null;
   // A soft contact shadow of its own under the tub (the moved decal of rooms/bano.mjs is faint on oak).
   {
     const w=256,h=128,cv=document.createElement('canvas');cv.width=w;cv.height=h;const g=cv.getContext('2d');
@@ -179,7 +195,7 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
     const img=g.getImageData(0,0,w,h);for(let i=0;i<img.data.length;i+=4){const a=img.data[i+3];img.data[i]=img.data[i+1]=img.data[i+2]=a;img.data[i+3]=255;}g.putImageData(img,0,0);
     const shadow=new THREE.Mesh(new THREE.PlaneGeometry(1.60+.5,.80+.5).rotateX(-Math.PI/2),
       new THREE.MeshBasicMaterial({color:0x000000,alphaMap:new THREE.CanvasTexture(cv),transparent:true,opacity:.42,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3}));
-    shadow.position.set(TUB.x,.004,TUB.z+TUB_DZ);shadow.renderOrder=1;shadow.name='Bañera sombra de contacto (dormitorio abierto)';group.add(shadow);
+    shadow.position.set(TUB.x,.004,TUB.z+TUB_DZ);tubShadow=shadow;shadow.renderOrder=1;shadow.name='Bañera sombra de contacto (dormitorio abierto)';group.add(shadow);
   }
   const polys=[];
   for(let i=0;i<LATTICE.count;i++){const x=BLOCK.x0+i*(LATTICE.lath+gap);polys.push([[x,LATTICE.z0],[x+LATTICE.lath,LATTICE.z0],[x+LATTICE.lath,LATTICE.z1],[x,LATTICE.z1]]);}
@@ -191,10 +207,13 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
     polys:[latticePoly,...(tubPoly.length?[tubPoly]:[])],
     // Where the visitor must not stand when the option changes: the new pieces when it turns
     // on, the block and the tub's own place when it turns off.
+    // With its own bake (scripts/bake_abierto.py) the floor carries the tub's shadow: no decal of its own.
+    baked(on){if(tubShadow)tubShadow.visible=!on;},
     blockedBy(on){return on?state.polys:[[[BLOCK.x0,BLOCK.z0],[BLOCK.x1,BLOCK.z0],[BLOCK.x1,BLOCK.z1],[BLOCK.x0,BLOCK.z1]],[[3.091,-9.51],[3.192,-9.51],[3.192,-5.91],[3.091,-5.91]],...(tubCollider?[tubCollider.poly]:[])];},
     set(on){
       state.on=on;group.visible=on;floor.value=on?1:0;
       for(const m of hidden)m.visible=!on;
+      hideShoes(on);
       for(const g of frontGroups)g.visible=!on;
       if(on)for(const f of a2){f.t=f.goal=0;fronts.set(f,0);}
       for(const c of blockColliders)c.off=on;
@@ -205,7 +224,7 @@ export function createSuiteAbierta(THREE,{scene,staticMeshes,data,doors,fronts,c
       pivot.rotation.y=on?Math.PI:0;pivot.position.z=TUB.z+(on?TUB_DZ:0);pivot.updateMatrixWorld(true);
     }};
   state.set(false);
-  console.info(`[suite-abierta] ${partition.length} meshes gone with the study partition, ${hidden.length} meshes hidden with the block, ${a2.length} fronts, ${blockColliders.length} colliders, ${moved.length} tub pieces; laths ${LATTICE.count} x ${LATTICE.lath*1000} mm, gap ${(gap*1000).toFixed(1)} mm`);
+  console.info(`[suite-abierta] ${partition.length} meshes gone with the study partition, ${hidden.length} meshes hidden with the block, ${a2.length} fronts, ${blockColliders.length} colliders, ${moved.length} tub pieces, ${shoes.reduce((n,s)=>n+s.idx.length,0)} shoes; laths ${LATTICE.count} x ${LATTICE.lath*1000} mm, gap ${(gap*1000).toFixed(1)} mm`);
   return state;
 }
 

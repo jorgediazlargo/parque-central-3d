@@ -22,10 +22,15 @@ const bitmaps=new THREE.ImageBitmapLoader().setOptions({imageOrientation:'flipY'
 const bakeVersion=data=>data.contextSha256.slice(0,10)+data.samples;
 // Without its own bake (an older house-light.json) 'dayoff' is the day.
 const modeOf=(data,m)=>m==='dayoff'&&!data.dayOff?'day':m;
-const bakeFiles=(data,m)=>{const v={night:data.night,dayoff:data.dayOff}[m];return v?{pages:v.lightmaps,probes:v.probes}:{pages:data.lightmaps,probes:data.probes.file};};
+// Layout variants baked into the same UVs (data[variant], e.g. 'abierto': scripts/bake_abierto.py,
+// «Dormitorio abierto al baño»): only their pages and probes differ. Used while made on this house bake.
+const variantOf=(data,v)=>v&&data[v]?.houseContextSha256===data.contextSha256?v:null;
+const bakeOf=(data,v)=>v?{...data[v],probes:{file:data[v].probes}}:data;
+const bakeFiles=(data,m,variant=null)=>{const b=bakeOf(data,variant),v={night:b.night,dayoff:b.dayOff}[m];
+  return {...(v?{pages:v.lightmaps,probes:v.probes}:{pages:b.lightmaps,probes:b.probes.file}),version:bakeVersion(b)};};
 // Progressive loading: the first mode shows the reduced pages (data.lowres, 1/4 of the size,
-// scripts/lightmap_lowres.py) and swaps in the full ones when they arrive.
-const lowPages=(data,m)=>data.lowres?.[{night:'night',dayoff:'dayOff'}[m]||'lightmaps'];
+// scripts/lightmap_lowres.py) and swaps in the full ones when they arrive. Variants have none.
+const lowPages=(data,m,variant=null)=>variant?null:data.lowres?.[{night:'night',dayoff:'dayOff'}[m]||'lightmaps'];
 const salonFiles=(data,m)=>({night:data.night,dayoff:data.dayOff}[m]||data).lightmaps;
 const salonUsable=(s,data)=>!!s&&s.data.houseContextSha256===data.contextSha256&&s.data.sourceSha256===data.sourceSha256&&s.data.encoding===data.encoding;
 // The salon's open sides (house.json region 'salon' ends there): dining room and hall.
@@ -35,9 +40,9 @@ const loadPages=(names,version)=>Promise.all(names.map(name=>bitmaps.loadAsync('
 // `after` settles, so it downloads alongside the geometry; loadLightmap takes the result.
 // The JSON and the UVs are versioned by content (scripts/version.mjs); the pages and
 // probes by bake, so a re-denoise is revalidated (no-cache).
-export function fetchLightmap(mode='day',{after=null}={}){
+export function fetchLightmap(mode='day',{after=null,variant=null}={}){
   const get=(url,read)=>fetch(url,{priority:'high'}).then(r=>{if(!r.ok)throw Error('No se ha podido descargar la iluminación.');return read(r);});
-  const json=get('./assets/house-light.json?v=9e88134b14',r=>r.json()),uvs=get('./assets/house-light.bin?v=6f1a46df34',r=>r.arrayBuffer());
+  const json=get('./assets/house-light.json?v=457db1c912',r=>r.json()),uvs=get('./assets/house-light.bin?v=6f1a46df34',r=>r.arrayBuffer());
   // Denser bake of the living room (scripts/bake_salon.py), when there is one for this house bake.
   // house-light.json names it (`salon`) once bake_salon.py has run on this house bake.
   const salon=json.then(data=>data.salon?Promise.all([get('./assets/salon-light.json?v=4aa3ce7463',r=>r.json()),get('./assets/salon-light.bin?v=b3cc250faf',r=>r.arrayBuffer())])
@@ -45,13 +50,13 @@ export function fetchLightmap(mode='day',{after=null}={}){
   const files=Promise.all([json,uvs,salon]);
   const maps=Promise.all([json,after]).then(([data])=>{
     if(data.encoding!=='rgbm-sqrt-range-64')throw Error('Iluminación con un formato antiguo.');
-    const m=modeOf(data,mode),version=bakeVersion(data),{pages,probes}=bakeFiles(data,m);
-    return Promise.all([loadPages(lowPages(data,m)||pages,version),fetchProbeData(probes,version),salon.then(s=>salonUsable(s,data)?loadPages(salonFiles(s.data,m),bakeVersion(s.data)):null)]);
+    const m=modeOf(data,mode),v=variantOf(data,variant),{pages,probes,version}=bakeFiles(data,m,v);
+    return Promise.all([loadPages(lowPages(data,m,v)||pages,version),fetchProbeData(probes,version),salon.then(s=>salonUsable(s,data)?loadPages(salonFiles(s.data,m),bakeVersion(s.data)):null)]);
   });
   // The full pages start once the reduced ones are in (they would share the bandwidth).
-  const full=Promise.all([json,maps]).then(([data])=>lowPages(data,modeOf(data,mode))?loadPages(bakeFiles(data,modeOf(data,mode)).pages,bakeVersion(data)):null);
+  const full=Promise.all([json,maps]).then(([data])=>{const m=modeOf(data,mode),v=variantOf(data,variant),f=bakeFiles(data,m,v);return lowPages(data,m,v)?loadPages(f.pages,f.version):null;});
   maps.catch(()=>{});full.catch(()=>{});  // reported by loadLightmap
-  return {mode,files,maps,full};
+  return {mode,variant,files,maps,full};
 }
 // Resolves with the UVs; the pages and probes fill their textures when decoded (`loaded`),
 // so the house is built (and its programs compiled) meanwhile.
@@ -63,33 +68,43 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
   const salonSpans=new Map((salon?.data.meshes||[]).map(m=>[m.sourceIndex,m]));
   const salonPages=salon?salon.data.lightmaps.map(()=>new THREE.Texture()):null;
   if(data.sourceSha256!==await sourceHash)throw Error('La geometría y la iluminación no corresponden a la misma versión.');
-  const version=bakeVersion(data),files=m=>bakeFiles(data,m);
-  const pages=files(mode).pages.map(()=>new THREE.Texture()),probes=probeVolume(data.probes);
-  const variants={[mode]:prefetched.maps.then(([bitmaps,probes,salonBitmaps])=>({bitmaps,probes,salonBitmaps}))};
+  const layout0=variantOf(data,prefetched.variant),key=(m,v)=>(v||'')+'|'+m;
+  const pages=bakeFiles(data,mode).pages.map(()=>new THREE.Texture()),probes=probeVolume(data.probes);
+  const variants={[key(mode,layout0)]:prefetched.maps.then(([bitmaps,probes,salonBitmaps])=>({bitmaps,probes,salonBitmaps}))};
   // A new image of another size needs a new GPU texture (storage is allocated once).
   const fill=(textures,bitmaps)=>textures.forEach((t,i)=>{if(t.image&&t.image.width!==bitmaps[i].width)t.dispose();t.image=bitmaps[i];t.needsUpdate=true;});
   const show=(bitmaps,salonBitmaps)=>{fill(pages,bitmaps);if(salonPages&&salonBitmaps)fill(salonPages,salonBitmaps);};
-  const loaded=variants[mode].then(v=>{
+  const loaded=variants[key(mode,layout0)].then(v=>{
     show(v.bitmaps,v.salonBitmaps);
     probes.texture.image.data=v.probes;probes.texture.needsUpdate=true;
   });
-  let current=mode;
-  // The full pages replace the reduced ones, unless the mode changed meanwhile (setMode
-  // loads the other mode's full pages directly).
+  let current=mode,layout=layout0;
+  // The full pages replace the reduced ones, unless the mode or layout changed meanwhile
+  // (switching loads the other pages at full size directly).
   const sharp=Promise.all([loaded,prefetched.full]).then(([,full])=>{
     if(!full)return;
-    variants[mode]=variants[mode].then(v=>({...v,bitmaps:full}));
-    if(current===mode)show(full);  // the salon pages are already full size
+    const k=key(mode,layout0);variants[k]=variants[k].then(v=>({...v,bitmaps:full}));
+    if(current===mode&&layout===layout0)show(full);  // the salon pages are already full size
   }).catch(e=>console.warn('Iluminación en alta resolución no disponible:',e));
+  async function switchTo(nextMode,nextLayout){
+    const k=key(nextMode,nextLayout),f=bakeFiles(data,nextMode,nextLayout);
+    variants[k]??=Promise.all([loadPages(f.pages,f.version),fetchProbeData(f.probes,f.version),salon?loadPages(salonFiles(salon.data,nextMode),bakeVersion(salon.data)):null])
+      .then(([b,p,s])=>({bitmaps:b,probes:p,salonBitmaps:s})).catch(e=>{delete variants[k];throw e;});
+    const v=await variants[k];
+    show(v.bitmaps,v.salonBitmaps);
+    probes.texture.image.data=v.probes;probes.texture.needsUpdate=true;
+    current=nextMode;layout=nextLayout;return true;
+  }
   async function setMode(next){
     next=modeOf(data,next);
     if(next===current)return false;
-    variants[next]??=Promise.all([loadPages(files(next).pages,version),fetchProbeData(files(next).probes,version),salon?loadPages(salonFiles(salon.data,next),bakeVersion(salon.data)):null])
-      .then(([b,p,s])=>({bitmaps:b,probes:p,salonBitmaps:s})).catch(e=>{delete variants[next];throw e;});
-    const v=await variants[next];
-    show(v.bitmaps,v.salonBitmaps);
-    probes.texture.image.data=v.probes;probes.texture.needsUpdate=true;
-    current=next;return true;
+    return switchTo(next,layout);
+  }
+  // Layout variant ('abierto' or null); false when unchanged or without its own bake.
+  async function setVariant(next){
+    next=variantOf(data,next);
+    if(next===layout)return false;
+    return switchTo(current,next);
   }
   for(const t of [...pages,...(salonPages||[])]){t.channel=1;t.flipY=false;t.premultiplyAlpha=false;t.generateMipmaps=false;t.minFilter=THREE.LinearFilter;t.colorSpace=THREE.NoColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
   lighting.probes=probes;
@@ -183,5 +198,5 @@ export async function loadLightmap(renderer,sourceHash,lighting,{upCoves=[],pref
       m.needsUpdate=true;
     }
   }
-  return {bind,material,syncTextures,setMode,get mode(){return current;},pages,salonPages,probes,data,loaded,sharp};
+  return {bind,material,syncTextures,setMode,setVariant,get mode(){return current;},get variant(){return layout;},hasVariant:v=>!!variantOf(data,v),pages,salonPages,probes,data,loaded,sharp};
 }
