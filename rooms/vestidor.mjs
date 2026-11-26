@@ -33,8 +33,8 @@ const COLORS={white:'#eeeae3',ivory:'#ddd4c4',ecru:'#c3ae90',sand:'#a28a6c',grei
 const SETS=[
   [['shirt','white'],['jacket','brown'],['shirt','ivory'],['knit','olive'],['shirt','white']],
   [['jacket','umber'],['shirt','white'],['shirt','greige'],['coat','sand'],['shirt','ivory']],
-  [['shirt','ecru'],['knit','brown'],['shirt','white'],['jacket','taupe'],['shirt','umber']],
-  [['coat','taupe'],['shirt','white'],['jacket','olive'],['shirt','ivory'],['knit','brown']],
+  [['shirt','ecru'],['dress','olive'],['shirt','white'],['jacket','taupe'],['dress','sand']],
+  [['coat','taupe'],['dress','umber'],['jacket','olive'],['shirt','ivory'],['dress','greige']],
 ];
 const STACK_COLORS=['white','ivory','ecru','white','greige','ivory','sand','white'];
 const ZONE=[[[0,-.2,-5.9],[4.4,3.2,-4.15]],[[0,-.2,-4.15],[.75,3.2,-1.79]],[[4.3,-.2,-4.15],[4.85,3.2,-.2]],[[4.4,-.2,-4.75],[4.85,3.2,-4.15]]];
@@ -42,8 +42,14 @@ const ZONE=[[[0,-.2,-5.9],[4.4,3.2,-4.15]],[[0,-.2,-4.15],[.75,3.2,-1.79]],[[4.3
 const BASES=[{axis:'z',at:.727,span:[-5.66,-1.995],out:[1,0]},{axis:'x',at:-5.056,span:[1.62,3.59],out:[0,1]},
   {axis:'z',at:4.329,span:[-2.73,-1.99],out:[-1,0]},{axis:'z',at:4.479,span:[-5.48,-4.82],out:[-1,0]}];
 
+// Shirt and dress modelled in Angelo (26/11/2026; see the README): one node each, in the
+// garment frame (x across the shoulders, y up from the rail centre, z to the front).
+const ANGELO_URL='./assets/rooms/vestidor/ropa-angelo.glb?v=f8d58166d2';
+
 export async function apply(ctx){
   const {THREE,group}=ctx;
+  const angelo={};
+  try{(await ctx.loadModel(ANGELO_URL)).scene.traverse(o=>{if(o.isMesh)angelo[o.name]=o.geometry;});}catch(e){console.warn('ropa-angelo.glb',e);}
 
   const W=ctx.data.wardrobes||{rails:[],stacks:[],glass:[]};
   // Rails: fixed coordinate, [from, to] along the rail, outward normal, height, garments.
@@ -93,7 +99,11 @@ export async function apply(ctx){
     jacket:{L:[.72,.77],W:.218,d:[.016,.032,.020],waist:.93,drop:.020,flare:.006,sleeve:.60,sr:[.046,.036],sz:.018,front:2,fabric:'linen',hem:0},
     knit:{L:[.60,.65],W:.196,d:[.013,.022,.012],waist:.88,drop:.064,flare:-.016,sleeve:.55,sr:[.042,.030],sz:.016,front:3,fabric:'fabric',hem:0},
     coat:{L:[.86,.90],W:.212,d:[.016,.036,.024],waist:.95,drop:.026,flare:.024,sleeve:.64,sr:[.050,.040],sz:.020,front:2,fabric:'linen',hem:0},
+    dress:{L:[.95,1.05],W:.180,fabric:'linen',hem:0},
   };
+  // Angelo's garments: their length below the hanger, and the shortest they may be squeezed to.
+  for(const [t,g] of Object.entries(angelo)){if(!TYPES[t])continue;g.computeBoundingBox();const L=-g.boundingBox.min.y-.084;TYPES[t].model=g;TYPES[t].L=[L*.9,L];TYPES[t].hem=0;}
+  if(!TYPES.dress.model)TYPES.dress.L=[9,9];
   // Hanger: its centre line (local y below the rail centre), sloping to the tips like a
   // shoulder. The hook rises from its middle to the rail, so hanger and hook read.
   const HANG=.080,HANGER_H=.013,HANGER_D=.009;
@@ -101,6 +111,18 @@ export async function apply(ctx){
 
   const garment=(type,narrow,maxL=9)=>{
     const T=TYPES[type],ph=rnd()*6.28,ph2=rnd()*6.28;
+    if(T.model){
+      // Plain cloth (kind 5: no painted folds; the folds are in the mesh), squeezed to fit.
+      const g=T.model.clone(),sx=(narrow?.9:1)*(.97+rnd()*.06),sy=Math.min(1,maxL/T.L[1]);
+      g.applyMatrix4(new THREE.Matrix4().makeTranslation(0,.084,0)).applyMatrix4(new THREE.Matrix4().makeScale(sx,sy,1)).applyMatrix4(new THREE.Matrix4().makeTranslation(0,-.084,0));
+      const p=g.getAttribute('position'),fold=new Float32Array(p.count*4),ao=new Float32Array(p.count);
+      for(let i=0;i<p.count;i++){fold[i*4]=p.getX(i);fold[i*4+1]=-.084-p.getY(i);fold[i*4+2]=ph;fold[i*4+3]=5;ao[i]=1;}
+      g.setAttribute('clothFold',new THREE.BufferAttribute(fold,4));g.setAttribute('ao',new THREE.BufferAttribute(ao,1));
+      if(!g.getAttribute('uv'))g.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(p.count*2),2));
+      for(const k of Object.keys(g.attributes))if(!['position','normal','uv','clothFold','ao'].includes(k))g.deleteAttribute(k);
+      g.computeVertexNormals();
+      return {parts:[g],W:T.W*sx};
+    }
     const W=T.W*(narrow?.88:1)*(.97+rnd()*.06),L=Math.min(maxL,T.L[0]+rnd()*(T.L[1]-T.L[0]));
     const yTop=-HANG+HANGER_H+.003,amp=type==='knit'?.004:.009;
     // Shoulder line: draped over the hanger (cloth just above its top edge), then falling
