@@ -27,7 +27,7 @@
 // stacked round cushions of nearly equal thickness with a deep joint, a taller, thicker back band.
 
 // sofa.glb content (scripts/sofa_blender.py); change with every rebuild.
-const SOFA_VERSION='228a31e478';
+const SOFA_VERSION='9b48690bc7';
 
 // Seeded value noise, smooth enough for fabric pulls.
 function noise2(seed){

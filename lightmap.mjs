@@ -50,7 +50,7 @@ export function fetchLightmap(mode='day',{after=null,variant=null}={}){
   const json=get('./assets/house-light.json?v=f3d45ef7f6',r=>r.json()),uvs=get('./assets/house-light.bin?v=6f1a46df34',r=>r.arrayBuffer());
   // Denser bake of the living room (scripts/bake_salon.py), when there is one for this house bake.
   // house-light.json names it (`salon`) once bake_salon.py has run on this house bake.
-  const salon=json.then(data=>data.salon?Promise.all([get('./assets/salon-light.json?v=4aa3ce7463',r=>r.json()),get('./assets/salon-light.bin?v=b3cc250faf',r=>r.arrayBuffer())])
+  const salon=json.then(data=>data.salon?Promise.all([get('./assets/salon-light.json?v=4aa3ce7463',r=>r.json()),get('./assets/salon-light.bin?v=a1e6827915',r=>r.arrayBuffer())])
     .then(([data,buffer])=>({data,buffer})):null).catch(e=>{console.warn('Sin la luz detallada del salón:',e);return null;});
   const files=Promise.all([json,uvs,salon]);
   const maps=Promise.all([json,after]).then(([data])=>{
